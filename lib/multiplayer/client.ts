@@ -7,7 +7,9 @@
 // It reconnects with exponential backoff and rejoins with the token from the last `welcome`, so a
 // dropped connection gets the same seat (and the hole cards are re-sent). It pings every few seconds
 // and reports the round-trip time. It gives up for good, with a `rejected` event, when retrying cannot
-// help: the join was refused (name taken or invalid, table full) or the server refuses this origin.
+// help: the join was refused (name taken or invalid, table full), the server refuses this origin, the
+// table does not exist, or the server was never reached in MAX_FAILED_OPENS tries. Once a socket has
+// opened, later drops are retried for as long as it takes.
 
 import type { Action } from "../engine/engine";
 import type { PersonaId } from "../bots/personas";
@@ -20,7 +22,16 @@ export type TableClientEvent =
   | { type: "status"; status: ConnectionStatus }
   | { type: "latency"; rttMs: number }
   /** Final: the client has stopped (e.g. ask for another nickname and connect again). */
-  | { type: "rejected"; code: ErrorCode | "origin_refused"; message: string };
+  | { type: "rejected"; code: RejectCode; message: string };
+
+/**
+ * Why the client stopped: a join error from the server, or `origin_refused` (403), `no_such_table`
+ * (404), `unreachable` (no socket ever opened in MAX_FAILED_OPENS tries).
+ */
+export type RejectCode = ErrorCode | "origin_refused" | "no_such_table" | "unreachable";
+
+/** Consecutive attempts that never opened before giving up, unless a socket has opened before. */
+export const MAX_FAILED_OPENS = 6;
 
 /** Errors in reply to `join` that a retry would only repeat. */
 const FATAL_JOIN_ERRORS: ReadonlySet<ErrorCode> = new Set(["name_taken", "bad_name", "malformed", "table_full"]);
@@ -67,10 +78,27 @@ export function tableSocketUrl(baseUrl: string, tableId: string): string {
   return u.toString();
 }
 
-/** Asks the server for a new table and returns its id. */
+/** Why `createTable` failed: the server refused this site (403), was not reached, or said no otherwise. */
+export class CreateTableError extends Error {
+  constructor(
+    readonly reason: "origin_refused" | "unreachable" | "failed",
+    readonly status: number | null,
+  ) {
+    super(`Could not create a table (${status ?? reason})`);
+    this.name = "CreateTableError";
+  }
+}
+
+/** Asks the server for a new table and returns its id. Throws a CreateTableError. */
 export async function createTable(baseUrl: string, seats = 6): Promise<string> {
-  const res = await fetch(new URL(`/tables/new?seats=${seats}`, baseUrl));
-  if (!res.ok) throw new Error(`Could not create a table (${res.status})`);
+  let res: Response;
+  try {
+    res = await fetch(new URL(`/tables/new?seats=${seats}`, baseUrl));
+  } catch {
+    throw new CreateTableError("unreachable", null);
+  }
+  if (res.status === 403) throw new CreateTableError("origin_refused", 403);
+  if (!res.ok) throw new CreateTableError("failed", res.status);
   const body = (await res.json()) as { tableId: string };
   return body.tableId;
 }
@@ -89,6 +117,10 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
   /** Between sending `join` and its `welcome`. */
   let joining = false;
   let attempt = 0;
+  /** A socket has opened at some point: from then on, drops are retried forever. */
+  let everOpened = false;
+  /** Attempts in a row whose socket never opened. */
+  let failedOpens = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
   let pingId = 0;
@@ -121,15 +153,18 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
     socket?.close(1000);
     setStatus("closed");
   };
-  const reject = (code: ErrorCode | "origin_refused", message: string) => {
+  const reject = (code: RejectCode, message: string) => {
     stop();
     emit({ type: "rejected", code, message });
   };
-  /** A socket that never opened: offline, or refused. Only the origin check answers 403 on this path. */
-  const originRefused = (): Promise<boolean> =>
+  /**
+   * A socket that never opened: offline, or refused. The same URL as a plain GET tells which: 403 is the
+   * origin check, 404 a table that does not exist (both readable cross-origin; see table-server).
+   */
+  const probe = (): Promise<"origin_refused" | "no_such_table" | null> =>
     fetch(httpUrl, { cache: "no-store" }).then(
-      (res) => res.status === 403,
-      () => false,
+      (res) => (res.status === 403 ? "origin_refused" : res.status === 404 ? "no_such_table" : null),
+      () => null,
     );
   const ping = (): boolean => {
     const id = ++pingId;
@@ -187,6 +222,8 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
     let opened = false;
     socket.onopen = () => {
       opened = true;
+      everOpened = true;
+      failedOpens = 0;
       joining = true;
       setStatus("open");
       socket.send(JSON.stringify(token ? { type: "join", name: options.name, token } : { type: "join", name: options.name }));
@@ -209,9 +246,12 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
         reconnectTimer = setTimeout(open, delay);
       };
       if (opened) return retry();
-      void originRefused().then((refused) => {
+      failedOpens += 1;
+      void probe().then((refusal) => {
         if (closedByUser) return;
-        if (refused) reject("origin_refused", "The table server does not accept connections from this site");
+        if (refusal === "origin_refused") reject(refusal, "The table server does not accept connections from this site");
+        else if (refusal === "no_such_table") reject(refusal, "There is no table at this link");
+        else if (!everOpened && failedOpens >= MAX_FAILED_OPENS) reject("unreachable", "Could not reach the table server");
         else retry();
       });
     };

@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Blank, BoxButton, Choice, Line, Rule, Screen, Sheet, Tx } from "@/components/doc";
+import { CycleButton, personaText } from "@/components/multiplayer/panels";
 import {
   ActionStrip,
   KeysLegend,
@@ -35,6 +37,8 @@ const SEAT_CHOICES = [2, 3, 4, 5, 6, 7, 8] as const;
 const RESULT_MS = 2500;
 
 type PersonaChoice = PersonaId | "mixed";
+/** Per-seat bot choices, cycled by `[TAG ▸]`: a random persona, then each one. */
+const PERSONA_CHOICES: readonly PersonaChoice[] = ["mixed", ...PERSONA_IDS];
 
 interface Stats {
   hands: number;
@@ -217,28 +221,27 @@ export default function PlayClient() {
         <span>YOU</span>
       </div>
       {Array.from({ length: seats - 1 }, (_, k) => k + 1).map((i) => (
-        <label key={i} className="l field">
+        <div key={i} className="l field">
           <span>S{i + 1} BOT</span>
-          <select
-            value={choices[i]}
-            onChange={(e) => {
-              const v = e.target.value as PersonaChoice;
-              setChoices((c) => c.map((x, j) => (j === i ? v : x)));
-            }}
-          >
-            <option value="mixed">MIXED</option>
-            {PERSONA_IDS.map((id) => (
-              <option key={id} value={id}>
-                {id.toUpperCase()}: {PERSONAS[id].name.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </label>
+          <span>
+            <CycleButton
+              className="-ml-[0.5ch]"
+              options={PERSONA_CHOICES}
+              value={choices[i]}
+              text={personaText}
+              label={`Bot for seat ${i + 1}`}
+              onChange={(v) => setChoices((c) => c.map((x, j) => (j === i ? v : x)))}
+            />
+          </span>
+        </div>
       ))}
       <Line gap>
         <BoxButton filled onClick={deal} onBlur={() => setConfirmNew(false)}>
           {!session ? "DEAL →" : confirmNew ? "CONFIRM — WIPES STATS →" : "NEW SESSION →"}
         </BoxButton>
+      </Line>
+      <Line>
+        <Link href="/play/friends">PLAY WITH FRIENDS →</Link>
       </Line>
       <Blank />
       <Rule />

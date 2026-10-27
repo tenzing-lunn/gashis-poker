@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Line, Sheet } from "@/components/doc";
 import PlayClient from "./play-client";
 
 export const metadata: Metadata = {
@@ -9,14 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function PlayPage() {
-  return (
-    <>
-      <Sheet as="div">
-        <Line>
-          <Link href="/play/friends">PLAY WITH FRIENDS →</Link>
-        </Line>
-      </Sheet>
-      <PlayClient />
-    </>
-  );
+  return <PlayClient />;
 }
