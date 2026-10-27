@@ -68,7 +68,7 @@ With e below 50%, the term 2e − 1 is negative, so the EV falls as stacks get d
 
 For K7o against this range that is about **15.9bb**. Below that, shoving K7o beats folding against this caller.
 
-Card removal works for you, too. Swap in <Cards hand="Ah5d" />: your ace removes 51 combos from a range that contains every A-x (an ace with any second card), and your five removes 6 more (3 combos of 55, and the 3 combos of A5 with the 5d that the ace did not already remove). The BB has 382 − 51 − 6 = 325 calling combos left, so f = 1 − 325 / 1,225 ≈ 73.5%. The equity when called is also higher, e ≈ 43.9%, and EV(shove) at 10bb is about +0.91bb. A weak hand like <Cards hand="7h2d" /> shows the role of stack size: about +0.56bb at 5bb, but about −0.07bb at 10bb against the same range.
+Card removal works for you, too. Swap in <Cards hand="Ah5d" />: your ace removes 51 combos from a range that contains every A-x (an ace with any second card): 3 of AA (6 drop to C(3, 2) = 3) and 4 from each of the 12 classes A2 through AK (the four combos that use the Ah), 3 + 12 × 4 = 51. And your five removes 6 more (3 combos of 55, and the 3 combos of A5 with the 5d that the ace did not already remove). The BB has 382 − 51 − 6 = 325 calling combos left, so f = 1 − 325 / 1,225 ≈ 73.5%. The equity when called is also higher, e ≈ 43.9%, and EV(shove) at 10bb is about +0.91bb. A weak hand like <Cards hand="7h2d" /> shows the role of stack size: about +0.56bb at 5bb, but about −0.07bb at 10bb against the same range.
 
 The calculator below runs this computation for any hand, stack and calling range. Its equity is a Monte Carlo estimate, so its EVs carry a small "±". The numbers above were computed exactly.
 
