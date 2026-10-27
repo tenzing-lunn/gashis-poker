@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gashis-poker-tables",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-20",
+  "observability": { "enabled": true },
+  "vars": {
+    // Comma-separated browser origins allowed to use the server, e.g. the Vercel URL.
+    // `npm run dev` also allows http://localhost:3000 (DEV_ORIGINS, see package.json); deploys do not.
+    "ALLOWED_ORIGIN": ""
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "TABLES", "class_name": "PokerTable" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PokerTable"] }]
+}
