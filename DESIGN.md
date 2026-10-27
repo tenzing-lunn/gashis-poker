@@ -39,9 +39,12 @@ Put these on `:root` in `app/globals.css` and expose them to Tailwind via `@them
 | `--gutter` | `#8a8a8a` | Line numbers |
 | `--faint` | `#c9c9c9` | Dashed placeholders, future/inactive tracks |
 | `--warn` | `#ffc400` | Highlight tags only (e.g. "YOUR TURN", form errors) — ink text on it |
-| `--amber` | `#b06300` | Caution text (low time bank) |
-| `--green` | `#0cab2c` | Net-positive numbers only |
-| `--red` | `#d0141e` | Net-negative numbers only |
+| `--amber` | `#b06300` | Caution text (low time bank) — 4.53:1 on paper |
+| `--green` | `#078420` | Net-positive numbers only — 4.85:1 on paper |
+| `--red` | `#d0141e` | Net-negative numbers only — 5.53:1 on paper |
+
+`--green` is darker than the source site's `#0cab2c` (3.05:1 on white): these colors are used for small text,
+so every semantic color must reach ≥ 4.5:1 against the band it sits on.
 
 ### Color — screen (dark figure band)
 Any block with class `.screen` flips the palette. **Tables, replays and the live play area always sit in a
@@ -54,6 +57,12 @@ Any block with class `.screen` flips the palette. **Tables, replays and the live
 | `--muted` | `#a6a6a6` |
 | `--gutter` | `#747474` |
 | `--faint` | `#3d3d3d` |
+| `--green` | `#0cab2c` (6.48:1) |
+| `--red` | `#ee3a44` (5.02:1) |
+| `--amber` | `#c87200` (5.53:1) |
+
+The semantic colors differ from the paper values because the paper red/amber fall below 4.5:1 on `#0a0a0a`
+(3.58:1, 4.37:1) and the darkened paper green would too; each is lightened, same hue, to stay ≥ 4.5:1.
 
 `.screen` also sets `color-scheme: dark`, `background: var(--paper)`, `color: var(--ink)`, and vertical padding of
 one line (`calc(var(--lh) * 1em)`). Under `@media print`, `.screen` reverts to paper values.
@@ -110,8 +119,9 @@ That gives the signature "label left, value right" row for free:
 Blank lines are empty `.l` elements — they keep numbering continuous and act as vertical rhythm.
 
 ### 3.2 Rules
-A full-width row of `=` characters between major sections (render as a `.l` with `overflow:hidden; white-space:nowrap`
-and a long string of `=`). Section titles are centered on their own `.l` in CAPS: `FIG. 2: YOUR TABLE`.
+A full-width row of `=` characters between major sections (render as a `.l` holding a long string of `=` in an inner
+`<span>`; the span gets `display:block; flex:1 1 auto; min-width:0; overflow:hidden; white-space:nowrap`. Never clip
+the `.l` itself — that hides its `::before` line number). Section titles are centered on their own `.l` in CAPS: `FIG. 2: YOUR TABLE`.
 
 ### 3.3 Two-column record — `.tx`
 `display:grid; grid-template-columns: 1fr 22ch; column-gap: 2ch; text-transform: uppercase`.

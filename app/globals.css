@@ -1,26 +1,585 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   Tokens (DESIGN.md §2). The only place hex values may appear.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* paper (default, light) */
+  --ink: #111111;
+  --paper: #ffffff;
+  --muted: #595959;
+  --gutter: #8a8a8a;
+  --faint: #c9c9c9;
+  --warn: #ffc400;
+  --amber: #b06300;
+  --green: #078420;
+  --red: #d0141e;
+  /* text on --warn stays dark in both bands (light ink on yellow is unreadable) */
+  --on-warn: #111111;
+
+  /* type: next/font provides --font-source-code-pro on <html> */
+  --mono: var(--font-source-code-pro), "Source Code Pro", ui-monospace, Menlo, monospace;
+  --lh: 1.8;
+
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Screen band: a dark figure pasted into the paper document. */
+.screen {
+  --ink: #f2f2f2;
+  --paper: #0a0a0a;
+  --muted: #a6a6a6;
+  --gutter: #747474;
+  --faint: #3d3d3d;
+  /* semantic colors lightened for >= 4.5:1 on the dark band */
+  --green: #0cab2c;
+  --red: #ee3a44;
+  --amber: #c87200;
+
+  color-scheme: dark;
+  background: var(--paper);
+  color: var(--ink);
+  padding-block: calc(var(--lh) * 1em);
+  /* full-bleed background without widening the page */
+  box-shadow: 0 0 0 100vmax var(--paper);
+  clip-path: inset(0 -100vmax);
 }
 
+/* Site-wide dark mode: the whole page takes the screen values. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --ink: #f2f2f2;
+    --paper: #0a0a0a;
+    --muted: #a6a6a6;
+    --gutter: #747474;
+    --faint: #3d3d3d;
+    --green: #0cab2c;
+    --red: #ee3a44;
+    --amber: #c87200;
+
+    color-scheme: dark;
   }
 }
 
+/* Print is always ink on paper, screen bands included. */
+@media print {
+  :root,
+  .screen {
+    --ink: #111111;
+    --paper: #ffffff;
+    --muted: #595959;
+    --gutter: #8a8a8a;
+    --faint: #c9c9c9;
+    --green: #078420;
+    --red: #d0141e;
+    --amber: #b06300;
+
+    color-scheme: light;
+  }
+
+  .screen {
+    box-shadow: none;
+    clip-path: none;
+  }
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-muted: var(--muted);
+  --color-gutter: var(--gutter);
+  --color-faint: var(--faint);
+  --color-warn: var(--warn);
+  --color-amber: var(--amber);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  /* legacy aliases still used by unrestyled routes */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  /* one font: sans and mono both resolve to the monospace */
+  --font-mono: var(--mono);
+  --font-sans: var(--mono);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+html {
+  background: var(--paper);
+  font-synthesis: none; /* only weight 400 is loaded; never fake bold */
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+}
+
+b,
+strong,
+th,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 400;
+  font-size: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* ==========================================================================
+   Document primitives (DESIGN.md §3)
+   ========================================================================== */
+
+.sheet {
+  width: 100%;
+  max-width: 96ch;
+  margin: 0 auto;
+  padding: 0 24px 0 64px;
+}
+
+.doc {
+  counter-reset: ln;
+}
+
+/* nested documents continue the outer numbering */
+.doc .doc {
+  counter-reset: none;
+}
+
+.site-head {
+  padding-top: 48px;
+}
+
+/* 3.1 Numbered line */
+.l {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  column-gap: 2ch;
+  min-height: calc(var(--lh) * 1em);
+  counter-increment: ln;
+}
+
+.l::before {
+  content: counter(ln);
+  content: counter(ln) / ""; /* decorative: empty alt text for assistive tech */
+  position: absolute;
+  left: -5ch;
+  top: 0.55em;
+  width: 3.2ch;
+  text-align: right;
+  font-size: 10px;
+  line-height: 1.8;
+  color: var(--gutter);
+  pointer-events: none;
+  user-select: none;
+}
+
+.l.c {
+  justify-content: center;
+  text-align: center;
+}
+
+.gap {
+  margin-top: 0.5em;
+}
+
+/* 3.2 Rule */
+/* clip on the inner span: clipping the .l itself would hide its ::before line number */
+.l.rule {
+  flex-wrap: nowrap;
+}
+
+.l.rule > span {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Emphasis by inversion (principle 2) */
+.inv {
+  display: inline-block;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 1ch;
+}
+
+/* 3.3 Two-column record */
+.tx {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22ch;
+  column-gap: 2ch;
+  text-transform: uppercase;
+}
+
+/* 3.4 Buttons */
+button.t {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0 0.5ch;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+button.t:hover {
+  outline: 1px solid var(--ink);
+  outline-offset: -1px;
+}
+
+button.t:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+button.t[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.apply {
+  display: inline-block;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 0 1.5ch;
+  margin: -1px 0;
+  text-decoration: none;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.apply:hover,
+.apply:focus-visible {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.apply.cta {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.apply.cta:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.apply:disabled,
+button.t:disabled {
+  color: var(--muted);
+  border-color: var(--faint);
+  background: transparent;
+  outline: none;
+  cursor: default;
+}
+
+/* 3.5 Form controls (ASCII) */
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 24ch) minmax(0, 1fr);
+  column-gap: 2ch;
+  align-items: baseline;
+}
+
+.field > :first-child {
+  text-transform: uppercase;
+}
+
+.field input,
+.field select,
+.field textarea,
+input.u {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.field input::placeholder,
+input.u::placeholder {
+  color: var(--muted);
+}
+
+.field input:focus-visible,
+input.u:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.opt {
+  position: relative;
+  display: inline-flex;
+  gap: 1ch;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.opt input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.opt input[type="radio"] + .box::before {
+  content: "( )";
+}
+
+.opt input[type="radio"]:checked + .box::before {
+  content: "(X)";
+}
+
+.opt input[type="checkbox"] + .box::before {
+  content: "[ ]";
+}
+
+.opt input[type="checkbox"]:checked + .box::before {
+  content: "[X]";
+}
+
+.opt input:focus-visible + .box {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.opt:has(input:disabled) {
+  color: var(--muted);
+  cursor: default;
+}
+
+.tag {
+  background: var(--warn);
+  color: var(--on-warn);
+  padding: 0 0.5ch;
+}
+
+.bar-input {
+  border-bottom: 1px dotted var(--muted);
+}
+
+/* 3.6 Legend */
+.legend {
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   Site nav (DESIGN.md §7)
+   ========================================================================== */
+
+.site-nav a {
+  padding: 0 0.5ch;
+  margin: 0 -0.5ch;
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  outline: 1px solid var(--ink);
+  outline-offset: -1px;
+}
+
+.site-nav a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.site-nav a[aria-current="page"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.site-nav .rooms {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 2ch;
+}
+
+/* ==========================================================================
+   Cards (DESIGN.md §4.3–4.4)
+   ========================================================================== */
+
+.cd {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 36px;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 1px 1px 0 var(--ink);
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.cd i {
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.board {
+  display: flex;
+  gap: 3px;
+}
+
+.board .cd {
+  width: 42px;
+  height: 58px;
+  border-radius: 4px;
+  box-shadow: 2px 2px 0 var(--ink);
+  font-size: 17px;
+}
+
+.board .cd i {
+  font-size: 21px;
+}
+
+.cd.slot {
+  border: 1px dashed var(--faint);
+  background: transparent;
+  box-shadow: none;
+}
+
+.cd.back {
+  outline: 1px solid var(--ink);
+  outline-offset: -5px;
+}
+
+.cd.deal {
+  animation: deal 0.15s steps(3);
+}
+
+.cd.flip {
+  animation: flip 0.2s steps(3);
+}
+
+@keyframes deal {
+  from {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+}
+
+@keyframes flip {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ==========================================================================
+   Mobile (< 680px)
+   ========================================================================== */
+
+@media (max-width: 679px) {
+  .sheet {
+    padding-left: 40px;
+  }
+
+  .l::before {
+    font-size: 9px;
+  }
+
+  .board .cd {
+    width: 26px;
+    height: 36px;
+    border-radius: 3px;
+    box-shadow: 1px 1px 0 var(--ink);
+    font-size: 11px;
+  }
+
+  .board .cd i {
+    font-size: 12px;
+  }
+}
+
+/* ==========================================================================
+   Motion, forced colors
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  button.t[aria-pressed="true"],
+  .apply:hover,
+  .apply:focus-visible,
+  .apply.cta,
+  .site-nav a[aria-current="page"],
+  [aria-current="true"] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .tag {
+    forced-color-adjust: none;
+    background: Mark;
+    color: MarkText;
+  }
+
+  .cd,
+  .apply,
+  .field input,
+  input.u {
+    border-color: CanvasText;
+  }
+
+  .bar {
+    border-color: CanvasText;
+  }
+
+  .bar i,
+  .ln {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
 }

@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The table server has its own tsconfig; wrangler's build output is not source.
+    "table-server/.wrangler/**",
+    "table-server/node_modules/**",
+    // Agent worktrees are full repo copies.
+    ".claude/**",
   ]),
 ]);
 
