@@ -133,8 +133,9 @@ of the CS lives (bit tricks, lookup tables, why exact enumeration on the flop is
 - I check every diff between phases. You get a working, runnable thing at the end of each phase.
 - Parallel builders never share files.
 
-### Phase 1 — Math core (1 builder, 1 math judge)
-Scaffold Next.js + git init (**done**: Next.js 16, Vitest, first commit); build `lib/poker/`.
+### Phase 1 — Math core (1 builder, 1 math judge) — **done, judge PASS on all 7**
+Scaffold Next.js + git init; build `lib/poker/`. Rerun the judge's checks any time with
+`python3 oracle/crosscheck/crosscheck.py` (add `--deep` for the full 7-card value-by-value comparison).
 **Acceptance:**
 - Evaluator agrees with HenryRLee/PokerHandEvaluator's `test_data/` fixtures (Apache-2.0).
 - Enumerating all 2,598,960 five-card hands gives exactly: straight flush 40, quads 624, full house 3,744,

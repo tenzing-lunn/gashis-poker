@@ -1,0 +1,15 @@
+phe-sample.csv: third-party test data
+
+Source:    HenryRLee/PokerHandEvaluator, https://github.com/HenryRLee/PokerHandEvaluator
+Copyright: Copyright 2016-2023 Henry Lee
+License:   Apache License, Version 2.0 (full text: LICENSE-APACHE-2.0.txt in this folder)
+
+Sampled from (master branch):
+  test_data/five/string_input_tests.csv
+  test_data/six/string_input_tests.csv
+  test_data/seven/string_input_tests.csv
+
+Modifications: 400 rows were taken from each file (40 consecutive rows at each of 10 evenly spaced
+byte offsets); the CSV header row was dropped and two "#" comment lines were added at the top.
+Upstream has no NOTICE file. Only the data is used, and only as a test fixture. No upstream code is
+included in or used by this project.
