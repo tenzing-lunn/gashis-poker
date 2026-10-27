@@ -160,8 +160,42 @@ Table UI, HUD, coach mode, per-decision EV grading, hand history, stats dashboar
 grading judge hand-checks 20 graded decisions; all-in-EV vs actual results reconcile.
 
 ### Phase 4 — Design pass + deploy
-One coherent look ("problem set meets trading desk": tabular numbers, quiet table, math front and center).
+One coherent look, now defined in **DESIGN.md** (typed-document style: monospace, numbered lines,
+ink/paper with dark `.screen` bands, tables drawn as line figures).
 Mobile-usable. Deploy to Vercel. Final judge: full walkthrough as a new player, Learn → Drill → Play → Review.
+
+---
+
+## 5b. Revised order (2026-10-27): design system + tables + multiplayer
+
+Requested: apply DESIGN.md everywhere, make practice tables match its §4 table exactly, add multiplayer.
+The design pass moves **ahead** of Phase 3 so the table is only built once, in the final look.
+
+**Step 0 — Merge Phase 2.** The four judged branches (`claude/phase2-engine|drills|lab|curriculum-*`) go into
+`main` in that order; full `npm test` + `npm run build` green after each. Needed because the table runs on
+`lib/engine` + `lib/bots`, and the restyle has to cover `/drill`, `/lab`, `/learn`.
+
+**Step 1 — Design foundation (1 builder → design judge).** Owns `app/globals.css`, `app/layout.tsx`, `app/page.tsx`,
+`components/doc/*` (Sheet, Line, Rule, Tx, TextButton, BoxButton, Field, Legend, Screen).
+*Judge:* screenshots at 1440 / 820 / 375 px vs the token tables in DESIGN.md §2–3; no hex outside globals.css;
+no bold; one font; contrast check; reduced-motion honored.
+
+**Step 2 — Two parallel streams (no shared files):**
+| Stream | Owns | Judge checks |
+|---|---|---|
+| **T. Table + solo practice** | `components/table/*`, `app/play/*` | Side-by-side screenshots against DESIGN.md §4 (felt, 8-seat coordinates, card sizes, `.turn`/`.out` states, action strip); plays 30 hands vs bots with no breakage; controls keyboard-operable; 2–8 seats lay out |
+| **R. Restyle existing rooms** | `app/drill/*`, `app/lab/*`, `app/learn/*` | Same token audit as Step 1; existing tests still green; no logic changes in the diff |
+
+**Step 3 — Multiplayer (1 builder → security judge + UX judge).** Server-authoritative: the server holds the
+`HandState`, applies actions with `lib/engine`, and sends each client only `PublicView` + their own hole cards.
+- Private tables by invite link, 2–8 seats, play-money chips only. Empty seats can be filled with bots.
+- Turn clock with auto check/fold on timeout; reconnect resumes your seat.
+- Owns `lib/multiplayer/*`, `app/play/[tableId]/*`, `app/api/*` / server actions, DB migrations.
+*Security judge:* tries to read other players' hole cards or the deck from network traffic, websocket
+messages and DB queries as a second user; tries out-of-turn / illegal / replayed actions; all must fail.
+*UX judge:* two browser tabs as two players play 20 hands; disconnect/reconnect mid-hand; timeout auto-acts.
+
+**Step 4 — Deploy to Vercel**, then the Phase 3 coach/review/stats work continues on the new table.
 
 ---
 
