@@ -89,7 +89,7 @@ function Chart({
           </text>
         ))}
         <text x={(CL + CW - CR) / 2} y={CH - 3} textAnchor="middle" className="fill-zinc-500 text-[9px]">
-          iterations (log scale)
+          iterations (log scale: each step is 10× more)
         </text>
         {target !== undefined && (
           <line x1={CL} x2={CW - CR} y1={cy(target)} y2={cy(target)} strokeDasharray="4 3" className="stroke-emerald-600 dark:stroke-emerald-400" />
@@ -186,7 +186,7 @@ export function KuhnCfr() {
   return (
     <WidgetFrame
       title="Kuhn poker solved by CFR"
-      footer="Vanilla CFR: each iteration plays the current regret-matching strategy through all 6 deals and updates the regrets. The average strategy is what converges. Game value and exploitability are computed exactly for the average strategy. Exploitability is the average of what a best response gains against each player (found by trying all 64 pure strategies)."
+      footer="Plain CFR: each iteration plays the current regret-matching strategy through all 6 deals and updates the regrets. The average strategy is what converges. Game value and exploitability are computed exactly for the average strategy. Exploitability is the average of what a best response gains against each player (found by trying every pure strategy: each player has 6 decisions with 2 choices each, so 2 × 2 × 2 × 2 × 2 × 2 = 64 ways to always pick one action at each decision)."
     >
       <div className="flex flex-wrap items-center gap-2">
         {running ? (
@@ -255,7 +255,7 @@ export function KuhnCfr() {
           ]}
         />
         <Chart
-          title="Exploitability (log scale: each gridline is 10× smaller)"
+          title="Exploitability (log scale: each gridline down is 10× smaller)"
           points={snap.history}
           y={(p) => p.expl}
           yLabel={(v) => Math.log10(Math.max(v, 1e-4))}
@@ -279,7 +279,7 @@ export function KuhnCfr() {
               <th className="text-right">Average</th>
               <th className="text-right">Equilibrium (β = {betaEstimate.toFixed(3)})</th>
               <th className="text-right">Current</th>
-              <th className="text-right">Avg regret pass / bet</th>
+              <th className="text-right">Avg regret check-or-fold / bet-or-call</th>
             </tr>
           </thead>
           <tbody>

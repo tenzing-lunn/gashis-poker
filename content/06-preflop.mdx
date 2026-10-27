@@ -3,9 +3,9 @@ import { PushFoldEv } from "@/app/learn/_widgets/push-fold-ev";
 
 # Preflop
 
-Every hand starts with a preflop decision, and most of your hands end there. This lesson gives you the preflop vocabulary, derives the exact EV of going all-in from the small blind with a short stack, and builds 6-max opening ranges you can count to the combo. By the end you will be able to compute whether a heads-up shove beats folding against a given calling range, explain why ranges widen as you get closer to the button, and say what size to open and re-raise.
+Every hand starts with a preflop decision, and most of your hands end there. This lesson gives you the preflop vocabulary, derives the exact EV of going all-in from the small blind with a short stack, and builds 6-max opening ranges you can count to the combo. By the end you will be able to compute whether going all-in heads-up beats folding against a given calling range, explain why ranges widen as you get closer to the button, and say what size to open and re-raise.
 
-One warning up front. The push/fold math here is exact for the assumptions you feed it. The opening ranges are **heuristic starting points**, hand-built to land in commonly cited size bands. They are not solver output. (A **solver** is a program, like the CFR you met in module 5, that computes equilibrium strategies.)
+One warning up front. The all-in math here is exact for the assumptions you feed it. The opening ranges are **heuristic starting points**, hand-built to land in commonly cited size bands. They are not solver output. (A **solver** is a program, like the CFR you met in module 5, that computes equilibrium strategies.)
 
 ## The preflop vocabulary
 
@@ -22,7 +22,7 @@ You are **first in** when every player before you has folded. From there:
 
 ## Heads-up push/fold
 
-Short stacks simplify preflop to one decision. Take a heads-up game (module 0: the button posts the small blind and acts first preflop) with blinds of 0.5bb and 1bb and no other forced bets. Each player starts the hand with an effective stack of **S** bb. When S is small, a normal raise would commit a large part of the stack anyway, so the small blind (SB) plays a simplified strategy: **shove all-in or fold**. The big blind (BB) can then only call or fold.
+Short stacks simplify preflop to one decision. Take a heads-up game (module 0: the button posts the small blind and acts first preflop) with blinds of 0.5bb and 1bb and no other forced bets. Each player starts the hand with an effective stack of **S** bb. When S is small, a normal raise would commit a large part of the stack anyway, so the small blind (SB) plays a simplified strategy: **shove** or fold. To **shove** (also called to **push**) is to go all-in. This is why the strategy is called **push/fold**. The big blind (BB) can then only call or fold.
 
 **Where to measure EV from.** As in module 3, measure from the moment after the blinds are posted. The SB's 0.5bb is already in the pot and no longer theirs, so **folding is worth 0**. (Measuring from the start of the hand instead lowers both options by the same 0.5bb, so the comparison does not change.)
 
@@ -68,7 +68,7 @@ With e below 50%, the term 2e − 1 is negative, so the EV falls as stacks get d
 
 For K7o against this range that is about **15.9bb**. Below that, shoving K7o beats folding against this caller.
 
-Card removal works for you, too. Swap in <Cards hand="Ah5d" />: your ace alone removes 51 combos from a range that contains every A-x. The BB has 325 calling combos left, so f = 1 − 325 / 1,225 ≈ 73.5%. The equity when called is also higher, e ≈ 43.9%, and EV(shove) at 10bb is about +0.91bb. A weak hand like <Cards hand="7h2d" /> shows the role of stack size: about +0.56bb at 5bb, but about −0.07bb at 10bb against the same range.
+Card removal works for you, too. Swap in <Cards hand="Ah5d" />: your ace alone removes 51 combos from a range that contains every A-x (an ace with any second card). The BB has 325 calling combos left, so f = 1 − 325 / 1,225 ≈ 73.5%. The equity when called is also higher, e ≈ 43.9%, and EV(shove) at 10bb is about +0.91bb. A weak hand like <Cards hand="7h2d" /> shows the role of stack size: about +0.56bb at 5bb, but about −0.07bb at 10bb against the same range.
 
 The calculator below runs this computation for any hand, stack and calling range. Its equity is a Monte Carlo estimate, so its EVs carry a small "±". The numbers above were computed exactly.
 
@@ -123,7 +123,7 @@ Use the viewer to see each range as a 13 × 13 grid. Click cells to add or remov
 
 - Open = first raise when first in (2.5bb here); limp = call when first in; 3-bet = re-raise of an open; 4-bet = re-raise of a 3-bet. 3-bet about 3× in position and about 4× out of position, and 3-bet or fold from the small blind (heuristics).
 - Heads-up push/fold, measured with folding = 0: EV(shove) = f × 1.5 + (1 − f)(e × 2S − (S − 0.5)).
-- f = 1 − (calling combos left) / 1,225, with card removal. Holding cards the caller needs (like an ace against a range full of A-x) raises f.
+- f = 1 − (calling combos left) / 1,225, with card removal. Holding cards the caller needs (like an ace against a range full of A-x, an ace with any second card) raises f.
 - With a fixed calling range, EV is a straight line in S. K7o against `22+, A2+, K9+, QT+, JT` is about +0.45bb at 10bb and −0.31bb at 20bb, breaking even near 15.9bb.
 - The push/fold equilibrium, where both ranges respond to each other, is solved in the Lab.
 - Opening ranges widen as fewer players are left to act and as position improves: UTG 17.3%, HJ 20.1%, CO 27.0%, BTN 42.1%, SB 39.4% in this course's starting ranges.

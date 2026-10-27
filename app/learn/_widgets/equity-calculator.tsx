@@ -16,7 +16,9 @@ const PRESETS = [
   { label: "Range vs range on a flop", hero: "TT+, AQ+", villain: "22+, A2+, K9+, QT+, JT", board: "Qs7h2c" },
 ];
 
-const MC_TRIALS = 40_000;
+/** Monte Carlo trials: fewer with a board, where each trial costs more in the browser. Both stay near ~250 ms. */
+const MC_TRIALS_PREFLOP = 300_000;
+const MC_TRIALS_POSTFLOP = 60_000;
 /** Exact range enumeration is used on a flop or later while (pairs of hands) × (runouts) stays under this. */
 const EXACT_BUDGET = 1_500_000;
 
@@ -90,13 +92,14 @@ function compute(q: Query): Outcome {
     };
   }
 
-  const r = monteCarloEquity([hero, villain], { board, trials: MC_TRIALS, seed: 1 }).players[0];
+  const trials = board.length ? MC_TRIALS_POSTFLOP : MC_TRIALS_PREFLOP;
+  const r = monteCarloEquity([hero, villain], { board, trials, seed: 1 }).players[0];
   return {
     equity: r.equity,
     win: r.win,
     tie: r.tie,
     margin: 1.96 * r.stdErr,
-    method: `Monte Carlo: ${MC_TRIALS.toLocaleString("en-US")} random deals (fixed seed). The true value is within the ± margin about 95% of the time.`,
+    method: `Monte Carlo: ${trials.toLocaleString("en-US")} random deals, with a fixed seed (the same random deals every time, so the result repeats exactly). The true value is within the ± margin about 95% of the time.`,
     heroCombos,
     villainCombos,
   };

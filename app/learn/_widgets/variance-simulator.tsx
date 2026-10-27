@@ -68,7 +68,7 @@ export function VarianceSimulator() {
   return (
     <WidgetFrame
       title="Variance simulator"
-      footer={`Normal approximation: each 100 hands is an independent normal draw with mean = win rate and SD = SD. ${int(runs)} seeded runs (seed ${seed}); ${DRAWN} are drawn. The shaded band is the expected result ± 1.96 SD of the total. The risk-of-ruin formula assumes play never stops; the simulation stops at ${int(n)} hands, so on average its ruin share is lower (any one seed can land above it by chance).`}
+      footer={`Normal approximation: each 100 hands is an independent normal draw with mean = win rate and SD = SD. ${int(runs)} runs, ${DRAWN} drawn. Seed ${seed}: the seed fixes the random sequence, so the same inputs always give the same runs; “New random runs” changes the seed to show a different set. The shaded band is the expected result ± 1.96 SD of the total. The risk-of-ruin formula assumes play never stops; the simulation stops at ${int(n)} hands, so on average its ruin share is lower (any one set of runs can land above it by chance).`}
     >
       <Inputs {...{ winRate, setWinRate, sd, setSd, hands, setHands, bankroll, setBankroll }} />
       <div className="mt-2">

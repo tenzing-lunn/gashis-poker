@@ -14,7 +14,7 @@ import { WidgetFrame, buttonClass, inputClass } from "../_components/widget-fram
 //   EV(shove) = f · 1.5 + (1 − f) · (e · 2S − (S − 0.5))
 // f = share of the BB's possible hands that fold, e = SB's equity against the calling hands.
 
-const TRIALS = 40_000;
+const TRIALS = 200_000;
 const BB_HANDS = 1225; // C(50, 2): the BB's possible hands once the SB's two cards are known
 
 const RANGE_PRESETS = [
@@ -163,7 +163,7 @@ export function PushFoldEv() {
   return (
     <WidgetFrame
       title="Push/fold EV calculator (heads-up, small blind)"
-      footer={`Blinds 0.5/1, no antes. The calling range is your assumption about the BB, not a solved strategy. Equity is Monte Carlo (${TRIALS.toLocaleString("en-US")} deals, fixed seed); f uses exact combo counts with card removal.`}
+      footer={`Blinds 0.5/1, no antes. The calling range is your assumption about the BB, not a solved strategy. Equity is Monte Carlo (${TRIALS.toLocaleString("en-US")} random deals, with a fixed seed: the same deals every time, so results repeat exactly); f uses exact combo counts with card removal.`}
     >
       <div className="flex flex-wrap gap-2">
         {RANGE_PRESETS.map((p) => (

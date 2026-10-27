@@ -67,7 +67,7 @@ P = 10bb and B = 10bb.
 
 1. The Q bluffs b = 10 / (10 + 10) = ½ of the time. Bluffs are then (½ × ½) / (½ + ½ × ½) = 0.25 / 0.75 = ⅓ of all bets, which matches B / (P + 2B) = 10 / 30.
 2. The K calls c = 10 / (10 + 10) = ½ of the time.
-3. Bettor's EV: with the A (probability ½) they win 10 + ½ × 10 = 15bb on average. With the Q they are indifferent, so their EV is that of checking, 0. Average: ½ × 15 + ½ × 0 = **7.5bb**. The caller gets the rest of the 10bb pot: **2.5bb**.
+3. Bettor's EV: with the A (probability ½) they win 10 + ½ × 10 = 15bb on average. With the Q they are indifferent, so their EV is that of checking, 0. Average: ½ × 15 + ½ × 0 = **7.5bb**. The caller gets the rest of the 10bb pot: **2.5bb**. Measured this way (the pot belongs to nobody yet), the two players' EVs add up to the pot, 10bb, not to 0. The game is still zero-sum in the sense that matters: every chip one player gains is a chip the other does not get.
 
 Now see what deviating costs, starting from those 7.5bb for the bettor:
 
@@ -141,7 +141,7 @@ The full solution is known. Player 2's equilibrium strategy is unique; Player 1 
 | Player 2 | Q | after a check: check | call ⅓ |
 | Player 2 | K | after a check: bet | call |
 
-Every member of the family has the same game value: Player 1 expects to win **−1/18 ≈ −0.0556** antes per hand. Acting first is a small disadvantage.
+Every member of the family has the same game value: Player 1 expects to win **−1/18 ≈ −0.0556** antes per hand. Here, unlike in the AKQ game, each ante counts as the player's own money, so the two players' values add up to 0: Player 2 expects +1/18. Acting first is a small disadvantage.
 
 <Example title="Worked example: the indifference inside Kuhn poker">
 
@@ -152,7 +152,7 @@ Player 1 holds the Q and checks; Player 2 bets. Should Player 1 call?
 3. The pot before the bet is 2 (the antes) and the bet is 1. From module 3, the required equity is 1 / (2 + 2 × 1) = ¼.
 4. Calling with the Q wins exactly when Player 2 has the J, so Player 1's equity is ¼: exactly break-even.
 
-Player 2's J bluffs at the frequency that makes Player 1's Q indifferent, just as in the AKQ game: ⅓ = B / (P + B) with P = 2 and B = 1. The same check works the other way. When Player 1 bets, their range is K with weight 3β and J with weight β, so Player 2's Q faces bluffs ¼ of the time and is again indifferent.
+Player 2's J bluffs at the frequency that makes Player 1's Q indifferent, just as in the AKQ game: ⅓ = B / (P + B) with P = 2 and B = 1. The same check works the other way. When Player 1 bets, their range is K with weight 3β and J with weight β, so whenever β is above 0, Player 2's Q faces bluffs ¼ of the time and is again indifferent. (At β = 0, Player 1 bets only the K, so Player 2 never holds the Q facing a bet.)
 
 </Example>
 
@@ -174,6 +174,8 @@ Press **Run CFR** below. It starts by mixing 50/50 everywhere, which is worth +0
 - Exploitability falls toward 0. In our runs it is about 0.0023 after 10,000 iterations and about 0.0007 after 100,000.
 - Player 1's J bet frequency settles at some β, the K bet at about 3β, and the Q call at about β + ⅓. Player 2's J bet and Q call head to ⅓.
 - The positive average regrets shrink toward 0, as the theorem says. Actions the equilibrium never takes (like folding the K) keep a negative average regret: they really were worse.
+
+Both charts use a **log scale** on the iteration axis: each labeled step is 10 times larger than the last (1, 10, 100, …), so the early and late iterations both fit. The exploitability chart uses a log scale going down too: each gridline is 10 times smaller than the one above it.
 
 <KuhnCfr />
 

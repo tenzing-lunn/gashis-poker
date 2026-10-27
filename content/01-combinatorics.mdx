@@ -60,12 +60,15 @@ You almost never know an opponent's exact cards. What you can do is list every h
 |---|---|---:|
 | `22+` | Every pair from 22 up to AA (13 pairs) | 13 × 6 = 78 |
 | `ATs+` | The second card climbs to one below the top card: ATs, AJs, AQs, AKs | 4 × 4 = 16 |
+| `ATo+` | The same climb, offsuit only: ATo, AJo, AQo, AKo | 4 × 12 = 48 |
+| `K9+` | No letter, so suited and offsuit together: K9, KT, KJ, KQ (K9s+ plus K9o+) | 4 × 16 = 64 |
 | `KQo` | King-queen offsuit | 12 |
 | `A5s-A2s` | A5s, A4s, A3s, A2s | 4 × 4 = 16 |
+| `K9-K6` | No letter, so both kinds: K9, K8, K7, K6 | 4 × 16 = 64 |
 | `AK` | AKs and AKo | 16 |
 | `AhKh` | That one combo | 1 |
 
-Tokens are separated by commas. The range `22+, ATs+, KQo` holds 78 + 16 + 12 = 106 combos, which is 106 / 1,326 ≈ 7.99% of all starting hands.
+The letter rule from the hand classes carries over to every token: `s` means suited only, `o` means offsuit only, and no letter means both, with 16 combos per unpaired class. A `+` on an unpaired hand raises the second card up to one below the first, and a dash gives a run of second cards under the same first card. Tokens are separated by commas. The range `22+, ATs+, KQo` holds 78 + 16 + 12 = 106 combos, which is 106 / 1,326 ≈ 7.99% of all starting hands.
 
 ## Card removal
 

@@ -127,7 +127,7 @@ In poker you don't choose a stake each hand, but you do choose your stakes. The 
 
 ## Luck versus skill: all-in EV
 
-The single biggest source of luck is the all-in before the river. **All-in EV** replaces the actual result of such a hand with its expected value: your equity times the pot, minus what you put in. That is the EV of a call from module 3, applied after the fact.
+The single biggest source of luck is the all-in before the river. **All-in EV** replaces the actual result of such a hand with its expected value: your equity times the pot, minus what you put in. It is measured from the start of the hand, so "what you put in" counts every chip you put in during the hand. Module 3's call EV was measured from the moment of the decision and treated chips already in the pot as sunk; the two differ only by those earlier chips. In the example below all 100bb go in at once (and we ignore the blinds), so the two measures agree.
 
 <Example title="Worked example: aces against kings">
 
@@ -147,7 +147,7 @@ Comparing your actual winnings with your all-in EV winnings separates the cards 
 N/100 = 400 and √400 = 20. The SD of the observed win rate is 100 / 20 = 5 bb/100, and 1.96 × 5 = 9.8 bb/100.
 </Check>
 
-<Check question="With σ = 90 bb/100, about how many hands does a 5 bb/100 winner need before the 95% interval sits above zero? (Answer to the nearest thousand.)" answer={124468} tolerance={1000} unit="hands">
+<Check question="With σ = 90 bb/100, about how many hands does a 5 bb/100 winner need before the 95% interval sits above zero? (Answer to the nearest thousand.)" answer={124468} tolerance={500} unit="hands">
 1.96 × 90 / 5 = 35.28, and 35.28² ≈ 1,244.68 blocks of 100 hands, so ≈ 124,468 hands, about 124,000.
 </Check>
 
