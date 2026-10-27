@@ -4,6 +4,7 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { AkqPanel } from "./akq-panel";
 import { KuhnPanel } from "./kuhn-panel";
 import { PushFoldPanel } from "./pushfold-panel";
+import { RiverPanel } from "./river-panel";
 import { VariancePanel } from "./variance-panel";
 
 const TABS = [
@@ -11,6 +12,7 @@ const TABS = [
   { id: "akq", label: "AKQ game", Panel: AkqPanel },
   { id: "pushfold", label: "Push/fold", Panel: PushFoldPanel },
   { id: "variance", label: "Variance", Panel: VariancePanel },
+  { id: "river", label: "River solver", Panel: RiverPanel },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 

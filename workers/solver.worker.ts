@@ -1,5 +1,5 @@
-// The Lab's solver worker: Kuhn CFR, the AKQ game, push/fold Nash and the variance simulator, off the
-// main thread. Message types live in lib/gto/worker-protocol.ts.
+// The Lab's solver worker: Kuhn CFR, the AKQ game, push/fold Nash, the variance simulator and the DCFR
+// river solver, off the main thread. Message types live in lib/gto/worker-protocol.ts.
 //
 // One job runs at a time. Jobs yield to the event loop between chunks, so a newer request or a
 // "cancel" (which bump `active`) stops the running job at its next yield. The page can also simply
@@ -13,12 +13,20 @@ import { createKuhnGame, kuhnAlpha } from "../lib/gto/kuhn";
 import { createAkqGame, akqSummary } from "../lib/gto/akq";
 import { createPushFoldSolver, rangeText } from "../lib/gto/pushfold";
 import { simulateVariance } from "../lib/gto/variance";
+import { buildRiverGame, comboClassIndex, comboLabel, createRiverSolver, riverReach, type RiverGame } from "../lib/gto/river";
+import { formatCards } from "../lib/poker/cards";
+import { handCategory } from "../lib/poker/evaluator";
 import type { Game } from "../lib/gto/game";
 import {
   KUHN_MAX_ITERATIONS,
+  RIVER_MAX_ITERATIONS,
   VARIANCE_MAX_HANDS_X_RUNS,
   type KuhnBetProbs,
   type KuhnPoint,
+  type RiverComboView,
+  type RiverNodeView,
+  type RiverPoint,
+  type RiverTreeInfo,
   type SolverRequest,
   type SolverResponse,
 } from "../lib/gto/worker-protocol";
@@ -228,12 +236,120 @@ async function runVariance(req: Extract<JobRequest, { kind: "variance" }>, ctx: 
   });
 }
 
+function riverTreeInfo(game: RiverGame): RiverTreeInfo {
+  return { counts: { ...game.counts }, combos: [game.ranges[0].combos.length, game.ranges[1].combos.length], pairs: game.pairs };
+}
+
+async function runRiver(req: Extract<JobRequest, { kind: "river" }>, ctx: JobContext): Promise<void> {
+  await ctx.sleep(0);
+  if (!ctx.isCurrent()) return;
+  const t0 = ctx.now();
+  if (!(Number.isFinite(req.targetPct) && req.targetPct > 0)) throw new Error("Target exploitability must be a positive percentage of the pot");
+  if (!Number.isFinite(req.maxIterations)) throw new Error("Max iterations must be a number");
+  const maxIterations = clampInt(req.maxIterations, 1, RIVER_MAX_ITERATIONS);
+  // Throws a readable error for a bad board, duplicate cards, empty ranges, bad sizes or a spot that is too large.
+  const game = buildRiverGame({
+    board: req.board,
+    oopRange: req.oopRange,
+    ipRange: req.ipRange,
+    pot: req.pot,
+    stack: req.stack,
+    oopBetSizes: req.oopBetSizes,
+    ipBetSizes: req.ipBetSizes,
+    raiseSizes: req.raiseSizes,
+    allIn: req.allIn,
+    maxRaises: req.maxRaises,
+  });
+  const tree = riverTreeInfo(game);
+  const solver = createRiverSolver(game);
+  let pending: RiverPoint[] = [];
+  let report = solver.report();
+  let lastPost = -Infinity, sliceStart = ctx.now();
+  ctx.post({ id: req.id, kind: "river", type: "progress", tree, points: [], iterations: 0 });
+
+  while (solver.iterations < maxIterations) {
+    // Checkpoints every iteration at first, then every 15% of the count, at most 25 apart: a report costs
+    // about as much as one iteration, so this keeps the overhead to a few percent.
+    const gap = Math.min(25, Math.max(1, Math.round(solver.iterations * 0.15)));
+    const target = Math.min(maxIterations, solver.iterations + gap);
+    while (solver.iterations < target) {
+      solver.step(1);
+      if (ctx.now() - sliceStart > SLICE_MS) {
+        await ctx.sleep(0);
+        if (!ctx.isCurrent()) return;
+        sliceStart = ctx.now();
+      }
+    }
+    report = solver.report();
+    pending.push({ iteration: report.iterations, exploitabilityPct: report.exploitabilityPct });
+    if (report.exploitabilityPct < req.targetPct) break;
+    if (ctx.now() - lastPost >= PROGRESS_INTERVAL_MS) {
+      ctx.post({ id: req.id, kind: "river", type: "progress", tree, points: pending, iterations: report.iterations });
+      pending = [];
+      lastPost = ctx.now();
+    }
+  }
+
+  const avg = solver.averageStrategy();
+  const reach = riverReach(game, avg);
+  const index = new Map<number, number>();
+  for (const nd of game.nodes) if (nd.kind === "decision") index.set(nd.id, index.size);
+  const nodes: RiverNodeView[] = [];
+  for (const nd of game.nodes) {
+    if (nd.kind !== "decision") continue;
+    nodes.push({
+      id: nd.id,
+      player: nd.player,
+      history: nd.history,
+      committed: nd.committed,
+      actions: nd.actions.map((a) => ({ kind: a.kind, amount: a.amount, label: a.label })),
+      next: nd.children.map((c) => index.get(c) ?? -1),
+      parent: nd.parent < 0 ? -1 : (index.get(nd.parent) ?? -1),
+      strategy: Float32Array.from(avg[nd.id]),
+      reach: Float32Array.from(reach[nd.player][nd.id]),
+    });
+  }
+  const combos = (p: 0 | 1): RiverComboView[] =>
+    Array.from(game.ranges[p].combos, (c, i) => ({
+      combo: c,
+      label: comboLabel(c),
+      classIndex: comboClassIndex(c),
+      value: game.ranges[p].value[i],
+      category: handCategory(game.ranges[p].value[i]),
+    }));
+  ctx.post({
+    id: req.id,
+    kind: "river",
+    type: "done",
+    tree,
+    points: pending,
+    result: {
+      ...tree,
+      board: formatCards(game.board),
+      pot: game.pot,
+      stack: game.stack,
+      iterations: report.iterations,
+      value: report.value,
+      potShare: report.potShare,
+      nashConv: report.nashConv,
+      exploitability: report.exploitability,
+      exploitabilityPct: report.exploitabilityPct,
+      stoppedBy: report.exploitabilityPct < req.targetPct ? "target" : "max-iterations",
+      targetPct: req.targetPct,
+      rangeCombos: [combos(0), combos(1)],
+      nodes,
+      timeMs: ctx.now() - t0,
+    },
+  });
+}
+
 /** Runs one job, posting its progress and result through ctx.post. Errors become "error" responses. */
 export async function runJob(req: JobRequest, ctx: JobContext): Promise<void> {
   try {
     if (req.kind === "kuhn") await runKuhn(req, ctx);
     else if (req.kind === "akq") await runAkq(req, ctx);
     else if (req.kind === "pushfold") await runPushFold(req, ctx);
+    else if (req.kind === "river") await runRiver(req, ctx);
     else await runVariance(req, ctx);
   } catch (err) {
     if (ctx.isCurrent()) ctx.post({ id: req.id, kind: req.kind, type: "error", message: err instanceof Error ? err.message : String(err) } as SolverResponse);
