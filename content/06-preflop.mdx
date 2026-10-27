@@ -1,0 +1,129 @@
+import { OpeningRanges } from "@/app/learn/_widgets/opening-ranges";
+import { PushFoldEv } from "@/app/learn/_widgets/push-fold-ev";
+
+# Preflop
+
+Every hand starts with a preflop decision, and most of your hands end there. This lesson gives you the preflop vocabulary, derives the exact EV of going all-in from the small blind with a short stack, and builds 6-max opening ranges you can count to the combo. By the end you will be able to compute whether going all-in heads-up beats folding against a given calling range, explain why ranges widen as you get closer to the button, and say what size to open and re-raise.
+
+One warning up front. The all-in math here is exact for the assumptions you feed it. The opening ranges are **heuristic starting points**, hand-built to land in commonly cited size bands. They are not solver output. (A **solver** is a program, like the CFR you met in module 5, that computes equilibrium strategies.)
+
+## The preflop vocabulary
+
+You are **first in** when every player before you has folded. From there:
+
+- An **open-raise** (or **open**) is the first raise of the hand. In this course you open to **2.5bb**.
+- A **limp** is calling the big blind instead of raising when you are first in. The ranges in this lesson never limp; that is a common simplification, and a starting point rather than a law.
+- A **3-bet** is a re-raise of an open. The name counts bets: the big blind is the first bet, the open is the second, so the re-raise is the third.
+- A **4-bet** is a re-raise of a 3-bet.
+
+**3-bet sizing (heuristic).** When you 3-bet with position on the opener (you will act after them on later streets), make it about **3×** the open: 7.5bb against a 2.5bb open. Out of position, make it about **4×**: 10bb. The bigger size gives the opener a worse price to call (module 3), which matters more when you will play the rest of the hand at the disadvantage described in module 4: out of position you realize less of your equity.
+
+**3-bet or fold out of position (heuristic).** Facing an open from the small blind, calling means playing a pot out of position against someone who already showed strength, with a hand that realizes its equity poorly. A 3-bet instead can win the pot at once, and when called it gives you the initiative (you were the last to raise, so the opponent tends to check to you on the flop). So a common starting strategy from the small blind is to 3-bet or fold and rarely call. Callers do better in position. The big blind is the usual exception: it already has 1bb in the pot and acts last preflop, so it gets a good price to call.
+
+## Heads-up push/fold
+
+Short stacks simplify preflop to one decision. Take a heads-up game (module 0: the button posts the small blind and acts first preflop) with blinds of 0.5bb and 1bb and no other forced bets. Each player starts the hand with an effective stack of **S** bb. When S is small, a normal raise would commit a large part of the stack anyway, so the small blind (SB) plays a simplified strategy: **shove** or fold. To **shove** (also called to **push**) is to go all-in. This is why the strategy is called **push/fold**. The big blind (BB) can then only call or fold.
+
+**Where to measure EV from.** As in module 3, measure from the moment after the blinds are posted. The SB's 0.5bb is already in the pot and no longer theirs, so **folding is worth 0**. (Measuring from the start of the hand instead lowers both options by the same 0.5bb, so the comparison does not change.)
+
+**The two outcomes of a shove.**
+
+- With probability **f** the BB folds. The SB wins the 1.5bb pot: **+1.5bb**.
+- With probability 1 − f the BB calls. Both players are all-in, so the final pot is 2S. The SB puts in the rest of their stack, S − 0.5bb, and collects their equity **e** of the final pot (module 4): **e × 2S − (S − 0.5)**.
+
+<Formula>EV(shove) = f × 1.5 + (1 − f) × (e × 2S − (S − 0.5))</Formula>
+
+Shove if this is above 0.
+
+**Where f and e come from.** Both come from the BB's **calling range**, the hands they call with. Once the SB's two cards are known, the BB holds one of C(50, 2) = 1,225 possible hands, all equally likely. Count the calling combos that survive card removal (module 1):
+
+<Formula>f = 1 − (calling combos left) / 1,225</Formula>
+
+The equity e is the SB hand's equity against that calling range, the combo-weighted average from module 4.
+
+<Example title="Worked example: K7o for 10bb">
+
+You are the SB with <Cards hand="Kh7d" /> and S = 10bb. Assume the BB calls with `22+, A2+, K9+, QT+, JT`: 382 combos, or 382 / 1,326 ≈ 28.8% of all hands. This range is an assumption about this opponent, not a solved strategy.
+
+1. **Card removal.** Your king leaves 3 combos of KK instead of 6, and 12 instead of 16 of each of AK, KQ, KJ, KT and K9: 3 + 5 × 4 = 23 combos gone. Your seven leaves 3 combos of 77 and 12 of A7: 7 more gone. The BB has 382 − 30 = **352** calling combos.
+2. **Fold probability.** f = 1 − 352 / 1,225 = 873 / 1,225 ≈ **71.3%**.
+3. **Equity when called.** Averaged exactly over all 352 calling combos, e ≈ **36.7%** (0.3674).
+4. **When called:** 0.3674 × 20 − 9.5 = 7.348 − 9.5 ≈ −2.152bb.
+5. **EV(shove)** = 0.7127 × 1.5 + 0.2873 × (−2.152) ≈ 1.069 − 0.618 ≈ **+0.45bb**. Shoving beats folding.
+
+At S = 20bb against the same range, the called branch becomes 0.3674 × 40 − 19.5 ≈ −4.804bb, and EV ≈ 1.069 − 0.2873 × 4.804 ≈ 1.069 − 1.380 ≈ **−0.31bb**. Now folding is better.
+
+</Example>
+
+Because f and e do not depend on S, the EV is a straight line in S. Rewrite the called branch: e × 2S − (S − 0.5) = 2eS − S + 0.5 = 0.5 + S(2e − 1). So
+
+<Formula>EV(shove) = 1.5f + (1 − f)(0.5 + S(2e − 1))</Formula>
+
+With e below 50%, the term 2e − 1 is negative, so the EV falls as stacks get deeper. To find where it crosses 0, set it to 0 and solve for S:
+
+1. (1 − f)(0.5 + S(2e − 1)) = −1.5f
+2. Divide by (1 − f): 0.5 + S(2e − 1) = −1.5f / (1 − f)
+3. Move terms and flip signs: S(1 − 2e) = 1.5f / (1 − f) + 0.5
+4. S = (1.5f / (1 − f) + 0.5) / (1 − 2e)
+
+For K7o against this range that is about **15.9bb**. Below that, shoving K7o beats folding against this caller.
+
+Card removal works for you, too. Swap in <Cards hand="Ah5d" />: your ace removes 51 combos from a range that contains every A-x (an ace with any second card): 3 of AA (6 drop to C(3, 2) = 3) and 4 from each of the 12 classes A2 through AK (the four combos that use the Ah), 3 + 12 × 4 = 51. And your five removes 6 more (3 combos of 55, and the 3 combos of A5 with the 5d that the ace did not already remove). The BB has 382 − 51 − 6 = 325 calling combos left, so f = 1 − 325 / 1,225 ≈ 73.5%. The equity when called is also higher, e ≈ 43.9%, and EV(shove) at 10bb is about +0.91bb. A weak hand like <Cards hand="7h2d" /> shows the role of stack size: about +0.56bb at 5bb, but about −0.07bb at 10bb against the same range.
+
+The calculator below runs this computation for any hand, stack and calling range. Its equity is a Monte Carlo estimate, so its EVs carry a small "±". The numbers above were computed exactly.
+
+<PushFoldEv />
+
+**What this leaves out.** Here the BB's calling range is fixed. A thinking opponent calls wider when you shove wide and tighter when you shove tight. The game-theory answer from module 5, where the SB's shoving range and the BB's calling range are each a best response to the other, is the **push/fold equilibrium**. It is solved in the [Lab](/lab), where both ranges are computed against each other.
+
+## 6-max opening ranges by position
+
+Now the full 6-max table, 100bb deep, everyone folded to you. Two forces decide how wide you can open.
+
+**Players left to act.** Each player behind you might wake up with a strong hand. A single player is dealt `QQ+, AK` (34 combos) with probability 34 / 1,326 ≈ 2.6%. Assume each player's cards do not change the others' chances. (Probability calls this **independent**. It is a close approximation here: it ignores card removal between the players.) Then the chance that one player does *not* have such a hand is 1 − 34/1,326, and the chance that none of five players has one is that number multiplied by itself 5 times, written (1 − 34/1,326)^5. In general x^n means x multiplied by itself n times. The chance that at least one of them holds such a hand is 1 minus the chance that none does:
+
+- From UTG, 5 players behind: 1 − (1 − 34/1,326)^5 ≈ 12.2%.
+- From the button, 2 players behind: 1 − (1 − 34/1,326)^2 ≈ 5.1%.
+
+**Position after the flop.** The later your seat, the more often you act last after the flop, and the more equity you realize (module 4). The button is always in position after the flop. The small blind is the exception: only the big blind is left, but the small blind will be out of position against it. So the SB opens a little tighter than the button.
+
+Here are the starting ranges this course uses. Each is in the range notation from module 1, and each percentage is combos / 1,326, counted exactly:
+
+| Position | Opening range (open to 2.5bb) | Combos | % of hands |
+|---|---|---:|---:|
+| UTG | `22+, A2s+, ATo+, K9s+, KQo, QTs+, JTs, T9s, 98s, 87s, 76s` | 230 | 17.3% |
+| HJ | `22+, A2s+, ATo+, K9s+, KJo+, Q9s+, QJo, J9s+, T9s, 98s, 87s, 76s, 65s` | 266 | 20.1% |
+| CO | `22+, A2s+, A8o+, K7s+, K9o+, Q9s+, QTo+, J9s+, JTo, T8s+, 97s+, 87s, 76s, 65s, 54s` | 358 | 27.0% |
+| BTN | `22+, A2+, K2s+, K9o+, Q5s+, Q9o+, J7s+, J9o+, T7s+, T9o, 96s+, 98o, 85s+, 74s+, 64s+, 53s+, 43s` | 558 | 42.1% |
+| SB | `22+, A2+, K2s+, K9o+, Q5s+, Q9o+, J7s+, J9o+, T7s+, T9o, 97s+, 86s+, 75s+, 65s, 54s` | 522 | 39.4% |
+
+Commonly cited bands for these seats are roughly UTG 15–18%, HJ 19–22%, CO 25–29%, BTN 40–45% and SB 35–44%, and each range above sits inside its band. From UTG to the button, each seat's range contains the one before it, so moving one seat later only adds hands. The added hands are mostly suited and connected ones, which play well (module 4), plus offsuit broadways (two cards T or higher) as you near the button. The SB range contains the CO range and sits inside the button range, but it leaves out 36 combos the button opens (96s, 98o, 85s, 74s, 64s, 53s and 43s), because the SB will be out of position after the flop.
+
+Use the viewer to see each range as a 13 × 13 grid. Click cells to add or remove a hand class and watch the count update.
+
+<OpeningRanges />
+
+## Check yourself
+
+<Check question="The cutoff opens to 2.5bb and you 3-bet from the button, in position. Using the heuristic in this lesson, to how many bb do you 3-bet?" answer={7.5} tolerance={0} unit="bb">
+  In position, about 3× the open: 3 × 2.5 = 7.5bb. Out of position it would be about 4× = 10bb.
+</Check>
+
+<Check question="You are the SB. After removing your two cards, the BB has 300 calling combos left. What is the probability the BB folds to your shove? One decimal." answer={75.5} tolerance={0.1} unit="%">
+  f = 1 − 300 / 1,225 ≈ 1 − 0.2449 = 0.7551, about 75.5%. The denominator is C(50, 2) = 1,225 because your two cards are known.
+</Check>
+
+<Check question="Heads-up, S = 10bb. The BB folds 60% of the time, and when called your equity is 40%. What is EV(shove), in bb, measured with folding = 0?" answer={0.3} tolerance={0.01} unit="bb">
+  When called: 0.40 × 20 − 9.5 = −1.5bb. EV = 0.6 × 1.5 + 0.4 × (−1.5) = 0.9 − 0.6 = +0.3bb, so shoving beats folding.
+</Check>
+
+<Practice drill="Count combos in a range after card removal">The fold probability f in the shove formula starts with counting the hands that call.</Practice>
+
+## Key points
+
+- Open = first raise when first in (2.5bb here); limp = call when first in; 3-bet = re-raise of an open; 4-bet = re-raise of a 3-bet. 3-bet about 3× in position and about 4× out of position, and 3-bet or fold from the small blind (heuristics).
+- Heads-up push/fold, measured with folding = 0: EV(shove) = f × 1.5 + (1 − f)(e × 2S − (S − 0.5)).
+- f = 1 − (calling combos left) / 1,225, with card removal. Holding cards the caller needs (like an ace against a range full of A-x, an ace with any second card) raises f.
+- With a fixed calling range, EV is a straight line in S. K7o against `22+, A2+, K9+, QT+, JT` is about +0.45bb at 10bb and −0.31bb at 20bb, breaking even near 15.9bb.
+- The push/fold equilibrium, where both ranges respond to each other, is solved in the Lab.
+- Opening ranges widen as fewer players are left to act and as position improves: UTG 17.3%, HJ 20.1%, CO 27.0%, BTN 42.1%, SB 39.4% in this course's starting ranges.

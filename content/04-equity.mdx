@@ -1,0 +1,158 @@
+import { EquityCalculator } from "@/app/learn/_widgets/equity-calculator";
+
+# Equity & ranges
+
+Modules 2 and 3 used equity as "your chance of winning" against one known hand. This lesson makes the idea exact and then removes the known hand. By the end you will be able to compute equity with ties counted properly, know the classic preflop matchups and why they come out the way they do, compute your equity against a whole range as a weighted average, and adjust equity for the betting still to come with equity realization.
+
+## What equity means
+
+Freeze a hand at any moment. Imagine nobody bets again and the rest of the board is dealt out. Your **equity** is the share of the pot you would collect on average. Winning the whole pot counts 1. A two-way split counts 1/2, and in general a k-way split counts 1/k. Heads-up that gives:
+
+<Formula>equity = Pr(win) + ½ × Pr(tie)</Formula>
+
+Here Pr(…) means "the probability of". (Plain P, without brackets, is kept for the pot, as in module 3.)
+
+When both hands are known, equity can be computed exactly. Before the flop, 4 cards are known (two hands), so 48 are unseen, and the board will be 5 of them. Every board is equally likely, and there are C(48, 5) = 1,712,304 of them (module 1). Deal each one, see who wins, and count. A computer does this in well under a second, and every hand-vs-hand number in this lesson comes from that full count.
+
+<Example title="Worked example: equity with ties">
+
+You hold <Cards hand="AsKs" /> against <Cards hand="AhKd" />. Same ranks, so most boards tie. Out of the 1,712,304 boards:
+
+1. Your hand wins outright on 122,556 boards. Every one of them has three or more spades, giving you a spade flush.
+2. Theirs wins on 37,210. They hold one heart and one diamond, so they need four or more of either suit on the board for a flush: 18,605 boards win with hearts and 18,605 with diamonds.
+3. The other 1,712,304 − 122,556 − 37,210 = 1,552,538 boards tie.
+
+Your equity = (122,556 + ½ × 1,552,538) / 1,712,304 = (122,556 + 776,269) / 1,712,304 = 898,825 / 1,712,304 ≈ **52.5%**.
+
+You win outright only about 7.2% of the time (122,556 / 1,712,304), but you get half the pot on 90.7% of boards. Equity is the number that matters for EV (module 3), because it is your average share of the pot.
+
+</Example>
+
+## Hand vs hand: the matchups worth knowing
+
+All of these are exact, two specific hands all-in before the flop:
+
+| Matchup | Type | Equity of the first hand |
+|---|---|---:|
+| <Cards hand="AsAh" /> vs <Cards hand="KdKc" /> | higher pair vs lower pair | 81.3% |
+| <Cards hand="7h7d" /> vs <Cards hand="AsKc" /> | pair vs two higher cards | 55.4% |
+| <Cards hand="QhQd" /> vs <Cards hand="AsKs" /> | pair vs two higher cards, suited | 53.8% |
+| <Cards hand="2s2c" /> vs <Cards hand="AhKd" /> | lowest pair vs two higher cards | 53.0% |
+| <Cards hand="AhKd" /> vs <Cards hand="AsQc" /> | dominated: shares the ace | 74.0% |
+| <Cards hand="AhKd" /> vs <Cards hand="KsQc" /> | dominated: shares the king | 74.2% |
+| <Cards hand="AhKd" /> vs <Cards hand="QsJc" /> | two higher cards vs two lower | 64.3% |
+| <Cards hand="AhKh" /> vs <Cards hand="7d2c" /> | strong hand vs weak hand | 69.3% |
+
+Heads-up, the two hands' shares add up to the whole pot, so the second hand's equity is 100% minus the number shown. For example, AQ against AK has 100 − 74.0 = 26.0%.
+
+Three patterns explain most of the table.
+
+**A pair against two higher cards is close to even.** Players call this a **coin flip**. The pair is ahead now. The other hand has 6 cards that pair one of its two cards (3 of each rank) and five board cards to hit one. Even the lowest pair, 22, keeps 53.0% against AK.
+
+**Domination.** One hand **dominates** another when they share a card and the other card of the dominating hand is higher. AK against AQ shares the ace. If an ace comes, both hands make a pair of aces and the king plays as the kicker (module 0), so AQ gains nothing from it. AQ's main way to win is to pair its queen while AK does not pair its king, and that is why AQ has only 26.0% here. Compare AK against QJ, which shares no card: QJ can win with either of its cards and keeps 35.7%.
+
+Ties matter in dominated matchups. AK vs AQ splits 4.6% of boards. On a board like 7-7-2-2-J, for example, both hands play two pair with the ace as kicker. AK wins outright 71.7% of the time, and 71.7 + 4.6 / 2 ≈ 74.0%.
+
+**Suited cards are worth a few points.** Two cards of the same suit can make a flush that the offsuit version cannot:
+
+| Your hand | vs | Suited | Offsuit | Difference |
+|---|---|---:|---:|---:|
+| J-T | <Cards hand="AsKd" /> | <Cards hand="JhTh" /> 41.2% | <Cards hand="JhTc" /> 37.4% | 3.8 points |
+| 9-8 | <Cards hand="AsAd" /> | <Cards hand="9h8h" /> 22.6% | <Cards hand="9h8c" /> 18.9% | 3.7 points |
+
+Note also the last row of the first table: even a hand as weak as 7-2 offsuit keeps 30.7% against ace-king suited. Before the flop, even a big underdog usually keeps a real share of the pot.
+
+## Why you play against ranges, not hands
+
+At the table you never see the opponent's cards. What you see are their actions, and each action is more likely with some hands than others. The honest description of what they hold is a **range** (module 1): the set of combos consistent with what they did.
+
+"Putting someone on a hand" means picking one hand from that range and playing as if it were certain. The trouble is that your equity can swing wildly from one hand in the range to the next, so a decision that is right against your guess can be badly wrong against the rest. The number that matters is your equity against the whole range.
+
+**Equity against a range is a weighted average.** Every combo in the range that does not use one of your cards (or a board card) is equally likely. So average your equity against each combo, weighting each hand class by its number of combos after card removal.
+
+<Example title="Worked example: JJ against a tight range">
+
+You hold <Cards hand="JhJd" />. An opponent who only plays the strongest hands goes all-in before the flop, and you estimate their range as `QQ+, AK`. Your jacks block none of those cards, so all combos remain. Exact equity against each class:
+
+| Their class | Combos | Your equity |
+|---|---:|---:|
+| AA | 6 | 18.9% |
+| KK | 6 | 18.5% |
+| QQ | 6 | 18.0% |
+| AKs | 4 | 54.0% |
+| AKo | 12 | 56.9% |
+| **Total** | **34** | |
+
+Weighted average:
+
+1. Multiply: 6 × 18.9 = 113.4, 6 × 18.5 = 111.0, 6 × 18.0 = 108.0, 4 × 54.0 = 216.0, 12 × 56.9 = 682.8.
+2. Add: 113.4 + 111.0 + 108.0 + 216.0 + 682.8 = 1,231.2.
+3. Divide by the 34 combos: 1,231.2 / 34 ≈ 36.21.
+
+Your equity against the range is about **36.2%** (the exact average, without rounding the inputs first, is 36.19%). Against 18 of the 34 combos you have about 18%. Against the other 16 you are a favorite. Neither "they have a big pair" nor "they have AK" gives the right number. Only the average does.
+
+</Example>
+
+The range matters more than your hand. Here is <Cards hand="AhQd" /> against three different ranges, each computed exactly by averaging over every compatible combo:
+
+| Opponent's range | Combos left after your AQ | Your equity |
+|---|---:|---:|
+| `QQ+, AK` | 24 | 24.4% |
+| `TT+, AQ+` | 45 | 34.4% |
+| `22+, A2+, K9+, QT+, JT` | 313 | 60.7% |
+
+Same cards, from a big underdog to a solid favorite. Card removal shows up in the middle column: your ace and queen leave only 3 combos each of AA and QQ, and 12 of AK, so `QQ+, AK` drops from 34 combos to 24.
+
+**Range against range** works the same way, one level up: average over every pair of compatible combos, one from each range, each pair equally likely. Before the flop there are too many pairs to enumerate quickly, so we sample instead. A **Monte Carlo** estimate deals many random matchups and boards and averages the results. It is approximate, but the error is measurable and shrinks as the number of deals grows. With 2,000,000 deals, `TT+, AQ+` has about **67.4%** equity against `22+, A2+, K9+, QT+, JT`, with a margin of about ±0.06 percentage points: about 95% of the time, an estimate made this way lands within 0.06 points of the true value. Module 9 explains what a margin like this means.
+
+The calculator below handles all three cases. Try the presets, then type your own. When either side is a range and there is no board, it switches to Monte Carlo and shows "≈" with the margin. On a flop, it can often average every matchup exactly.
+
+<EquityCalculator />
+
+## Equity realization
+
+Equity assumes the cards are dealt out with no more betting. Real hands keep going. Sometimes you fold a hand that would have won, and lose your share. Sometimes a bet makes your opponent fold a hand that would have won, and you collect more than your share. **Equity realization (EQR)** is the factor that captures the net effect. It is defined by:
+
+<Formula>expected share of the current pot = equity × EQR × current pot</Formula>
+
+The **expected share of the current pot** is how much of the chips already in the middle you collect on average, once the rest of the hand is played. It counts only the current pot, not chips bet later, and it is not the EV of module 3: it does not subtract the chips you will put in on later streets. The formula itself is exact by definition. The approximation is in the EQR value: you cannot compute it from the cards, only estimate it.
+
+An EQR of 1 means you collect exactly your equity. Below 1 you collect less; above 1, more. Two things move it:
+
+- **Position.** A player who acts last after the flop (module 0) sees what the opponent does before deciding. They fold less often by mistake and bluff (bet a hand that is usually behind if called, profiting mainly when the opponent folds; module 5 studies this) at better moments, so they tend to realize more of their equity. Out of position, EQR tends to be lower.
+- **Playability.** Suited and connected hands (connected means adjacent ranks, like 9-8) make flushes and straights, strong hands that are easy to play for a big pot. Offsuit hands with a weak kicker tend to make a medium pair that has to give up to pressure, so they realize less.
+
+<Example title="Worked example: equity realization">
+
+The pot is 10bb. You have 40% equity, but you are out of position with a hand that is hard to play, and you estimate an EQR of 0.8.
+
+Expected share of the current pot ≈ 0.40 × 0.8 × 10 = **3.2bb** (≈ because 0.8 is an estimate), not the 4bb that raw equity (0.40 × 10) suggests.
+
+</Example>
+
+Using the formula is an approximation because the EQR values you plug in are estimates, not facts about the cards. Real EQR depends on both ranges, the stack depth (how many bb the players have left to bet) and the skill of the players. Use it to remember that raw equity tends to overstate what a hand facing pressure collects, and to understate what a hand applying pressure collects.
+
+## Check yourself
+
+<Check question="AK against AQ wins outright 71.7% of the time and ties 4.6% of the time. What is AK's equity? One decimal." answer={74.0} tolerance={0.1} unit="%">
+  Equity = win + ½ × tie = 71.7 + 4.6 / 2 = 71.7 + 2.3 = 74.0%.
+</Check>
+
+<Check question="You hold JJ. Your opponent's range is AA (6 combos) plus AKo (12 combos). Your equity is 18.9% against AA and 56.9% against AKo. What is your equity against the range? One decimal." answer={44.2} tolerance={0.15} unit="%">
+  (6 × 18.9 + 12 × 56.9) / 18 = (113.4 + 682.8) / 18 = 796.2 / 18 ≈ 44.2%. Note that it is not the simple average of 18.9 and 56.9 (37.9%): AKo has twice as many combos, so it counts twice as much.
+</Check>
+
+<Check question="The pot is 20bb, your equity is 30%, and you estimate your equity realization at 0.7. Roughly what share of the pot do you expect to win, in bb?" answer={4.2} tolerance={0.05} unit="bb">
+  0.30 × 0.7 × 20 = 4.2bb, compared with 0.30 × 20 = 6bb from raw equity.
+</Check>
+
+<Practice drill="Hand vs hand / hand vs range equity estimate">Estimate equity for a matchup, then see the exact number.</Practice>
+
+## Key points
+
+- Equity is your average share of the pot if the board were dealt out now: Pr(win) + ½ × Pr(tie) heads-up. Hand vs hand preflop is exact over all 1,712,304 boards.
+- A pair against two higher cards is roughly a coin flip (22 vs AK: 53.0%). A dominated hand is in bad shape (AQ vs AK: 26.0%). Suited was worth 3.7 to 3.8 points over offsuit in these examples.
+- Opponents hold ranges. Your equity against a range is the combo-weighted average of your equity against each hand in it, after card removal (JJ vs `QQ+, AK`: 36.2%).
+- The same hand can be a big underdog or a big favorite depending on the range (AQ: 24.4% to 60.7%).
+- Monte Carlo estimates are approximate with a known margin; say "≈" when you quote them.
+- Expected share of the current pot = equity × EQR × current pot (a gross share, not module 3's EV); EQR itself can only be estimated. Position and playability push EQR up; being out of position with a hard-to-play hand pushes it down. EQR is an estimate, not exact math.

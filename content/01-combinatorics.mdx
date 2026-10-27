@@ -1,0 +1,128 @@
+import { ComboCounter } from "@/app/learn/_widgets/combo-counter";
+
+# Combinatorics
+
+Poker players think about which hands an opponent could hold, and that starts with counting. By the end of this lesson you will be able to count the 1,326 possible starting hands, explain why a pair comes in 6 versions and an unpaired hand in 16, read range notation like `22+, ATs+, KQo`, and count how many hands in a range are still possible once you can see some of the cards.
+
+## Counting the ways to choose cards
+
+Start with a question: how many different two-card hands can you be dealt?
+
+Count the cards in order first. The first card can be any of 52, and the second any of the 51 left, so there are 52 × 51 = 2,652 ordered pairs. But a hand is the same no matter which card came first. <Cards hand="As Kd" /> and <Cards hand="Kd As" /> are one hand, and every hand was counted exactly twice. So the number of different hands is 2,652 / 2 = **1,326**.
+
+The same idea works for any number of cards. A **combination** is a choice of k items out of n where order does not matter. The number of combinations is written **C(n, k)** and read "n choose k". Choosing in order gives n × (n − 1) × … × (n − k + 1) sequences, and each set of k items shows up in k × (k − 1) × … × 1 different orders (k choices for which item comes first, k − 1 for second, and so on, the same counting as 52 × 51). Divide one by the other:
+
+<Formula>C(n, k) = [n × (n − 1) × … × (n − k + 1)] / [k × (k − 1) × … × 1]</Formula>
+
+Two cases you will use:
+
+- C(52, 2) = (52 × 51) / (2 × 1) = 1,326, the two-card starting hands.
+- C(52, 5) = (52 × 51 × 50 × 49 × 48) / (5 × 4 × 3 × 2 × 1) = 311,875,200 / 120 = 2,598,960, the five-card hands counted in module 0.
+
+## Combos and hand classes
+
+One specific two-card holding, with exact suits, is called a **combo**. <Cards hand="Ah Kh" /> is one combo, and so is <Cards hand="Ac Kd" />. There are 1,326 combos in all.
+
+For most decisions the exact suits barely matter, so players group combos into **hand classes**:
+
+- **Pairs**, like AA or 77. There are 13 ranks, so 13 pairs.
+- **Suited** hands: two different ranks of the same suit, written with an `s`, like `AKs`. Choosing 2 different ranks out of 13 gives C(13, 2) = (13 × 12) / 2 = 78 rank pairs, so there are 78 suited classes.
+- **Offsuit** hands: two different ranks of different suits, written with an `o`, like `AKo`. Again 78 classes.
+
+That is 13 + 78 + 78 = **169** hand classes. Writing the ranks without a letter, as in `AK`, means both the suited and offsuit versions.
+
+### How many combos are in each class
+
+- **A pair** needs 2 of the 4 cards of one rank: C(4, 2) = (4 × 3) / 2 = **6** combos. For aces: AcAd, AcAh, AcAs, AdAh, AdAs, AhAs.
+- **A suited hand** like AKs needs the ace and king of the same suit. There is one way for each suit: **4** combos.
+- **An offsuit hand** like AKo can pair any of 4 aces with any of 4 kings, which is 4 × 4 = 16 pairings. The 4 same-suit pairings are the suited combos, so 16 − 4 = **12** are offsuit.
+
+So `AK` (both) has 4 + 12 = 16 combos. The totals check out: 13 pairs × 6 + 78 suited × 4 + 78 offsuit × 12 = 78 + 312 + 936 = 1,326.
+
+This is why a hand's share of all starting hands is its **combos divided by 1,326**, not its classes divided by 169. Some examples:
+
+| Hand | Combos | Share of 1,326 |
+|---|---:|---:|
+| AA (one specific pair) | 6 | ≈ 0.45% (1 in 221) |
+| AKs | 4 | ≈ 0.30% |
+| AKo | 12 | ≈ 0.90% |
+| AK (both) | 16 | ≈ 1.21% |
+| Any pair | 78 | ≈ 5.88% |
+| Any suited hand | 312 | ≈ 23.53% |
+
+An offsuit class is three times as likely as the matching suited class. That matters when you guess what an opponent holds.
+
+## Ranges
+
+You almost never know an opponent's exact cards. What you can do is list every hand they could plausibly have. That list is a **range**: a set of combos. Players write ranges in a short notation, and this course uses the same one everywhere:
+
+| Notation | Meaning | Combos |
+|---|---|---:|
+| `22+` | Every pair from 22 up to AA (13 pairs) | 13 × 6 = 78 |
+| `ATs+` | The second card climbs to one below the top card: ATs, AJs, AQs, AKs | 4 × 4 = 16 |
+| `ATo+` | The same climb, offsuit only: ATo, AJo, AQo, AKo | 4 × 12 = 48 |
+| `K9+` | No letter, so suited and offsuit together: K9, KT, KJ, KQ (K9s+ plus K9o+) | 4 × 16 = 64 |
+| `KQo` | King-queen offsuit | 12 |
+| `A5s-A2s` | A5s, A4s, A3s, A2s | 4 × 4 = 16 |
+| `K9-K6` | No letter, so both kinds: K9, K8, K7, K6 | 4 × 16 = 64 |
+| `AK` | AKs and AKo | 16 |
+| `AhKh` | That one combo | 1 |
+
+The letter rule from the hand classes carries over to every token: `s` means suited only, `o` means offsuit only, and no letter means both, with 16 combos per unpaired class. A `+` on an unpaired hand raises the second card up to one below the first, and a dash gives a run of second cards under the same first card. Tokens are separated by commas. The range `22+, ATs+, KQo` holds 78 + 16 + 12 = 106 combos, which is 106 / 1,326 ≈ 7.99% of all starting hands.
+
+## Card removal
+
+Every card you can see is a card nobody else holds. Your own hole cards and the board are **dead** for counting purposes. Removing them from a range is called **card removal**, and it changes the counts a lot:
+
+- **AA when you hold one ace.** Only 3 aces are left, so an opponent's AA combos drop from C(4, 2) = 6 to C(3, 2) = 3.
+- **AK when one ace is on the board.** 3 aces × 4 kings = 12 combos instead of 16.
+- **AK when an ace and a king are both visible.** 3 × 3 = 9 combos.
+
+A card you hold that removes combos from an opponent's range is called a **blocker**. On a board of <Cards hand="Ks 8s 3s" />, 10 spades are unseen, so an opponent could hold C(10, 2) = 45 two-spade combos (each one a flush). If you hold <Cards hand="As" /> and your other card is not a spade, only 9 spades are unseen: C(9, 2) = 36 combos. And none of those 36 can be the highest possible flush, the ace-high flush, because it needs the ace of spades and you hold that card. (You don't have a flush yourself: the As and three spades on the board make only four.)
+
+<Example title="Counting a range on a flop">
+
+An opponent's range is `QQ+, AK`. Before any cards are known that is 3 pairs × 6 + 16 = 34 combos. The flop is <Cards hand="Kh 7d 2c" />. Go class by class:
+
+1. **AA**: no ace is visible, so all C(4, 2) = 6 combos remain.
+2. **KK**: one king is on the board, so C(3, 2) = 3 combos remain. Each makes three of a kind with a pair in the hand, which players call a **set**.
+3. **QQ**: no queen is visible: 6 combos.
+4. **AK**: 4 aces × 3 kings = 12 combos.
+
+Total: 6 + 3 + 6 + 12 = **27** combos. Three of them are sets, so the share of the range that has a set is 3 / 27 ≈ 11.1%.
+
+Now add your own hand, <Cards hand="As Qs" />. Your ace and queen are dead too: AA drops to C(3, 2) = 3, QQ to 3, AK to 3 aces × 3 kings = 9, and KK stays at 3. Total: 3 + 3 + 3 + 9 = **18** combos, and the share that are sets rises to 3 / 18 ≈ 16.7%. Your ace and queen removed combos of AA, QQ and AK but none of KK, so the sets make up a bigger part of what is left.
+
+</Example>
+
+Type the range and the cards into the counter below to check each step. The table shows every class in the range and how many of its combos survive.
+
+<ComboCounter />
+
+## Check yourself
+
+<Check question="The board shows the king of hearts. How many KQ combos (suited and offsuit together) can an opponent still hold?" answer={12} unit="combos">
+  KQ has 4 kings × 4 queens = 16 combos. With one king visible, 3 kings × 4 queens = 12 remain.
+</Check>
+
+<Check
+  question={<>An opponent's range is <code>TT+, AQs+</code>. The flop is <Cards hand="Ah 9c 4d" />. How many combos remain?</>}
+  answer={33}
+  unit="combos"
+>
+  Pairs: AA has C(3, 2) = 3 left; KK, QQ, JJ and TT have 6 each, so 3 + 4 × 6 = 27. Suited aces: AKs and AQs each lose the heart combo, leaving 3 each, so 6. Total 27 + 6 = 33 (down from 38 before the flop).
+</Check>
+
+<Check question="What percent of all starting hands is the range 22+, ATs+, KQo? Give one decimal." answer={8.0} tolerance={0.05} unit="%">
+  78 + 16 + 12 = 106 combos, and 106 / 1,326 ≈ 0.0799, or about 8.0%.
+</Check>
+
+<Practice drill="Count combos in a range after card removal">Count the combos in a range once the board is down, then check yourself against the exact answer.</Practice>
+
+## Key points
+
+- C(n, k) counts the ways to choose k items from n when order does not matter: count the ordered sequences, then divide by the k × (k − 1) × … × 1 orders of each set.
+- There are C(52, 2) = 1,326 starting combos in 169 classes: 13 pairs with 6 combos each, 78 suited with 4, 78 offsuit with 12.
+- A hand's share of all starting hands is combos / 1,326. AK is 16 combos, AA only 6.
+- A range is a set of combos, written in notation like `22+, ATs+, KQo, A5s-A2s`.
+- Cards you can see are dead. Remove them before counting, and remember that your own cards act as blockers.

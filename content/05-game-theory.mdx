@@ -1,0 +1,220 @@
+import { BluffMdfCalculator } from "@/app/learn/_widgets/bluff-mdf-calculator";
+import { KuhnCfr } from "@/app/learn/_widgets/kuhn-cfr";
+
+# Game theory with toy games
+
+So far your opponent's range has been a given. But opponents choose their ranges, and they adapt to yours. Game theory is the math of choosing well when the other side is choosing too. By the end of this lesson you will be able to say what an equilibrium is and why it mixes, solve a small poker game by hand with the indifference principle, compute the bluff share, minimum defense frequency and alpha for any bet size, and watch a computer solve a three-card poker game with the same algorithm behind modern poker bots.
+
+We start with games small enough to solve on paper, then generalize.
+
+## Strategies, best responses and equilibrium
+
+A **strategy** is a complete plan: for every situation you could be in (every hand you could hold, after every sequence of actions), it says what you do. A **pure strategy** always takes the same action in a given situation. A **mixed strategy** randomizes, with fixed probabilities: "with this hand, bet 25% of the time and check 75%."
+
+Rock-paper-scissors shows why mixing exists. Score a win +1, a loss −1 and a tie 0. Suppose your opponent plays rock 50%, paper 25% and scissors 25%. The EV (module 3) of each of your options:
+
+- Rock: 0.50 × 0 + 0.25 × (−1) + 0.25 × (+1) = 0
+- Paper: 0.50 × (+1) + 0.25 × 0 + 0.25 × (−1) = **+0.25**
+- Scissors: 0.50 × (−1) + 0.25 × (+1) + 0.25 × 0 = −0.25
+
+The strategy that earns the most against a fixed opponent strategy is a **best response**. Here it is "always paper", worth +0.25 per game.
+
+Any pure strategy loses to its best response: always rock loses to always paper. The way out is to mix one third each. Then every option you could pick against it earns 0, so no strategy beats it. If both players do that, neither can gain by changing their own strategy alone. A pair of strategies with that property is a **Nash equilibrium**. The EV the first player gets at equilibrium is the **game value** (0 in rock-paper-scissors).
+
+The **exploitability** of a strategy is how much a best response gains against it, compared with the game value. The 50/25/25 strategy is exploitable by 0.25 per game. The equilibrium strategy is exploitable by 0. For a *pair* of strategies (one per player), this lesson's Kuhn widget reports the average of the two: what a best response gains against Player 1's strategy and what one gains against Player 2's, halved.
+
+Notice what made one third each work: against it, all three actions had **the same EV**. That is general, and it is the main tool of this lesson.
+
+<Callout kind="key" title="The indifference principle">
+If an equilibrium strategy mixes between actions, those actions must have equal EV. If one were better, you would always take it. So to find the equilibrium mix of one player, find the mix that makes the **other** player indifferent between their options.
+</Callout>
+
+These results are for **zero-sum** games: one player's gain is exactly the other's loss. Heads-up poker is zero-sum once you count the pot.
+
+## A poker toy game: the AKQ game
+
+Here is the smallest game that contains bluffing. The deck has three cards, A > K > Q.
+
+- A pot of **P** is already in the middle. As in module 3, measure EV from now on, so the pot belongs to nobody yet.
+- The **caller** always holds the K.
+- The **bettor** holds the A or the Q, each with probability ½. The bettor knows their card. The caller knows only that it is A or Q.
+- The bettor either checks, and the cards are shown at once (higher card wins the pot), or bets **B**.
+- Facing a bet, the caller folds (the bettor wins P) or calls (the higher card wins P + 2B).
+
+Only one player can bet, so this is called a **half-street** game.
+
+**The easy parts.** With the A, betting is never worse than checking: it wins P if the caller folds and P + B if they call, against P for checking. So the bettor always bets the A. A bet made to get called by worse is a **value bet**. With the Q, checking loses for sure (EV 0). Betting can only win if the caller folds. A **bluff** is a bet with a hand that is usually behind if called, so it makes its money mainly from the opponent folding. A **pure bluff** is the extreme case: a hand that never wins when called (zero equity), like the Q here. The formulas in this lesson assume pure bluffs. The caller's K beats every bluff and loses to every value bet. A hand like that is a **bluff-catcher**.
+
+So the bettor's betting range holds only the best hand and the worst one, nothing in between. A range made of strong value hands and bluffs is **polarized**. The two open questions are how often the Q bluffs, and how often the K calls.
+
+**How often to bluff: make the caller indifferent.** Suppose a share s of the bettor's bets are bluffs. Calling wins P + B when the bettor is bluffing and loses B when they are not, so EV(call) = s(P + B) − (1 − s)B. Folding is 0. Setting them equal is exactly the derivation from module 3, and gives:
+
+<Formula>bluff share s = B / (P + 2B)</Formula>
+
+The bluff share that makes a bluff-catcher indifferent is the caller's required equity. If the Q bluffs with probability b, then out of every hand the bettor bets ½ (the A, always) + ½b (the Q, sometimes), and ½b of that is bluffs. So bluffs are a share ½b / (½ + ½b) = b / (1 + b) of the bets. Setting b / (1 + b) = B / (P + 2B) and cross-multiplying: bP + 2bB = B + bB, so bP + bB = B, and
+
+<Formula>Q bluffs with frequency b = B / (P + B)</Formula>
+
+**How often to call: make the bluffer indifferent.** If the K calls with probability c, a bluff with the Q earns P when the caller folds and loses B when they call: EV(bluff) = (1 − c)P − cB. Checking the Q earns 0. Setting them equal: P − cP − cB = 0, so
+
+<Formula>K calls with frequency c = P / (P + B)</Formula>
+
+With the bet as the unit (B = 1, P measured in bets), these are b = 1 / (P + 1) and c = P / (P + 1). For a pot-sized bet (B = P), both are ½.
+
+<Example title="Worked example: the AKQ game with a pot-sized bet">
+
+P = 10bb and B = 10bb.
+
+1. The Q bluffs b = 10 / (10 + 10) = ½ of the time. Bluffs are then (½ × ½) / (½ + ½ × ½) = 0.25 / 0.75 = ⅓ of all bets, which matches B / (P + 2B) = 10 / 30.
+2. The K calls c = 10 / (10 + 10) = ½ of the time.
+3. Bettor's EV: with the A (probability ½) they win 10 + ½ × 10 = 15bb on average. With the Q they are indifferent, so their EV is that of checking, 0. Average: ½ × 15 + ½ × 0 = **7.5bb**. The caller gets the rest of the 10bb pot: **2.5bb**. Measured this way (the pot belongs to nobody yet), the two players' EVs add up to the pot, 10bb, not to 0. The game is still zero-sum in the sense that matters: every chip one player gains is a chip the other does not get.
+
+Now see what deviating costs, starting from those 7.5bb for the bettor:
+
+- If the caller always calls, the bettor's best response is to stop bluffing: ½ × (10 + 10) + ½ × 0 = **10bb**.
+- If the caller never calls, the bettor bluffs every Q and takes the pot every time: **10bb**.
+- If the bettor bluffs every Q, the caller's best response is to always call: ½ × 20 + ½ × (−10) = **5bb**.
+- If the bettor never bluffs, the caller folds every time: ½ × 10 + ½ × 0 = **5bb**.
+
+Each one-sided deviation hands the opponent 2.5bb. The equilibrium strategies give away nothing: against the equilibrium caller, every bluffing frequency earns the bettor exactly 7.5bb, and against the equilibrium bettor, every calling frequency leaves the caller exactly 2.5bb.
+
+</Example>
+
+## Bluff share, MDF and alpha at any bet size
+
+The AKQ game had two numbers. Each one is a general rule for polarized betting.
+
+**Bluff share.** A polarized betting range can hold up to s = B / (P + 2B) pure bluffs without making a bluff-catcher's call profitable; with fewer bluffs, folding the bluff-catcher is better, and at exactly s it is indifferent. A betting range is **balanced** when its bluff share is exactly this: the opponent's bluff-catchers are then indifferent between calling and folding. To turn the share into a ratio, divide bluffs by value bets: s / (1 − s). Since 1 − s = (P + B) / (P + 2B), the (P + 2B) cancels and the ratio is B / (P + B) bluffs per value bet:
+
+| Bet size | Bluff share s = B / (P + 2B) | Bluffs : value bets |
+|---|---:|---:|
+| ⅓ pot | 20.0% | 1 bluff : 4 value bets |
+| ½ pot | 25.0% | 1 bluff : 3 value bets |
+| Pot | ≈ 33.3% | 1 bluff : 2 value bets |
+| 2 × pot | 40.0% | 2 bluffs : 3 value bets |
+
+Bigger bets can carry more bluffs, because each call risks more for the caller.
+
+**Alpha.** Turn the bettor's calculation around. A **pure bluff** never wins when called. If the opponent folds with probability f, it earns fP − (1 − f)B. Setting that to 0 gives the fold rate a pure bluff needs to break even, called **alpha**:
+
+<Formula>α = B / (P + B)</Formula>
+
+**Minimum defense frequency.** If the defender folds more often than α, every pure bluff makes money. To prevent that, they must continue (call or raise) with at least 1 − α of their range. That is the **minimum defense frequency**:
+
+<Formula>MDF = 1 − α = P / (P + B)</Formula>
+
+The AKQ game's two equilibrium frequencies are the same numbers, though they measure different things. The Q's bluffing frequency b = B / (P + B) equals α, the fold rate a pure bluff needs, and the K's calling frequency c = P / (P + B) equals MDF.
+
+<Example title="Worked example: a 60% pot bet">
+
+The pot is 10bb and the bet is 6bb (60% of the pot).
+
+1. α = 6 / (10 + 6) = 6 / 16 = **37.5%**. A pure bluff of 6bb breaks even if it works 37.5% of the time.
+2. MDF = 10 / 16 = **62.5%**. The defender must continue with at least 62.5% of their range to stop that bluff from profiting.
+3. Bluff share s of a balanced betting range at this size: 6 / (10 + 12) = 6 / 22 ≈ 27.3%.
+
+</Example>
+
+MDF assumes the bettor could hold pure bluffs and that you know nothing more. It is a benchmark, not a rule; module 8 shows when to defend less.
+
+<BluffMdfCalculator />
+
+## Kuhn poker
+
+The AKQ game let only one player bet. **Kuhn poker** (Harold Kuhn, 1950) lets both players act, and it is still small enough to solve exactly.
+
+- The deck has three cards, J &lt; Q &lt; K. Each player antes 1 (puts 1 in the pot before the deal) and gets one card. The third card is not used.
+- Player 1 acts first: check or bet 1.
+- If Player 1 checks, Player 2 checks (showdown for the pot of 2) or bets 1. After that bet, Player 1 calls (showdown) or folds.
+- If Player 1 bets, Player 2 calls (showdown) or folds.
+
+Each player has 6 decision points: 3 cards × 2 spots where they can be asked to act. A decision point is defined by what the player knows when deciding, their own card plus the betting so far. That is an **information set**. Kuhn poker has 12 of them.
+
+The full solution is known. Player 2's equilibrium strategy is unique; Player 1 has a whole family of equilibrium strategies, one for each value of a number β between 0 and ⅓. (The literature calls this number α too; it is unrelated to the alpha above.)
+
+| Player | Card | First decision | Facing a bet |
+|---|---|---|---|
+| Player 1 | J | bet β, else check | fold |
+| Player 1 | Q | check | call β + ⅓ |
+| Player 1 | K | bet 3β, else check | call |
+| Player 2 | J | after a check: bet ⅓ | fold |
+| Player 2 | Q | after a check: check | call ⅓ |
+| Player 2 | K | after a check: bet | call |
+
+Every member of the family has the same game value: Player 1 expects to win **−1/18 ≈ −0.0556** antes per hand. Here, unlike in the AKQ game, each ante counts as the player's own money, so the two players' values add up to 0: Player 2 expects +1/18. Acting first is a small disadvantage.
+
+<Example title="Worked example: the indifference inside Kuhn poker">
+
+Player 1 holds the Q and checks; Player 2 bets. Should Player 1 call?
+
+1. Player 1 has the Q, so Player 2 holds the J or the K, each with probability ½.
+2. Player 2 bets the K always and the J ⅓ of the time. Out of every hand, Player 2 bets with the J ½ × ⅓ = 1/6 of the time and with the K ½ × 1 = 3/6 of the time. So among the times Player 2 bets, the J's share is (1/6) / (1/6 + 3/6) = (1/6) / (4/6) = ¼.
+3. The pot before the bet is 2 (the antes) and the bet is 1. From module 3, the required equity is 1 / (2 + 2 × 1) = ¼.
+4. Calling with the Q wins exactly when Player 2 has the J, so Player 1's equity is ¼: exactly break-even.
+
+Player 2's J bluffs at the frequency that makes Player 1's Q indifferent, just as in the AKQ game: ⅓ = B / (P + B) with P = 2 and B = 1. The same check works the other way. When Player 1 bets, their range is K with weight 3β and J with weight β, so whenever β is above 0, Player 2's Q faces bluffs ¼ of the time and is again indifferent. (At β = 0, Player 1 bets the K 3 × 0 = 0 of the time too, so Player 1 never bets first and Player 2 never faces a bet.)
+
+</Example>
+
+## How a computer solves it: CFR
+
+The table above was derived by hand, but you can also let a computer find it, using an algorithm called **regret matching**.
+
+**Regret** is "how much better I would have done with that action instead of what I actually did." Say you played rock and your opponent played paper, so you lost 1. Paper would have tied (0), which is 1 better, so you regret paper by +1. Scissors would have won (+1), which is 2 better, so you regret scissors by +2. Rock gets 0, since that is what happened.
+
+**Regret matching** says: next time, play each action in proportion to its total positive regret so far, and if no action has positive regret, play them all equally. After that one round, your regrets are 0, 1 and 2, so you would play rock 0%, paper ⅓ and scissors ⅔.
+
+A key theorem: in a two-player zero-sum game, if both players keep doing this, every positive average regret per round shrinks toward 0 (no action keeps looking better in hindsight), and the **average** of the strategies they played over all rounds approaches a Nash equilibrium. The strategy they play on any one round can keep cycling. Only the average settles down.
+
+**CFR (counterfactual regret minimization)** runs regret matching separately at every information set. The regret at an information set is weighted by how likely the opponent's choices were to lead there. That is the "counterfactual" part: it asks what would happen if you played to reach this spot. One **iteration** of CFR plays the current strategies through all 6 deals of Kuhn poker, computes what each action would have earned at each information set, adds those regrets to the totals, and updates the running average strategy.
+
+Press **Run CFR** below. It starts by mixing 50/50 everywhere, which is worth +0.125 to Player 1 and is badly exploitable: by the pair measure defined earlier (the average of the two players' best-response gains), about 0.458 antes per hand. Then watch:
+
+- The game value of the average strategy heads to −1/18 ≈ −0.0556.
+- Exploitability falls toward 0. In our runs it is about 0.0023 after 10,000 iterations and about 0.0007 after 100,000.
+- Player 1's J bet frequency settles at some β, the K bet at about 3β, and the Q call at about β + ⅓. Player 2's J bet and Q call head to ⅓.
+- The positive average regrets shrink toward 0, as the theorem says. Actions the equilibrium never takes (like folding the K) keep a negative average regret: they really were worse.
+
+Both charts use a **log scale** on the iteration axis: each labeled step is 10 times larger than the last (1, 10, 100, …), so the early and late iterations both fit. The exploitability chart uses a log scale going down too: each gridline is 10 times smaller than the one above it.
+
+<KuhnCfr />
+
+Real poker is the same idea at a vastly larger scale. Variants of CFR are what solved heads-up limit hold'em (a version where every bet has a fixed size) and what powered the first programs to beat top professionals at no-limit.
+
+## Check yourself
+
+<Check question="Your opponent bets ¾ of the pot with a polarized range. What share of their bets can be bluffs while keeping your bluff-catchers indifferent? One decimal." answer={30.0} tolerance={0.1} unit="%">
+  B / (P + 2B) with P = 1 and B = 0.75: 0.75 / 2.5 = 0.30, so 30.0%. It is also the equity you need to call (module 3).
+</Check>
+
+<Check question="Facing a ¾-pot bet, what is the minimum defense frequency? One decimal." answer={57.1} tolerance={0.1} unit="%">
+  MDF = P / (P + B) = 1 / 1.75 ≈ 0.5714, so about 57.1%. Alpha is the rest: 0.75 / 1.75 ≈ 42.9%.
+</Check>
+
+<Check question="In the AKQ game, the bettor bets half the pot. How often should the Q bluff at equilibrium? One decimal." answer={33.3} tolerance={0.15} unit="%">
+  b = B / (P + B) = 0.5 / 1.5 = ⅓ ≈ 33.3%. Check: bluffs are then (⅓) / (1 + ⅓) = ¼ of all bets, which is B / (P + 2B) = 0.5 / 2 = 25%.
+</Check>
+
+<Check
+  question="In Kuhn poker, which statement about the equilibrium is true?"
+  choices={[
+    "Player 1 should never bet the J, because it always loses a showdown.",
+    "Player 1 can bet the J with any frequency β from 0 to ⅓, as long as they bet the K with 3β and call with the Q at β + ⅓.",
+    "Acting first is an advantage: Player 1 wins 1/18 of an ante per hand.",
+  ]}
+  answer={1}
+>
+  Every β from 0 to ⅓ gives an equilibrium, all with the same value. The J bet is a bluff, and betting the K 3β of the time keeps the betting range balanced (bluffs are β / (β + 3β) = ¼ of it). The game value is −1/18 for Player 1, so acting first is a small disadvantage.
+</Check>
+
+<Practice drill="MDF and bluff-break-even % for a given bet size">Make B / (P + 2B), P / (P + B) and B / (P + B) automatic.</Practice>
+
+## Key points
+
+- A strategy says what to do in every situation. Mixed strategies randomize. A best response maximizes EV against a fixed strategy; a Nash equilibrium is a pair of strategies that are best responses to each other.
+- Exploitability is how much a best response gains against you beyond the game value. Equilibrium strategies have exploitability 0.
+- Indifference principle: an equilibrium mix makes the opponent indifferent between the options they mix.
+- Bluff share of a balanced polarized bet: s = B / (P + 2B) (⅓ pot 20%, ½ pot 25%, pot ≈ 33.3%, 2× pot 40%), the same number as the caller's required equity.
+- Alpha = B / (P + B) is the fold rate a pure bluff needs. MDF = P / (P + B) is how much of your range you must continue with to stop it. A 60% pot bet: α 37.5%, MDF 62.5%.
+- AKQ game (caller always holds the K, bettor holds A or Q equally): the Q bluffs at B / (P + B) and the K calls at P / (P + B); with a pot-sized bet, both are ½.
+- Kuhn poker's value to Player 1 is −1/18 ≈ −0.0556. CFR finds it by regret matching at every information set; the average strategy converges, not the current one.
