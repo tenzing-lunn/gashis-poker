@@ -92,7 +92,7 @@ export function VariancePanel() {
           <StatusLine tone={error || !parsed.ok ? "error" : busy ? "busy" : "muted"}>
             {!parsed.ok
               ? parsed.tooBig
-                ? `Hands × runs must be at most ${fmt(VARIANCE_MAX_HANDS_X_RUNS, 0)} (about 5 s of work).`
+                ? `Hands × runs must be at most ${fmt(VARIANCE_MAX_HANDS_X_RUNS, 0)} (about 5–7 s of work).`
                 : "Check the inputs: hands 100 to 10,000,000, runs 2 to 100,000, whole-number seed, SD ≥ 0."
               : error
                 ? `Simulation error: ${error}`

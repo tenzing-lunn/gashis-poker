@@ -117,7 +117,7 @@ export function PushFoldPanel() {
             </div>
           </div>
           <div className="w-28">
-            <Field label="Stack" unit="bb" htmlFor="pf-stack">
+            <Field label="Stack" unit="bb, rounds to 0.5" htmlFor="pf-stack">
               <input
                 id="pf-stack"
                 type="number"

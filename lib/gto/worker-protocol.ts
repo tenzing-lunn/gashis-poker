@@ -63,7 +63,7 @@ export type SolverJob = DistributiveOmit<Exclude<SolverRequest, CancelRequest>, 
 export type JobFor<K extends SolverJobKind> = Extract<SolverJob, { kind: K }>;
 
 export const KUHN_MAX_ITERATIONS = 1_000_000;
-/** Product hands x runs the variance tool accepts (about 5 s of work). */
+/** Product hands x runs the variance tool accepts (about 5–7 s of work). */
 export const VARIANCE_MAX_HANDS_X_RUNS = 200_000_000;
 
 // ---------------------------------------------------------------------------------------------------

@@ -135,7 +135,7 @@ export function AkqPanel() {
                   : r.key === "bluff"
                     ? Math.max(0, lo - v, v - hi)
                     : Math.abs(v - c);
-              const closedText = r.key === "bluff" && !closed.unique ? `${pct(closed.yBluffRange[0], 0)} – ${pct(closed.yBluffRange[1], 1)}` : show(r, c);
+              const closedText = r.key === "bluff" && !closed.unique ? `${pct(closed.yBluffRange[0], 1)} – ${pct(closed.yBluffRange[1], 1)}` : show(r, c);
               return {
                 key: r.key,
                 cells: [
