@@ -32,6 +32,8 @@ We need two concrete ranges. This is a **single-raised pot** (one raise before t
 - UTG opens `22+, A2s+, K9s+, QTs+, JTs, T9s, 98s, 87s, 76s, ATo+, KQo`: 230 combos, 230 / 1,326 ≈ 17.3% of hands.
 - BB calls with `22-JJ, A2s-AQs, K6s+, Q8s+, J8s+, T8s+, 97s+, 86s+, 75s+, 64s+, 53s+, 43s, ATo-AQo, KTo+, QTo+, JTo, T9o, 98o, 87o`: 356 combos ≈ 26.8%.
 
+A dash covers everything in between: `22-JJ` means every pair from 22 up to JJ, and `ATo-AQo` means ATo, AJo and AQo. A dash range can be written in either order.
+
 Our BB re-raises (3-bets) with QQ+ and AK, so those hands are missing from the calling range. Both ranges are example starting points in the spirit of module 6, not solver output.
 
 On each flop below, the combo counts drop because of card removal (module 1): any combo that uses a flop card is gone. The equities are exact, not sampled. The calculation takes every pair of combos that share no card (one from each range) and deals every turn and river they leave possible: 52 − 3 flop cards − 4 hole cards = 45 unseen cards, so C(45, 2) = 990 runouts per pair. Each pair counts equally, as in module 4.
@@ -44,10 +46,10 @@ On each flop below, the combo counts drop because of card removal (module 1): an
 
 <Example title="Reading the table">
 
-**K-7-2 rainbow.** UTG has 60.1% equity, so UTG has the range advantage. UTG also has the nut advantage: 48 strong combos against 8. Where do they come from? UTG holds AA, KK and AK, and the BB does not (it 3-bets them). On this board UTG's strong combos are AA, KK, 77, 22, AK and its other king-high hands (KQ, KJs, KTs, K9s). The BB's strong combos are only the sets (77 and 22, 3 combos each) and two combos of K7s.
+**K-7-2 rainbow.** UTG has 60.1% equity, so UTG has the range advantage. UTG also has the nut advantage: 48 strong combos against 8. Where do they come from? UTG holds AA, KK and AK, and the BB does not (it 3-bets them). On this board UTG's strong combos are AA, KK, 77, 22, AK and its other top-pair hands (KQ, KJs, KTs, K9s). The BB's strong combos are only the sets (77 and 22, 3 combos each) and two combos of K7s.
 
 
-**7-6-5 two-tone.** UTG still has the range advantage, 53.7% to 46.3%. Its 42 overpair combos (88 through AA) average 67.7% equity against the BB's range, and more of its range is ahead: 51.9% of UTG's combos have at least 50% equity, against 39.6% of the BB's. But the BB has the nut advantage, 29 strong combos to 13. Both players have the sets (55, 66, 77: 9 combos each). The difference is straights: both have 98s (4 combos), but only the BB calls with 98o (12 combos) and 43s (4 combos). UTG never opened those.
+**7-6-5 two-tone.** UTG still has the range advantage, 53.7% to 46.3%. Its 42 overpair combos (an **overpair** is a pocket pair higher than every board card; here 88 through AA) average 67.7% equity against the BB's range, and more of its range is ahead: 51.9% of UTG's combos have at least 50% equity, against 39.6% of the BB's. But the BB has the nut advantage, 29 strong combos to 13. Both players have the sets (55, 66, 77: 9 combos each). The difference is straights: both have 98s (4 combos), but only the BB calls with 98o (12 combos) and 43s (4 combos). UTG never opened those.
 
 
 **J-9-8 two-tone.** Here the BB has both: 51.6% equity and 25 strong combos to 12, largely thanks to QTo (12 combos of a straight) that UTG does not open.
@@ -102,13 +104,15 @@ A low SPR means one or two normal bets put everyone all-in, so a hand like top p
 
 Suppose you hold a very strong hand and want to get all the chips in by the river, betting the same fraction of the pot on each street. What fraction?
 
-Call the pot P, the effective stack S, the number of streets left n, and the bet fraction f (bet = f × the current pot). One street of bet-and-call adds f·P from each player, so the pot becomes
+Call the pot P, the effective stack S, the number of streets left n, and the bet fraction r (bet = r × the pot at that moment, so r = B/P as in module 3). On any street, if the pot is p before the bet, the bet is r·p and the call adds another r·p, so the pot becomes
 
-<Formula>P + 2·f·P = P·(1 + 2f)</Formula>
+<Formula>p + 2·r·p = p·(1 + 2r)</Formula>
 
-The pot is multiplied by (1 + 2f) each street, so after n streets it is P·(1 + 2f)^n. If all the chips are in by then, each player has added S, and the pot is P + 2S. Set the two equal:
+The pot is multiplied by (1 + 2r) each street. Notation: x^n means x multiplied by itself n times, so after n streets the pot is P·(1 + 2r)^n. If all the chips are in by then, each player has added S, and the pot is P + 2S. Set the two equal:
 
-<Formula>P·(1 + 2f)^n = P + 2S  →  (1 + 2f)^n = 1 + 2S/P  →  f = ((1 + 2S/P)^(1/n) − 1) / 2</Formula>
+<Formula>P·(1 + 2r)^n = P + 2S  →  (1 + 2r)^n = 1 + 2S/P  →  r = ((1 + 2S/P)^(1/n) − 1) / 2</Formula>
+
+The last step undoes the power: x^(1/n) means the **n-th root** of x, the number that, multiplied by itself n times, gives x. For n = 2 it is the square root, and for n = 3 the cube root. Taking the n-th root of both sides gives 1 + 2r = (1 + 2S/P)^(1/n); subtract 1 and halve.
 
 This is **geometric sizing**: geometric because the pot grows by the same factor each street. Notice it depends only on S/P, which is the SPR.
 
@@ -116,7 +120,7 @@ This is **geometric sizing**: geometric because the pot grows by the same factor
 
 SPR = 300 / 100 = 3. So 1 + 2S/P = 1 + 6 = 7.
 
-The cube root of 7 is ≈ 1.9129, so f ≈ (1.9129 − 1) / 2 ≈ 0.4565: bet about **45.6% of the pot** each street.
+The cube root of 7 is ≈ 1.9129, so r ≈ (1.9129 − 1) / 2 ≈ 0.4565: bet about **45.6% of the pot** each street.
 
 Flop: bet 0.4565 × 100 ≈ 45.6. The pot becomes 100 + 2 × 45.6 ≈ 191.3, and the stack 300 − 45.6 ≈ 254.4.
 
@@ -124,12 +128,12 @@ Turn: bet 0.4565 × 191.3 ≈ 87.3. The pot becomes ≈ 365.9, the stack ≈ 167
 
 River: bet 0.4565 × 365.9 ≈ 167.0, exactly the stack that is left. The final pot is 100 + 2 × 300 = 700.
 
-Compare half-pot bets: 50, then 100, then the river would need 200, but only 150 is left, so the river bet is a leftover all-in of 0.375 pot. Third-pot bets (33%) leave ≈ 121.3 behind after the river. Geometric sizing is the one constant fraction that finishes exactly.
+Compare half-pot bets: 50, then 100, then the river would need 200, but only 150 is left, so the river bet is a leftover all-in of 0.375 pot. Bets of one third of the pot (33.3, then 55.6, then 92.6) leave ≈ 118.5 behind after the river. Geometric sizing is the one constant fraction that finishes exactly.
 
 
 </Example>
 
-Run the single-raised pot from above through the formula: SPR ≈ 17.7 over three streets needs f ≈ 115.8% of the pot every street. That is why most single-raised pots do not end with 100bb stacks all-in unless someone raises: normal bet sizes cannot get there. In the 3-bet pot (SPR ≈ 4.3) three streets need only ≈ 56.2% each.
+Run the single-raised pot from above through the formula: SPR ≈ 17.7 over three streets needs r ≈ 115.8% of the pot every street. That is why most single-raised pots do not end with 100bb stacks all-in unless someone raises: normal bet sizes cannot get there. In the 3-bet pot (SPR ≈ 4.3) three streets need only ≈ 56.2% each.
 
 Why not bet small, small, then shove? It works, but the last bet becomes a huge fraction of the pot, which gives the opponent an easy fold on the river with every hand that cannot beat a big bet. Spreading the stack evenly is the cleanest way to get it all in; treat that as a guideline, not a theorem.
 
@@ -142,7 +146,7 @@ The pot is 2.5 + 2.5 + 0.5 + 1 = 6.5bb (both blinds stay in the pot). Each stack
 </Check>
 
 <Check question="The pot is 10bb and the effective stack is 40bb. You want to get all in over two streets with the same pot fraction each time. What fraction of the pot do you bet?" answer={100} tolerance={1} unit="%">
-1 + 2S/P = 1 + 80/10 = 9. The square root of 9 is 3, so f = (3 − 1) / 2 = 1, a pot-sized bet. Check it: bet 10 into 10, the pot is 30 and 30 is left; bet 30 into 30, the pot is 90 and the stack is 0.
+1 + 2S/P = 1 + 80/10 = 9. The square root of 9 is 3, so r = (3 − 1) / 2 = 1, a pot-sized bet. Check it: bet 10 into 10, the pot is 30 and 30 is left; bet 30 into 30, the pot is 90 and the stack is 0.
 </Check>
 
 <Check question="In this lesson's example, on 7♥ 6♥ 5♣, which statement is true?" choices={["UTG has both the range advantage and the nut advantage", "UTG has the range advantage; the BB has the nut advantage", "The BB has both advantages", "Neither player has an advantage"]} answer={1}>
@@ -157,4 +161,4 @@ UTG's range equity is 53.7% (range advantage), but the BB has 29 strong combos t
 - Range advantage = higher average equity on the board. Nut advantage = more of the strongest hands. They can point in different directions.
 - A polarized range (strong hands plus bluffs) pairs with big bets; a merged range (strong and medium hands) pairs with small bets.
 - Texture heuristics (starting points): dry/high/paired → bet often and small; connected → less often and bigger; monotone → less often and smaller.
-- SPR = effective stack ÷ flop pot. Geometric sizing f = ((1 + 2·SPR)^(1/n) − 1) / 2 gets the stacks in over n streets; at SPR 3 over three streets that is ≈ 45.6% pot.
+- SPR = effective stack ÷ flop pot. Geometric sizing r = ((1 + 2·SPR)^(1/n) − 1) / 2 gets the stacks in over n streets; at SPR 3 over three streets that is ≈ 45.6% pot.

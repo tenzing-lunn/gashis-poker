@@ -4,13 +4,17 @@ import { PotOddsCalculator } from "@/app/learn/_widgets/pot-odds-calculator";
 
 Module 2 told you how often your draw comes in. This lesson tells you whether that is often enough to call a bet. By the end you will be able to compute the expected value of a call, derive the equity a call needs from scratch, read pot odds as a ratio, and work out how much extra you would need to win later (implied odds) to justify a call that loses money on its own.
 
+<Callout kind="note" title="Notation">
+In this course **P** always means the pot before the bet, and `Pr(…)` means "the probability of …", as in module 2. The two never mix.
+</Callout>
+
 ## Expected value
 
 The **expected value (EV)** of a choice is the average result you would get if you could repeat it many times. To compute it, multiply each possible outcome by its probability and add the results.
 
 Start with a game that has nothing to do with poker. You roll a fair die. On a 6 you win $10; on anything else you pay $1. Then:
 
-<Formula>EV = (1/6) × (+10) + (5/6) × (−1) = 10/6 − 5/6 = 5/6 ≈ +$0.83 per roll</Formula>
+<Formula>EV = Pr(6) × (+10) + Pr(not 6) × (−1) = (1/6) × 10 − (5/6) × 1 = 10/6 − 5/6 = 5/6 ≈ +$0.83 per roll</Formula>
 
 You never win exactly $0.83 on one roll. You win $10 or lose $1. But over six rolls you expect about one 6 (+$10) and five misses (−$5), for +$5, which is $0.83 per roll. A positive EV means the choice makes money on average, so you should take this game every time it is offered.
 
@@ -48,9 +52,9 @@ The pot is 100 and your opponent bets 50. The required equity is 50 / (100 + 2 �
 
 **Pot odds** state the same thing as a ratio: what you can win against what it costs. You call B to win P + B, so the pot odds are (P + B) : B. In the example above you call 50 to win 150, which is 150 : 50, or **3 to 1**.
 
-Module 2 showed how to turn "x to 1" into a probability: p = 1 / (x + 1). Here that gives 1 / (3 + 1) = 25%, the same answer. So you can compare the odds you are getting with the odds against your draw. If the draw is 4.11 to 1 against and the pot offers only 3 to 1, the price is too high.
+Module 2 showed how to turn "x to 1" into a probability: 1 / (x + 1). Here that gives 1 / (3 + 1) = 25%, the same answer. So you can compare the odds you are getting with the odds against your draw. If the draw is 4.11 to 1 against and the pot offers only 3 to 1, the price is too high.
 
-Because the formula depends only on the ratio of bet to pot, each bet size has a fixed price. With the pot as 1 and the bet as a fraction f of it, the required equity is f / (1 + 2f):
+Because the formula depends only on the ratio of bet to pot, each bet size has a fixed price. Write the bet as a fraction **r** of the pot (r = B/P, so a half-pot bet has r = 0.5). Dividing the top and bottom of B / (P + 2B) by P gives a required equity of r / (1 + 2r), and pot odds of (1 + r) : r:
 
 | Bet size | Pot odds | Required equity |
 |---|---:|---:|
@@ -89,15 +93,21 @@ Let **X** be the extra bb you expect to win on later streets when you hit. Keep 
 
 <Formula>EV = e × (P + B + X) − (1 − e) × B</Formula>
 
-Set it to 0 and solve for X, writing C = B for the amount you call and P + B for the pot after the bet:
+Set it to 0 and solve for X, one step at a time, the same way as before:
 
-<Formula>X = C × (1 − e) / e − (P + B)</Formula>
+1. e × (P + B + X) = (1 − e) × B
+2. Divide both sides by e: P + B + X = B × (1 − e) / e
+3. Subtract P + B: **X = B × (1 − e) / e − (P + B)**
+
+<Formula>X = B × (1 − e) / e − (P + B)</Formula>
+
+Here B is the amount you call, and P + B is the pot after the bet, before your call.
 
 <Example title="How much more must you win?">
 
-Same spot: the pot is 10bb, the bet is 5bb, so C = 5bb and the pot after the bet is 15bb. You have 9 outs, so e = 9/46.
+Same spot: the pot is P = 10bb and the bet is B = 5bb, so the pot after the bet is 15bb. You have 9 outs, so e = 9/46.
 
-1. C × (1 − e) / e = 5 × (37/46) / (9/46) = 5 × 37 / 9 ≈ 20.56bb.
+1. B × (1 − e) / e = 5 × (37/46) / (9/46) = 5 × 37 / 9 ≈ 20.56bb.
 2. X = 20.56 − 15 ≈ **5.6bb**.
 
 The call breaks even if, on average, you win about 5.6bb more on the river when the flush comes in. Whether that is realistic depends on your opponent. Will they call a river bet of that size when a third heart lands on the board? That is a judgment, not a formula.
@@ -110,7 +120,7 @@ Implied odds are an approximation in two ways. You do not always get paid when y
 
 The opposite effect is called **reverse implied odds**: sometimes when you hit, you still lose, and then you lose more than the call, because you put more chips in with a hand you think is best.
 
-The dirty-outs spot from module 2 shows the cost. Against a set, 2 of your 9 flush cards also pair the board and give the opponent a full house. With the same 10bb pot and 5bb bet, counting all 9 outs gives an EV of −1.09bb. Counting only the 7 clean outs gives (7/46) × 15 − (39/46) × 5 = 105/46 − 195/46 = −90/46 ≈ **−1.96bb**. That is before the further bets you would lose on the river after making your flush and running into the full house. Hands that tend to make the second-best hand, like small flushes or the low end of a straight, carry this risk.
+The dirty-outs spot from module 2 shows the cost. Against a set, 2 of your 9 flush cards also pair the board and give the opponent a full house. With the same 10bb pot and 5bb bet, counting all 9 outs gives an EV of −1.09bb. Counting only the 7 clean outs gives (7/46) × 15 − (39/46) × 5 = 105/46 − 195/46 = −90/46 ≈ **−1.96bb**. That is before the further bets you would lose on the river after making your flush and running into the full house. Hands that tend to make the second-best hand, like small flushes or the low end of a straight (a straight made with the bottom card, such as holding 5-4 on a board of 6-7-8-K-2, which loses to anyone holding 9-T for 6-7-8-9-T), carry this risk.
 
 ## Check yourself
 
@@ -123,7 +133,7 @@ The dirty-outs spot from module 2 shows the cost. Against a set, 2 of your 9 flu
 </Check>
 
 <Check question="The pot is 20bb and your opponent bets 10bb on the turn. You have 9 outs (e = 9/46). How many extra bb must you win on the river when you hit for the call to break even? One decimal." answer={11.1} tolerance={0.05} unit="bb">
-  C = 10 and the pot after the bet is 30. X = 10 × (37/46) / (9/46) − 30 = 370/9 − 30 ≈ 41.11 − 30 ≈ 11.1bb.
+  B = 10 and the pot after the bet is P + B = 30. X = 10 × (37/46) / (9/46) − 30 = 370/9 − 30 ≈ 41.11 − 30 ≈ 11.1bb.
 </Check>
 
 <Practice drill="Pot odds → required equity">Turn a pot and a bet into the equity you need, fast.</Practice>
@@ -135,5 +145,5 @@ The dirty-outs spot from module 2 shows the cost. Against a set, 2 of your 9 flu
 - EV is the probability-weighted average of the outcomes. Folding is EV 0 from here on, and a call is good when its EV is above 0.
 - Facing a bet B into a pot P with no more betting to come: EV(call) = e(P + B) − (1 − e)B.
 - Setting EV to 0 gives the required equity B / (P + 2B): your share of the final pot. A 50bb bet into 100bb needs 25%.
-- Pot odds (P + B) : B say the same thing as a ratio. Convert with p = 1/(x + 1).
-- Implied odds: you need X = C(1 − e)/e − (P + B) more when you hit. With 9 outs on the turn, a 5bb call and a 15bb pot after the bet, X ≈ 5.6bb. Reverse implied odds cut the other way when your outs are dirty or your hand can be second best.
+- Pot odds (P + B) : B say the same thing as a ratio. Convert x to 1 into a probability with 1/(x + 1).
+- Implied odds: you need X = B(1 − e)/e − (P + B) more when you hit. With 9 outs on the turn, a 5bb call and a 15bb pot after the bet, X ≈ 5.6bb. Reverse implied odds cut the other way when your outs are dirty or your hand can be second best.

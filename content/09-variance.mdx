@@ -35,7 +35,7 @@ Notice the scale: a 5 bb/100 winner has an SD of about 90 bb/100. In any one blo
 
 ## The normal distribution
 
-When you add up many independent random results, the total tends to follow a bell-shaped curve called the **normal distribution**, whatever the shape of the individual results. (This is the central limit theorem; for poker totals over thousands of hands it is a good approximation, not an exact law.) A normal distribution is fully described by its mean and its SD, and two facts about it are all we need:
+Random results are **independent** when one result does not change the chances of any other (one block of hands going well tells you nothing about how the next block will go). When you add up many independent random results, the total tends to follow a bell-shaped curve called the **normal distribution**, whatever the shape of the individual results. (This is the central limit theorem; for poker totals over thousands of hands it is a good approximation, not an exact law.) A normal distribution is fully described by its mean and its SD, and two facts about it are all we need:
 
 - About 68.3% of outcomes land within 1 SD of the mean.
 - About 95% land within **1.96 SD** of the mean.
@@ -101,29 +101,29 @@ Try 10,000 hands, then 100,000, then 1,000,000 with the same win rate. Watch the
 
 Your **bankroll** is the money you set aside for poker. A **buy-in** here is one 100bb stack. **Risk of ruin** (**RoR**) is the probability of eventually losing the entire bankroll if you keep playing the same stakes and never move down. Under the normal approximation:
 
-<Formula>RoR = exp(−2 · w · B / σ²)</Formula>
+<Formula>RoR = exp(−2 · w · R / σ²)</Formula>
 
-with w in bb/100, σ in bb/100 (so σ² in bb² per 100 hands) and B in bb. The units cancel, as they must inside exp. Here exp(x) means e raised to the power x, with e ≈ 2.718.
+with w in bb/100, σ in bb/100 (so σ² in bb² per 100 hands) and the bankroll R in bb. (We write R, not B, because B is the bet in earlier lessons.) The units cancel, as they must inside exp. Here exp(x) means the number 2.718… raised to the power x (for a whole number x, that is 2.718… multiplied by itself x times; exp(−x) is 1 divided by exp(x)). The number 2.718… is a fixed mathematical constant, not equity; this course always writes exp(…) for it.
 
-Why an exponential? To lose 2B you must first lose B, which has probability RoR(B), and then, now holding B, lose B again, also RoR(B). So RoR(2B) = RoR(B)². Only exponential functions behave this way. The constant 2w/σ² comes from the shape of the normal distribution; we take it from probability theory without deriving it here. You can compare it with the simulator: with many hands (say 500,000) the share of ruined runs comes close to the formula.
+Why an exponential? To lose 2R you must first lose R, which has probability RoR(R), and then, now holding R, lose R again, also RoR(R). The two stretches are independent, so the chances multiply: RoR(2R) = RoR(R)². Only exponential functions behave this way. The constant 2w/σ² comes from the shape of the normal distribution; we take it from probability theory without deriving it here. You can compare it with the simulator: with many hands (say 500,000) the share of ruined runs lands near the formula, within a few percentage points, because each recompute fits only a few hundred runs.
 
 <Example title="Worked example: 5 bb/100, σ = 90">
 
-σ² = 8,100. With 30 buy-ins (B = 3,000bb): 2 × 5 × 3,000 / 8,100 ≈ 3.704, and exp(−3.704) ≈ **2.5%**.
+σ² = 8,100. With 30 buy-ins (R = 3,000bb): 2 × 5 × 3,000 / 8,100 ≈ 3.704, and exp(−3.704) ≈ **2.5%**.
 
 With 20 buy-ins (2,000bb): exp(−2.469) ≈ 8.5%. With 10 buy-ins: exp(−1.235) ≈ 29.1%.
 
-Turn it around for a 1% risk: B = σ² · ln(100) / (2w) = 8,100 × 4.605 / 10 ≈ 3,730bb, about 37 buy-ins. A 3 bb/100 player needs ≈ 6,217bb, about 62 buy-ins.
+Turn it around for a 1% risk. For that you need the **natural logarithm**, written ln: it undoes exp, so if exp(x) = y then x = ln(y). Set exp(−2wR/σ²) = RoR and take ln of both sides: −2wR/σ² = ln(RoR). Because exp(−x) is 1 divided by exp(x), ln(RoR) = −ln(1/RoR), so this gives R = σ² · ln(1/RoR) / (2w). Any calculator has an ln key. For RoR = 1%, 1/RoR = 100 and ln(100) ≈ 4.605, so R = 8,100 × 4.605 / 10 ≈ 3,730bb, about 37 buy-ins. A 3 bb/100 player needs ≈ 6,217bb, about 62 buy-ins.
 
 </Example>
 
-The formula assumes you play forever. The simulator stops after a fixed number of hands, so its share of ruined runs comes out lower than the formula.
+The formula assumes you play forever. The simulator stops after a fixed number of hands, so its share of ruined runs is lower than the formula on average. Any single set of runs can still land above it by chance, especially with few runs.
 
 ### Kelly intuition
 
-This part is **intuition**, not a derivation. For a repeated bet with an edge, the **Kelly criterion** says the bet size that grows a bankroll fastest over the long run is proportional to your edge. For an even-money bet you win 55% of the time, Kelly says to stake 0.55 − 0.45 = 10% of your bankroll each time. Stake more and growth slows while the risk of a wipeout climbs.
+This part is **intuition**, not a derivation. An **even-money** bet pays exactly what you stake when you win. Your **edge** on a bet is your average profit per unit staked. For an even-money bet you win 55% of the time, the edge is 0.55 × 1 − 0.45 × 1 = 0.10. For a repeated bet with an edge, the **Kelly criterion** says the bet size that grows a bankroll fastest over the long run is proportional to your edge. For that 55% even-money bet, Kelly says to stake 0.55 − 0.45 = 10% of your bankroll each time, the same as the edge. Stake more and growth slows while the risk of a wipeout climbs.
 
-In poker you don't choose a stake each hand, but you do choose your stakes. The bankroll formula above, B = σ² · ln(1/RoR) / (2w), carries the same idea: a bigger edge lets you play bigger relative to your bankroll, and more variance forces you to play smaller. Bankroll rules of thumb such as "keep 30 to 40 buy-ins" are heuristics consistent with these numbers for a solid winner.
+In poker you don't choose a stake each hand, but you do choose your stakes. The bankroll formula above, R = σ² · ln(1/RoR) / (2w), carries the same idea: a bigger edge lets you play bigger relative to your bankroll, and more variance forces you to play smaller. Bankroll rules of thumb such as "keep 30 to 40 buy-ins" are heuristics consistent with these numbers for a solid winner.
 
 ## Luck versus skill: all-in EV
 
@@ -163,5 +163,5 @@ N/100 = 400 and √400 = 20. The SD of the observed win rate is 100 / 20 = 5 bb/
 - Over N hands the expected result grows like N but its SD grows like √N: SD of total = σ · √(N/100).
 - 95% interval for a win rate: ± 1.96 · σ / √(N/100). At σ = 90 and 10,000 hands that is ±17.6 bb/100.
 - Hands needed to show a win rate w above zero: N/100 = (1.96 · σ / w)²; about 346,000 hands at 3 bb/100.
-- Risk of ruin ≈ exp(−2 · w · B / σ²); bankroll needs rise with variance and fall with edge (the Kelly intuition).
+- Risk of ruin ≈ exp(−2 · w · R / σ²) for a bankroll of R bb; bankroll needs rise with variance and fall with edge (the Kelly intuition).
 - All-in EV separates luck from decisions for hands that go all-in before the river.

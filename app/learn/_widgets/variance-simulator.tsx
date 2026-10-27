@@ -68,7 +68,7 @@ export function VarianceSimulator() {
   return (
     <WidgetFrame
       title="Variance simulator"
-      footer={`Normal approximation: each 100 hands is an independent normal draw with mean = win rate and SD = SD. ${int(runs)} seeded runs (seed ${seed}); ${DRAWN} are drawn. The shaded band is the expected result ± 1.96 SD of the total. The risk-of-ruin formula assumes play never stops; the simulation stops at ${int(n)} hands, so its ruin share is lower.`}
+      footer={`Normal approximation: each 100 hands is an independent normal draw with mean = win rate and SD = SD. ${int(runs)} seeded runs (seed ${seed}); ${DRAWN} are drawn. The shaded band is the expected result ± 1.96 SD of the total. The risk-of-ruin formula assumes play never stops; the simulation stops at ${int(n)} hands, so on average its ruin share is lower (any one seed can land above it by chance).`}
     >
       <Inputs {...{ winRate, setWinRate, sd, setSd, hands, setHands, bankroll, setBankroll }} />
       <div className="mt-2">
@@ -146,7 +146,7 @@ function Inputs(p: InputsProps) {
       {field("Win rate (bb/100)", p.winRate, p.setWinRate)}
       {field("SD (bb/100)", p.sd, p.setSd)}
       {field("Hands", p.hands, p.setHands, "w-28")}
-      {field("Bankroll (bb, 0 = none)", p.bankroll, p.setBankroll, "w-28")}
+      {field("Bankroll R (bb, 0 = none)", p.bankroll, p.setBankroll, "w-28")}
     </div>
   );
 }

@@ -76,18 +76,18 @@ export function BluffMdfCalculator() {
             <tbody className="[&_td]:py-1">
               <tr>
                 <td className="text-zinc-500">Bet as a fraction of the pot</td>
-                <td className="font-mono text-zinc-500">B / P</td>
+                <td className="font-mono text-zinc-500">r = B / P</td>
                 <td className="text-right font-mono tabular-nums">{pct(x)}</td>
               </tr>
               <tr>
-                <td>Caller&apos;s required equity = bluff share that makes calling break even</td>
-                <td className="font-mono text-zinc-500">B / (P + 2B)</td>
+                <td>Caller&apos;s required equity = bluff share s that makes calling break even</td>
+                <td className="font-mono text-zinc-500">s = B / (P + 2B)</td>
                 <td className="text-right font-mono font-semibold tabular-nums">{pct(bluffShare(x))}</td>
               </tr>
               <tr>
-                <td className="text-zinc-500">Bluffs per value bet in that range</td>
-                <td className="font-mono text-zinc-500">B / (P + B)</td>
-                <td className="text-right font-mono tabular-nums">{(bluffShare(x) / (1 - bluffShare(x))).toFixed(2)} : 1</td>
+                <td className="text-zinc-500">Bluffs : value bets in that range</td>
+                <td className="font-mono text-zinc-500">s / (1 − s) = B / (P + B)</td>
+                <td className="text-right font-mono tabular-nums">1 bluff : {((1 - bluffShare(x)) / bluffShare(x)).toFixed(2)} value bets</td>
               </tr>
               <tr>
                 <td>Minimum defense frequency (MDF)</td>

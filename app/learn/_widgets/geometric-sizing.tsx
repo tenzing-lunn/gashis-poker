@@ -19,7 +19,7 @@ export function GeometricSizing() {
   return (
     <WidgetFrame
       title="Geometric bet sizing"
-      footer="f = ((1 + 2S/P)^(1/n) − 1) / 2. Each bet is f times the pot at that moment and is called. Values rounded to 0.1."
+      footer="r = ((1 + 2S/P)^(1/n) − 1) / 2, where ^(1/n) is the n-th root. Each bet is r times the pot at that moment and is called. Values rounded to 0.1."
     >
       <div className="flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1">

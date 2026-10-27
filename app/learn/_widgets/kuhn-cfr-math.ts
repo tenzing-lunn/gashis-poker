@@ -12,10 +12,10 @@ export const CARD_NAMES = ["J", "Q", "K"] as const;
 
 /** Information-set layout: index = group * 3 + card. */
 export const INFO_GROUPS = [
-  { player: 1, history: "", label: "P1 first action", pass: "check", bet: "bet" },
-  { player: 1, history: "pb", label: "P1 after check, bet", pass: "fold", bet: "call" },
-  { player: 2, history: "p", label: "P2 after a check", pass: "check", bet: "bet" },
-  { player: 2, history: "b", label: "P2 facing a bet", pass: "fold", bet: "call" },
+  { player: 1, history: "", label: "Player 1 first action", pass: "check", bet: "bet" },
+  { player: 1, history: "pb", label: "Player 1 after check, bet", pass: "fold", bet: "call" },
+  { player: 2, history: "p", label: "Player 2 after a check", pass: "check", bet: "bet" },
+  { player: 2, history: "b", label: "Player 2 facing a bet", pass: "fold", bet: "call" },
 ] as const;
 
 export const INFO_SET_COUNT = 12;

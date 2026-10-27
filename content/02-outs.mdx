@@ -13,7 +13,7 @@ Poker players also talk in **odds against**, written "x to 1": how many times so
 
 <Formula>odds against = (1 − p) / p  to 1          p = 1 / (x + 1)</Formula>
 
-So 20% is (1 − 0.2) / 0.2 = 4 to 1, and 3 to 1 is 1 / (3 + 1) = 25%. Module 3 compares exactly these odds with what a bet offers you.
+Here p is the probability written as a decimal (0.2 for 20%), and the odds are x to 1. So 20% is (1 − 0.2) / 0.2 = 4 to 1, and 3 to 1 is 1 / (3 + 1) = 25%. Module 3 compares exactly these odds with what a bet offers you.
 
 ## Unseen cards
 
@@ -31,9 +31,9 @@ A **draw** is a hand that is not strong yet but can become strong with the right
 
 ## One card to come
 
-If only the next card matters, the probability of hitting is outs divided by unseen cards:
+If only the next card matters, the probability of hitting is outs divided by unseen cards. From here on, `Pr(…)` is short for "the probability of …":
 
-<Formula>P(hit with one card) = outs / unseen</Formula>
+<Formula>Pr(hit with one card) = outs / unseen</Formula>
 
 The flush draw has 9 outs. On the flop, the chance the turn is a heart is 9 / 47 ≈ 19.1%, or (47 − 9) / 9 ≈ 4.22 to 1 against. On the turn, the chance the river is a heart is 9 / 46 ≈ 19.6%, or 37 / 9 ≈ 4.11 to 1 against.
 
@@ -41,16 +41,17 @@ The flush draw has 9 outs. On the flop, the chance the turn is a heart is 9 / 47
 
 Sometimes you will see both the turn and the river with no decision in between, for example when you are all-in on the flop. Then you hit if **at least one** of the two cards is an out. It is easiest to count the opposite: you miss only if both cards miss.
 
-- The turn misses with probability (47 − outs) / 47.
-- Given that the turn missed, 46 cards remain and outs of them are still outs, so the river misses with probability (46 − outs) / 46.
+Count it directly, the way module 1 counted two-card hands in order. Deal the turn and then the river. The turn can be any of 47 cards and the river any of the 46 left, so there are 47 × 46 = 2,162 ordered (turn, river) pairs, all equally likely. With 9 outs, 47 − 9 = 38 cards miss. A pair misses twice when the turn is one of those 38 and the river is one of the 37 misses left: 38 × 37 = 1,406 pairs. So:
 
-Multiply the two, because both must happen, and subtract from 1:
+<Formula>Pr(miss both) = 1,406 / 2,162 = (38 × 37) / (47 × 46) = (38/47) × (37/46)</Formula>
 
-<Formula>P(hit by the river) = 1 − (47 − outs)/47 × (46 − outs)/46</Formula>
+The last step just splits the fraction in two. Read that way, 38/47 is the chance the turn misses, and 37/46 is the chance the river misses once the turn has missed (46 cards are left, 37 of them misses). The same counting works for any number of outs, so the chance of hitting is 1 minus the chance of missing both:
 
-With 9 outs: 1 − (38/47)(37/46) = 1 − 1,406/2,162 = 756/2,162 ≈ 34.97%, about **35.0%**.
+<Formula>Pr(hit by the river) = 1 − (47 − outs)/47 × (46 − outs)/46</Formula>
 
-This is the same counting as in module 1. The runout is an unordered pair of cards from the 47. There are C(47, 2) runouts, and C(38, 2) of them contain no heart, so the chance of missing is C(38, 2) / C(47, 2), which is the same 1,406/2,162. Counting draws without replacement this way is called the **hypergeometric** idea.
+With 9 outs: 1 − 1,406/2,162 = 756/2,162 ≈ 34.97%, about **35.0%**.
+
+You can also count without order, as in module 1. The runout is an unordered pair of cards from the 47. There are C(47, 2) = 1,081 runouts, and C(38, 2) = 703 of them contain no heart. 703/1,081 is the same fraction as 1,406/2,162 (both halved). Counting draws without replacement (a card dealt once cannot be dealt again) this way is called the **hypergeometric** idea.
 
 <Callout kind="warn" title="Two cards only if you see both">
 Use the two-card number only when nothing can happen on the turn, as when you are all-in. If an opponent can bet again on the turn, you face a new decision there, so price one card at a time.
@@ -60,9 +61,9 @@ Use the two-card number only when nothing can happen on the turn, as when you ar
 
 At the table, players estimate quickly: multiply outs by **2** for one card to come and by **4** for two. Here is why the 4 works, and why it drifts.
 
-The chance of hitting by the river is the chance of hitting on the turn, plus the chance of missing the turn and then hitting the river:
+Count the 2,162 ordered (turn, river) pairs that hit. Either the turn is an out (outs × 46 pairs, since any river follows), or the turn misses and the river is an out ((47 − outs) × outs pairs). Add them and divide by 2,162:
 
-<Formula>outs/47 + (47 − outs)/47 × outs/46 = (93 × outs − outs²) / 2,162</Formula>
+<Formula>Pr(hit by the river) = (46 × outs + 47 × outs − outs²) / 2,162 = (93 × outs − outs²) / 2,162</Formula>
 
 Since 93 / 2,162 ≈ 4.3%, this is about 4.3% × outs minus a term in outs². The rule of 4 keeps only "4 × outs". For small draws the two errors (4 instead of 4.3, and the missing outs² term) roughly cancel. But the outs² term grows fast, so for big draws the rule overstates your chances. That term is the double counting the shortcut ignores: you cannot hit on the river if you already hit on the turn.
 
@@ -75,7 +76,7 @@ Since 93 / 2,162 ≈ 4.3%, this is about 4.3% × outs minus a term in outs². Th
 | 15 | 54.1% | 60% | +5.9 | 53% | −1.1 |
 | 20 | 67.5% | 80% | +12.5 | 68% | +0.5 |
 
-Errors are in percentage points, computed from the unrounded exact values. Above 8 outs, a better quick estimate is **3 × outs + 8**. It is a heuristic, a straight line fitted to the curve, not exact math, but from 9 to 20 outs it stays within about 1.2 points. With 15 outs: 3 × 15 + 8 = 53%, against 54.1% exact and 60% from the rule of 4.
+Errors are in **percentage points**, the plain difference between two percentages (60% − 54.1% = 5.9 points), not a percent of a percent. They are computed from the unrounded exact values. Above 8 outs, a better quick estimate is **3 × outs + 8**. It is a heuristic, a straight line fitted to the curve, not exact math, but from 9 to 20 outs it stays within about 1.2 points. With 15 outs: 3 × 15 + 8 = 53%, against 54.1% exact and 60% from the rule of 4.
 
 The rule of 2 for one card errs the other way. With 9 outs on the turn, 2 × 9 = 18%, but the exact value is 9 / 46 ≈ 19.6%. It slightly understates, by about 0.17 points per out.
 
@@ -118,11 +119,11 @@ In a real hand you would not know the opponent holds a set. You would discount o
 
 Your **equity** is the share of the pot you would win on average if all the remaining cards were dealt out, with ties counting as half. With no ties it is simply your chance of winning. Module 4 develops it fully. Here, the point is that outs are a way to estimate equity, and the estimate is only as good as the assumption that every out wins and nothing else does.
 
-The tool below shows both hands, so it can count exactly. It counts the cards that put you ahead next, applies the outs formula, then enumerates every possible runout for the true equity. Because both hands are known here, the opponent's two cards are seen too, so 44 cards are unseen on the turn and 45 on the flop.
+The tool below shows both hands, so it can count exactly. It counts the cards that put you ahead next, applies the outs formula, then enumerates every possible runout for the true equity. Because both hands are known here, the opponent's two cards are seen too, so 44 cards are unseen on the turn and 45 on the flop. Three of its presets:
 
-- On the turn, the flush draw against **top pair** (a pair made with the highest board card, here kings) has 9 outs, and 9 / 44 ≈ 20.5% matches the exact result. One card to come is clean arithmetic.
-- In the dirty-outs spot, it finds 7 outs, and 7 / 44 ≈ 15.9% matches too.
-- On the flop, the same flush draw against top pair has 9 outs, so the estimate is 1 − (36/45)(35/44) ≈ 36.4%. The exact equity is about 39.8%. The difference comes from **runner-runner** hands, which need both the turn and the river to help: two pair or trips with running 9s and 8s, or a straight with J-T, T-6 or 6-5. Of the 990 possible turn-and-river runouts, 42 win without any heart. Going the other way, 8 runouts that bring a heart still lose, because they also give the opponent a full house.
+- **Turn, flush draw against top pair.** You hold <Cards hand="9h 8h" />, the opponent holds <Cards hand="Kc Qd" />, and the board is <Cards hand="Kh 7h 2d 3s" />. The opponent has **top pair**: a pair made with the highest board card, here kings. You have 9 outs, and 9 / 44 ≈ 20.5% matches the exact result. One card to come is clean arithmetic.
+- **Turn, dirty outs.** The set-of-eights spot from the example above: the tool finds 7 outs, and 7 / 44 ≈ 15.9% matches too.
+- **Flop, same hands.** You hold <Cards hand="9h 8h" /> against <Cards hand="Kc Qd" /> on the flop <Cards hand="Kh 7h 2d" />, with two cards to come. You have 9 outs, so the estimate is 1 − (36/45)(35/44) ≈ 36.4%. The exact equity is about 39.8%. The difference comes from **runner-runner** hands, which need both the turn and the river to help: two pair or trips with running 9s and 8s, or a straight with J-T, T-6 or 6-5. Of the 990 possible turn-and-river runouts, 42 win without any heart. Going the other way, 8 runouts that bring a heart still lose, because they also give the opponent a full house.
 
 <OutsVsEquity />
 
@@ -154,7 +155,7 @@ The tool below shows both hands, so it can count exactly. It counts the cards th
 
 ## Key points
 
-- Probability = favorable outcomes / all outcomes. Odds against = (1 − p)/p to 1, and p = 1/(x + 1).
+- Probability = favorable outcomes / all outcomes. With p the probability as a decimal, odds against = (1 − p)/p to 1, and p = 1/(x + 1).
 - Count unseen cards from your own view: 47 on the flop, 46 on the turn.
 - One card to come: outs / unseen. Two cards to come: 1 − (47 − outs)/47 × (46 − outs)/46. With 9 outs that is 35.0%.
 - The rule of 4 overstates big draws (15 outs: 60% vs 54.1%) because it ignores the outs² term. Above 8 outs, 3 × outs + 8 is a closer heuristic.

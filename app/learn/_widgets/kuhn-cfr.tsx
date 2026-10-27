@@ -186,7 +186,7 @@ export function KuhnCfr() {
   return (
     <WidgetFrame
       title="Kuhn poker solved by CFR"
-      footer="Vanilla CFR: each iteration plays the current regret-matching strategy through all 6 deals and updates the regrets. The average strategy is what converges. Game value and exploitability are computed exactly for the average strategy (best response by trying all 64 pure strategies)."
+      footer="Vanilla CFR: each iteration plays the current regret-matching strategy through all 6 deals and updates the regrets. The average strategy is what converges. Game value and exploitability are computed exactly for the average strategy. Exploitability is the average of what a best response gains against each player (found by trying all 64 pure strategies)."
     >
       <div className="flex flex-wrap items-center gap-2">
         {running ? (
@@ -226,9 +226,9 @@ export function KuhnCfr() {
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { k: "Iterations", v: snap.iterations.toLocaleString("en-US") },
-          { k: "Game value to P1", v: snap.iterations ? snap.value.toFixed(4) : "–" },
+          { k: "Game value to Player 1", v: snap.iterations ? snap.value.toFixed(4) : "–" },
           { k: "Target −1/18", v: KUHN_VALUE.toFixed(4) },
-          { k: "Exploitability", v: snap.iterations ? snap.expl.toFixed(4) : "–" },
+          { k: "Exploitability (pair average)", v: snap.iterations ? snap.expl.toFixed(4) : "–" },
         ].map((x) => (
           <div key={x.k} className="rounded-md bg-zinc-100 px-3 py-2 dark:bg-zinc-800">
             <dt className="text-xs text-zinc-500">{x.k}</dt>
@@ -255,7 +255,7 @@ export function KuhnCfr() {
           ]}
         />
         <Chart
-          title="Exploitability (log scale)"
+          title="Exploitability (log scale: each gridline is 10× smaller)"
           points={snap.history}
           y={(p) => p.expl}
           yLabel={(v) => Math.log10(Math.max(v, 1e-4))}
@@ -307,7 +307,8 @@ export function KuhnCfr() {
       <p className="mt-2 text-xs text-zinc-500">
         &ldquo;Average&rdquo; and &ldquo;Current&rdquo; give the probability of the action named (bet or call); the rest of the time the player
         checks or folds. The equilibrium column plugs the solver&apos;s own J-betting frequency in as β. Regrets are divided by the number of
-        iterations, so they shrink toward 0 as CFR learns.
+        iterations. The positive ones shrink toward 0 as CFR learns; an action the equilibrium never takes keeps a negative average
+        regret, because it really was worse.
       </p>
     </WidgetFrame>
   );

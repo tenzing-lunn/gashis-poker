@@ -63,7 +63,7 @@ export function FlopRangeAdvantage() {
   return (
     <WidgetFrame
       title="Range vs range on the flop"
-      footer="Exact: every turn and river (1,176 pairs of cards) for every pair of non-overlapping combos, using lib/poker. A combo's equity is its average share of the pot against the whole opposing range. “Strong” = at least 80% equity."
+      footer="Exact: every pair of combos that share no card, with every possible turn and river (990 per pair of combos). A combo's equity is its average share of the pot against the whole opposing range. “Strong” = at least 80% equity."
     >
       <div className="flex flex-wrap gap-1.5">
         {FLOPS.map((f) => (

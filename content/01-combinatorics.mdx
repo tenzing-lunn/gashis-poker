@@ -10,7 +10,7 @@ Start with a question: how many different two-card hands can you be dealt?
 
 Count the cards in order first. The first card can be any of 52, and the second any of the 51 left, so there are 52 × 51 = 2,652 ordered pairs. But a hand is the same no matter which card came first. <Cards hand="As Kd" /> and <Cards hand="Kd As" /> are one hand, and every hand was counted exactly twice. So the number of different hands is 2,652 / 2 = **1,326**.
 
-The same idea works for any number of cards. A **combination** is a choice of k items out of n where order does not matter. The number of combinations is written **C(n, k)** and read "n choose k". Choosing in order gives n × (n − 1) × … × (n − k + 1) sequences, and each set of k items shows up in k × (k − 1) × … × 1 different orders. Divide one by the other:
+The same idea works for any number of cards. A **combination** is a choice of k items out of n where order does not matter. The number of combinations is written **C(n, k)** and read "n choose k". Choosing in order gives n × (n − 1) × … × (n − k + 1) sequences, and each set of k items shows up in k × (k − 1) × … × 1 different orders (k choices for which item comes first, k − 1 for second, and so on, the same counting as 52 × 51). Divide one by the other:
 
 <Formula>C(n, k) = [n × (n − 1) × … × (n − k + 1)] / [k × (k − 1) × … × 1]</Formula>
 

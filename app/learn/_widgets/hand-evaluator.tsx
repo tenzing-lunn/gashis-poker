@@ -49,6 +49,28 @@ function orderFive(five: Card[], category: HandCategory): Card[] {
   return sorted;
 }
 
+/** Cards in the made part of each category (the rest are kickers). */
+const MADE_CARDS: Partial<Record<HandCategory, { count: number; name: string }>> = {
+  pair: { count: 2, name: "pair" },
+  "two pair": { count: 4, name: "two pair" },
+  trips: { count: 3, name: "three of a kind" },
+  "full house": { count: 5, name: "full house" },
+  quads: { count: 4, name: "four of a kind" },
+};
+
+/** Why one hand beats another in the same category. Both `five`s are ordered by orderFive. */
+function sameCategoryReason(winner: Best, loser: Best): string {
+  const cat = winner.category;
+  if (cat === "straight" || cat === "straight flush") return "Same category, and the higher straight wins.";
+  const made = MADE_CARDS[cat];
+  if (!made) return "Same category, so compare the five cards from the highest down: the first higher card decides.";
+  const w = winner.five.map(rankOf), l = loser.five.map(rankOf);
+  const madeDiffers = w.slice(0, made.count).some((r, i) => r !== l[i]);
+  return madeDiffers
+    ? `Same category, and the higher ${made.name} wins.`
+    : `Same category and the same ${made.name}, so the higher remaining cards (the kickers) decide.`;
+}
+
 function parse(text: string): Card[] {
   return text.trim() ? parseCards(text) : [];
 }
@@ -86,8 +108,11 @@ export function HandEvaluator() {
     if (a.value === b.value) verdict = "Split pot: both players' best five cards are equally strong.";
     else {
       const winner = a.value > b.value ? 1 : 2;
-      const sameCategory = a.category === b.category;
-      verdict = `Player ${winner} wins${sameCategory ? ". Same category, so the higher cards inside it (the kickers) decide." : ` with the higher category (${CATEGORY_LABEL[(winner === 1 ? a : b).category].toLowerCase()}).`}`;
+      const [w, l] = winner === 1 ? [a, b] : [b, a];
+      verdict =
+        w.category === l.category
+          ? `Player ${winner} wins. ${sameCategoryReason(w, l)}`
+          : `Player ${winner} wins with the higher category (${CATEGORY_LABEL[w.category].toLowerCase()}).`;
     }
   }
 
