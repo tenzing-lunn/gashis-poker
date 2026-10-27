@@ -5,13 +5,12 @@ import type { VarianceResultMessage } from "@/lib/gto/worker-protocol";
 import { ChartFrame, linePath, linearScale, makeFrame, niceTicks, numLabel, useWidth } from "./chart";
 import { compact } from "./format";
 
-const PATH_CLASSES = ["stroke-sky-500", "stroke-violet-500", "stroke-rose-500", "stroke-teal-500", "stroke-orange-500", "stroke-indigo-500"];
 const handLabel = (v: number) => compact(Math.round(v));
 
 /** Sample bankroll paths over the analytic mean line and its 95% (±1.96σ) band. */
 export const PathsChart = memo(function PathsChart({ r }: { r: VarianceResultMessage }) {
   const [ref, width] = useWidth<HTMLDivElement>();
-  const f = makeFrame(width, width < 500 ? 220 : 280, { left: 58, right: 14, top: 12, bottom: 36 });
+  const f = makeFrame(width, width < 500 ? 220 : 280, { left: 58, right: 14, top: 26, bottom: 36 });
   const mean = (h: number) => (r.winRate * h) / 100;
   const band = (h: number) => 1.96 * r.stdDev * Math.sqrt(h / 100);
   let lo = Math.min(0, mean(r.hands) - band(r.hands)), hi = Math.max(0, mean(r.hands) + band(r.hands));
@@ -43,14 +42,14 @@ export const PathsChart = memo(function PathsChart({ r }: { r: VarianceResultMes
         title="Sample bankroll paths against the expected line and its 95 percent band"
         clipId="var-paths"
       >
-        <polygon points={[...upper, ...lower].join(" ")} className="fill-amber-500/15" />
-        <line x1={f.left} x2={f.right} y1={y(0)} y2={y(0)} className="stroke-zinc-400 dark:stroke-zinc-600" strokeWidth={1} />
+        <polygon points={[...upper, ...lower].join(" ")} className="fill-faint" fillOpacity={0.35} />
+        <line x1={f.left} x2={f.right} y1={y(0)} y2={y(0)} className="stroke-muted" strokeWidth={1} />
         {r.paths.map((p, i) => (
-          <path key={i} d={linePath(hs, p, x, y)} fill="none" strokeWidth={1.25} strokeOpacity={0.75} className={PATH_CLASSES[i % PATH_CLASSES.length]} strokeLinejoin="round" />
+          <path key={i} d={linePath(hs, p, x, y)} fill="none" strokeWidth={1} className="stroke-muted" strokeLinejoin="round" />
         ))}
-        <path d={linePath(hs, hs.map(mean), x, y)} fill="none" strokeWidth={2} className="stroke-amber-500" />
-        <path d={linePath(hs, hs.map((h) => mean(h) + band(h)), x, y)} fill="none" strokeWidth={1} strokeDasharray="5 4" className="stroke-amber-500" />
-        <path d={linePath(hs, hs.map((h) => mean(h) - band(h)), x, y)} fill="none" strokeWidth={1} strokeDasharray="5 4" className="stroke-amber-500" />
+        <path d={linePath(hs, hs.map(mean), x, y)} fill="none" strokeWidth={2} className="stroke-ink" />
+        <path d={linePath(hs, hs.map((h) => mean(h) + band(h)), x, y)} fill="none" strokeWidth={1} strokeDasharray="5 4" className="stroke-ink" />
+        <path d={linePath(hs, hs.map((h) => mean(h) - band(h)), x, y)} fill="none" strokeWidth={1} strokeDasharray="5 4" className="stroke-ink" />
       </ChartFrame>
     </div>
   );
@@ -61,7 +60,7 @@ const phi = (z: number) => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
 /** Histogram of final results with the analytic normal density scaled to counts. */
 export const HistogramChart = memo(function HistogramChart({ r }: { r: VarianceResultMessage }) {
   const [ref, width] = useWidth<HTMLDivElement>();
-  const f = makeFrame(width, width < 500 ? 200 : 240, { left: 46, right: 14, top: 12, bottom: 36 });
+  const f = makeFrame(width, width < 500 ? 200 : 240, { left: 46, right: 14, top: 26, bottom: 36 });
   const { min, binWidth, counts } = r.histogram;
   const m = r.analytic.mean, s = r.analytic.sd;
   const x0 = Math.min(min, m - 3.5 * s), x1 = Math.max(min + binWidth * counts.length, m + 3.5 * s);
@@ -97,13 +96,14 @@ export const HistogramChart = memo(function HistogramChart({ r }: { r: VarianceR
               y={y(c)}
               width={Math.max(0, right - left - 1)}
               height={Math.max(0, y(0) - y(c))}
-              className={neg ? "fill-rose-500/60" : "fill-sky-500/60"}
+              className={neg ? "fill-red" : "fill-green"}
+              fillOpacity={0.7}
             />
           );
         })}
-        <path d={linePath(curveX, curveX.map(density), x, y)} fill="none" strokeWidth={2} className="stroke-amber-500" />
-        <line x1={x(0)} x2={x(0)} y1={f.top} y2={f.bottom} strokeDasharray="3 3" className="stroke-zinc-500" />
-        <text x={x(0) + 4} y={f.top + 10} className="fill-zinc-500 text-[11px]">
+        <path d={linePath(curveX, curveX.map(density), x, y)} fill="none" strokeWidth={2} className="stroke-ink" />
+        <line x1={x(0)} x2={x(0)} y1={f.top} y2={f.bottom} strokeDasharray="3 3" className="stroke-muted" />
+        <text x={x(0) + 4} y={f.top + 10} className="fill-muted text-[10px] uppercase">
           break-even
         </text>
       </ChartFrame>

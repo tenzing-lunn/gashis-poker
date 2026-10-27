@@ -1,23 +1,100 @@
 import type { ReactNode } from "react";
+import { Blank, Legend, Line, Screen } from "@/components/doc";
 
-/** The box every interactive widget sits in, so widgets look alike across lessons. */
+/** The screen band every interactive widget sits in, so widgets look alike across lessons. */
 export function WidgetFrame({ title, children, footer }: { title: string; children: ReactNode; footer?: ReactNode }) {
   return (
-    <figure className="my-8 rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900">
-      <figcaption className="border-b border-zinc-200 px-4 py-2 text-sm font-semibold dark:border-zinc-800">
-        <span className="mr-2 rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-[0.7rem] uppercase tracking-wider text-white dark:bg-zinc-100 dark:text-zinc-900">
-          Try it
-        </span>
-        {title}
-      </figcaption>
-      <div className="p-4 text-sm">{children}</div>
-      {footer && <div className="border-t border-zinc-200 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800">{footer}</div>}
-    </figure>
+    <>
+      <Blank />
+      <Screen as="figure">
+        <Line as="figcaption" className="uppercase">
+          <span>
+            <span className="inv">TRY IT</span> {title}
+          </span>
+        </Line>
+        {children}
+        {footer && (
+          <Legend>
+            <span>{footer}</span>
+          </Legend>
+        )}
+      </Screen>
+      <Blank />
+    </>
   );
 }
 
-export const inputClass =
-  "rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono tabular-nums dark:border-zinc-700 dark:bg-zinc-950";
+/** A result line: CAPS label left, value right. Wrap formula text in `normal-case` yourself. */
+export function Row({ label, children, className }: { label: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <Line className={className}>
+      <span className="uppercase">{label}</span>
+      <span>{children}</span>
+    </Line>
+  );
+}
 
-export const buttonClass =
-  "rounded-md bg-zinc-900 px-3 py-1 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900";
+export const inputClass = "u";
+
+export const buttonClass = "apply cta";
+
+/** Horizontal scroller for wide tables. It extends over the line-number gutter so the numbers of the lines inside stay visible. */
+export function Scroll({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`relative -ml-[64px] overflow-x-auto pl-[64px] max-[679px]:-ml-[40px] max-[679px]:pl-[40px] ${className}`}>{children}</div>;
+}
+
+/**
+ * A numeric table: every row is a numbered line, CAPS label column left, numbers right-aligned so the digits line up.
+ * Under 680px each row becomes a small record instead (title line, then one label/value line per column), so the
+ * numbers stay on screen and still align on the right edge. `prefixTitle` titles those records "<first header> <label>".
+ */
+export function NumTable({ head, rows, prefixTitle }: { head: ReactNode[]; rows: { key: string; cells: ReactNode[] }[]; prefixTitle?: boolean }) {
+  return (
+    <>
+      <div className="max-[679px]:hidden">
+        <Scroll>
+          <table className="w-full border-collapse tabular-nums">
+            <thead>
+              <tr className="text-muted uppercase">
+                {head.map((h, i) => (
+                  <th key={i} scope="col" className={`pr-[2ch] last:pr-0 ${i === 0 ? "l table-cell! text-left" : "text-right whitespace-nowrap"}`}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="align-baseline">
+                  {r.cells.map((c, i) => (
+                    <td key={i} className={`pr-[2ch] last:pr-0 ${i === 0 ? "l table-cell! whitespace-nowrap uppercase" : "text-right whitespace-nowrap"}`}>
+                      {c}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Scroll>
+      </div>
+      <div className="tabular-nums min-[680px]:hidden">
+        {rows.map((r) => (
+          <div key={r.key}>
+            <Line className="uppercase">
+              <span>
+                {prefixTitle && <>{head[0]} </>}
+                {r.cells[0]}
+              </span>
+            </Line>
+            {r.cells.slice(1).map((c, i) => (
+              <Line key={i}>
+                <span className="text-muted uppercase">{head[i + 1]}</span>
+                <span>{c}</span>
+              </Line>
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}

@@ -2,6 +2,7 @@
 
 import { memo, useRef, useState, type KeyboardEvent } from "react";
 import { HAND_CLASSES } from "@/lib/poker/combinatorics";
+import { Line } from "@/components/doc";
 import { pct } from "./format";
 
 // Same layout as lib/gto's classGrid / CLASS_GRID_NAMES: index r*13 + c is HAND_CLASSES order, ranks A..2
@@ -11,8 +12,8 @@ const NAMES = HAND_CLASSES.map((h) => h.name);
 const COMBOS = HAND_CLASSES.map((h) => h.combos);
 
 const TONE = {
-  push: { rgb: "16 185 129", text: "text-emerald-700 dark:text-emerald-300", label: "pushes" },
-  call: { rgb: "14 165 233", text: "text-sky-700 dark:text-sky-300", label: "calls" },
+  push: { label: "pushes" },
+  call: { label: "calls" },
 } as const;
 
 /** 13x13 hand-class grid shaded by frequency, with a readout for the hovered or focused cell. */
@@ -34,15 +35,17 @@ export const HandGrid = memo(function HandGrid({ title, freq, tone }: { title: s
 
   const shown = active ?? null;
   return (
-    <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{title}</figcaption>
+    <div className="flex min-w-0 flex-col">
+      <Line className="uppercase">
+        <span>{title}</span>
+      </Line>
       <div
         ref={gridRef}
         role="grid"
         aria-label={`${title}: frequency per hand class`}
         onKeyDown={move}
         onMouseLeave={() => setActive(null)}
-        className="grid aspect-square w-full max-w-[26rem] grid-cols-13 gap-px rounded-md border border-zinc-200 bg-zinc-200 p-px dark:border-zinc-800 dark:bg-zinc-800"
+        className="grid aspect-square w-full max-w-[26rem] grid-cols-13 gap-px border border-faint bg-faint"
       >
         {NAMES.map((name, i) => {
           const f = freq ? freq[i] : 0;
@@ -60,26 +63,27 @@ export const HandGrid = memo(function HandGrid({ title, freq, tone }: { title: s
                 setFocusIndex(i);
               }}
               onBlur={() => setActive(null)}
-              style={{ backgroundImage: `linear-gradient(rgb(${t.rgb} / ${f}), rgb(${t.rgb} / ${f}))` }}
-              className={`flex items-center justify-center bg-zinc-50 font-mono text-[clamp(7px,2.1vw,11px)] leading-none tracking-tighter outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-foreground dark:bg-zinc-950 ${
-                f > 0.55 ? "text-white" : "text-zinc-500 dark:text-zinc-400"
-              } ${active === i ? "ring-2 ring-foreground ring-inset" : ""}`}
+              style={{ backgroundColor: `color-mix(in srgb, var(--ink) ${(100 * f).toFixed(1)}%, var(--paper))` }}
+              className={`relative flex items-center justify-center text-[clamp(7px,2.1vw,11px)] leading-none tracking-tighter focus-visible:z-10 ${f > 0.55 ? "text-paper" : "text-muted"} ${
+                active === i ? `z-10 outline-2 -outline-offset-2 ${f > 0.55 ? "outline-paper" : "outline-ink"}` : ""
+              }`}
             >
               {name}
             </div>
           );
         })}
       </div>
-      <p className="min-h-5 text-xs tabular-nums text-zinc-600 dark:text-zinc-400">
-        {shown !== null && freq ? (
-          <>
-            <span className="font-mono font-semibold text-foreground">{NAMES[shown]}</span> ({COMBOS[shown]} combos) {t.label}{" "}
-            <span className={`font-mono font-semibold ${t.text}`}>{pct(freq[shown], 2)}</span>
-          </>
-        ) : (
-          "Hover or focus a cell for its exact frequency."
-        )}
-      </p>
-    </figure>
+      <Line as="p" className="tabular-nums">
+        <span className="text-muted">
+          {shown !== null && freq ? (
+            <>
+              <span className="text-ink">{NAMES[shown]}</span> ({COMBOS[shown]} combos) {t.label} <span className="inv">{pct(freq[shown], 2)}</span>
+            </>
+          ) : (
+            "Hover or focus a cell for its exact frequency."
+          )}
+        </span>
+      </Line>
+    </div>
   );
 });

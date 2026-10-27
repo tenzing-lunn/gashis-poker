@@ -5,7 +5,8 @@ import { parseCards } from "@/lib/poker/cards";
 import { COMBO_HI, COMBO_LO } from "@/lib/poker/combinatorics";
 import { exactEquity, monteCarloEquity } from "@/lib/poker/equity";
 import { parseRange, removeDeadCards } from "@/lib/poker/range";
-import { WidgetFrame, buttonClass, inputClass } from "../_components/widget-frame";
+import { BoxButton, Field, Legend, Line, Tag, TextButton } from "@/components/doc";
+import { Row, WidgetFrame } from "../_components/widget-frame";
 
 const PRESETS = [
   { label: "AA vs KK", hero: "AsAh", villain: "KdKc", board: "" },
@@ -127,93 +128,76 @@ export function EquityCalculator() {
       title="Equity calculator"
       footer="Each side can be one hand (AhKd) or a range (QQ+, AK). Hand vs hand is exact. A range is averaged over every compatible hand in it, each equally likely: exactly on a flop or later when that is fast enough, otherwise by Monte Carlo."
     >
-      <div className="flex flex-wrap gap-2">
-        {PRESETS.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            onClick={() => {
-              setHero(p.hero);
-              setVillain(p.villain);
-              setBoard(p.board);
-              setQuery({ hero: p.hero, villain: p.villain, board: p.board });
-            }}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      <Line>
+        <span className="flex flex-wrap gap-x-[1ch]">
+          {PRESETS.map((p) => (
+            <TextButton
+              key={p.label}
+              pressed={query.hero === p.hero && query.villain === p.villain && query.board === p.board}
+              onClick={() => {
+                setHero(p.hero);
+                setVillain(p.villain);
+                setBoard(p.board);
+                setQuery({ hero: p.hero, villain: p.villain, board: p.board });
+              }}
+            >
+              [{p.label}]
+            </TextButton>
+          ))}
+        </span>
+      </Line>
       <form
-        className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end"
         onSubmit={(e) => {
           e.preventDefault();
           setQuery({ hero, villain, board });
         }}
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">You (hand or range)</span>
-          <input className={inputClass} value={hero} onChange={(e) => setHero(e.target.value)} spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Opponent (hand or range)</span>
-          <input className={inputClass} value={villain} onChange={(e) => setVillain(e.target.value)} spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Board (optional)</span>
-          <input className={inputClass} value={board} onChange={(e) => setBoard(e.target.value)} placeholder="e.g. Qs7h2c" spellCheck={false} />
-        </label>
-        <button type="submit" className={buttonClass}>
-          {dirty ? "Calculate" : "Calculated"}
-        </button>
+        <Field label="You (hand or range)" value={hero} onChange={(e) => setHero(e.target.value)} spellCheck={false} />
+        <Field label="Opponent (hand or range)" value={villain} onChange={(e) => setVillain(e.target.value)} spellCheck={false} />
+        <Field label="Board (optional)" value={board} onChange={(e) => setBoard(e.target.value)} placeholder="e.g. Qs7h2c" spellCheck={false} />
+        <Line>
+          <BoxButton type="submit" filled={dirty}>
+            {dirty ? "Calculate" : "Calculated"}
+          </BoxButton>
+        </Line>
       </form>
 
-      <div className="mt-4" aria-live="polite">
+      <div aria-live="polite">
         {!result.ok ? (
-          <p className="text-red-600 dark:text-red-400">{result.error}.</p>
+          <Line>
+            <Tag>{result.error}.</Tag>
+          </Line>
         ) : (
           <>
-            <div className="flex h-6 overflow-hidden rounded-md font-mono text-xs tabular-nums">
-              <div className="flex items-center bg-emerald-600 px-2 text-white" style={{ width: `${100 * result.out.equity}%` }}>
-                {result.out.equity >= 0.12 ? pct(result.out.equity) : ""}
-              </div>
-              <div className="flex flex-1 items-center justify-end bg-zinc-300 px-2 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100">
-                {result.out.equity <= 0.88 ? pct(1 - result.out.equity) : ""}
-              </div>
-            </div>
-            <table className="mt-3 w-full text-sm">
-              <tbody className="[&_td]:py-1">
-                <tr>
-                  <td className="text-zinc-500">Your equity</td>
-                  <td className="text-right font-mono font-semibold tabular-nums">
-                    {approx}
-                    {pct(result.out.equity, 2)}
-                    {result.out.margin > 0 && <span className="font-normal text-zinc-500"> ± {(100 * result.out.margin).toFixed(2)} pts</span>}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="text-zinc-500">Opponent&apos;s equity</td>
-                  <td className="text-right font-mono tabular-nums">
-                    {approx}
-                    {pct(1 - result.out.equity, 2)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="text-zinc-500">You win outright / split</td>
-                  <td className="text-right font-mono tabular-nums">
-                    {approx}
-                    {pct(result.out.win, 2)} / {pct(result.out.tie, 2)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="text-zinc-500">Combos left after card removal</td>
-                  <td className="text-right font-mono tabular-nums">
-                    {result.out.heroCombos} vs {result.out.villainCombos}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <p className="mt-2 text-xs text-zinc-500">{result.out.method}</p>
+            <Line className="items-center">
+              <span className="flex h-[19px] w-full border border-ink text-[12px] leading-none">
+                <span className="flex items-center bg-ink px-[1ch] text-paper" style={{ width: `${100 * result.out.equity}%` }}>
+                  {result.out.equity >= 0.12 ? pct(result.out.equity) : ""}
+                </span>
+                <span className="flex flex-1 items-center justify-end px-[1ch]">{result.out.equity <= 0.88 ? pct(1 - result.out.equity) : ""}</span>
+              </span>
+            </Line>
+            <Row label="Your equity">
+              <span className="inv">
+                {approx}
+                {pct(result.out.equity, 2)}
+              </span>
+              {result.out.margin > 0 && <span className="text-muted"> ± {(100 * result.out.margin).toFixed(2)} pts</span>}
+            </Row>
+            <Row label="Opponent's equity">
+              {approx}
+              {pct(1 - result.out.equity, 2)}
+            </Row>
+            <Row label="You win outright / split">
+              {approx}
+              {pct(result.out.win, 2)} / {pct(result.out.tie, 2)}
+            </Row>
+            <Row label="Combos left after card removal">
+              {result.out.heroCombos} vs {result.out.villainCombos}
+            </Row>
+            <Legend>
+              <span>{result.out.method}</span>
+            </Legend>
           </>
         )}
       </div>

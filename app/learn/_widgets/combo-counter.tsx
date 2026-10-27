@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { parseCards } from "@/lib/poker/cards";
 import { HAND_CLASSES } from "@/lib/poker/combinatorics";
 import { comboClassName, formatCombo, parseRange, removeDeadCards } from "@/lib/poker/range";
-import { WidgetFrame, inputClass } from "../_components/widget-frame";
+import { Field, Line, Tag } from "@/components/doc";
+import { Scroll, WidgetFrame } from "../_components/widget-frame";
 
 interface ClassRow {
   name: string;
@@ -13,6 +14,9 @@ interface ClassRow {
 }
 
 const CLASS_ORDER = new Map(HAND_CLASSES.map((c, i) => [c.name, i]));
+
+/** Class, live / full count, then the live combos (on their own row under 680px). Columns keep the counts aligned. */
+const ROW = "grid! tabular-nums grid-cols-[5ch_11ch_minmax(0,1fr)] max-[679px]:grid-cols-[5ch_minmax(0,1fr)]";
 
 export function ComboCounter() {
   const [rangeText, setRangeText] = useState("QQ+, AK");
@@ -49,52 +53,48 @@ export function ComboCounter() {
       title="Combo counter"
       footer="Range notation: 22+ (all pairs), ATs+ (ATs, AJs, AQs, AKs), KQo, A5s-A2s, AK (suited and offsuit), AhKh (one combo). Separate tokens with commas."
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Range</span>
-          <input className={inputClass} value={rangeText} onChange={(e) => setRangeText(e.target.value)} spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Cards you can see (yours and the board)</span>
-          <input className={inputClass} value={knownText} onChange={(e) => setKnownText(e.target.value)} spellCheck={false} />
-        </label>
-      </div>
-      <div className="mt-4" aria-live="polite">
+      <Field label="Range" value={rangeText} onChange={(e) => setRangeText(e.target.value)} spellCheck={false} />
+      <Field label="Cards you can see (yours and the board)" value={knownText} onChange={(e) => setKnownText(e.target.value)} spellCheck={false} />
+      <div aria-live="polite">
         {result.error !== null ? (
-          <p className="text-red-600 dark:text-red-400">{result.error}</p>
+          <Line>
+            <Tag>{result.error}</Tag>
+          </Line>
         ) : (
           <>
-            <p className="text-base">
-              <span className="font-mono text-lg font-semibold tabular-nums">{result.after}</span> combos still possible
-              <span className="text-zinc-500">
-                {" "}
-                (of {result.before} before removing the cards you see) ·{" "}
-                <span className="font-mono tabular-nums">{((100 * result.after) / 1326).toFixed(2)}%</span> of all 1,326 starting hands
+            <Line>
+              <span>
+                <span className="inv">{result.after}</span> combos still possible
+                <span className="text-muted">
+                  {" "}
+                  (of {result.before} before removing the cards you see) · {((100 * result.after) / 1326).toFixed(2)}% of all 1,326 starting hands
+                </span>
               </span>
-            </p>
+            </Line>
             {result.rows.length > 0 && (
-              <div className="mt-3 max-h-72 overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-zinc-500">
-                      <th className="pb-1 font-normal">Class</th>
-                      <th className="pb-1 font-normal">Live / full</th>
-                      <th className="pb-1 font-normal">Live combos</th>
-                    </tr>
-                  </thead>
-                  <tbody className="font-mono">
+              <>
+                <Line className={`${ROW} text-muted uppercase`}>
+                  <span>Class</span>
+                  <span className="text-right">Live / full</span>
+                  <span className="max-[679px]:hidden">Live combos</span>
+                </Line>
+                {/* capped at about 12 lines: wide ranges scroll inside the figure instead of running down the page */}
+                <Scroll className="ln-quiet max-h-[calc(var(--lh)*12em)] overflow-y-auto">
+                  <div role="region" aria-label="Live combos by class" tabIndex={0}>
                     {result.rows.map((r) => (
-                      <tr key={r.name} className="border-t border-zinc-100 align-top dark:border-zinc-800">
-                        <td className="py-1 pr-3">{r.name}</td>
-                        <td className={`py-1 pr-3 tabular-nums ${r.live.length < r.full ? "text-amber-700 dark:text-amber-400" : ""}`}>
-                          {r.live.length} / {r.full}
-                        </td>
-                        <td className="py-1 text-xs text-zinc-600 dark:text-zinc-400">{r.live.join(" ") || "none"}</td>
-                      </tr>
+                      <Line key={r.name} className={ROW}>
+                        <span>{r.name}</span>
+                        <span className="text-right">
+                          <span className={r.live.length < r.full ? "inv" : ""}>
+                            {r.live.length} / {r.full}
+                          </span>
+                        </span>
+                        <span className="text-muted max-[679px]:col-span-2">{r.live.join(" ") || "none"}</span>
+                      </Line>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                </Scroll>
+              </>
             )}
           </>
         )}

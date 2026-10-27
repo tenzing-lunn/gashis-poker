@@ -39,16 +39,16 @@ export const KuhnStrategyTable = memo(function KuhnStrategyTable({ strategy }: {
     return {
       key: r.key,
       cells: [
-        <span key="k" className="flex items-baseline gap-2">
-          <span className="w-9 font-mono font-semibold">{r.key}</span>
-          <span className="w-6 text-[11px] text-zinc-500 dark:text-zinc-400">{r.player}</span>
-          <span className="text-zinc-600 dark:text-zinc-300">
-            {r.situation} → <em className="not-italic text-foreground">{r.action}</em>
+        <span key="k" className="flex items-baseline gap-x-[1ch]">
+          <span className="w-[4ch] shrink-0 normal-case">{r.key}</span>
+          <span className="w-[3ch] shrink-0 text-muted">{r.player}</span>
+          <span className="text-muted">
+            {r.situation} → <em className="text-ink not-italic">{r.action}</em>
           </span>
         </span>,
         cfr === undefined ? "—" : fmt(cfr, 4),
         ref === undefined ? "—" : fmt(ref, 4),
-        diff === undefined ? "—" : <span className={diff < 1e-3 ? "text-emerald-600 dark:text-emerald-400" : diff < 1e-2 ? "" : "text-amber-600 dark:text-amber-400"}>{diff < 5e-5 ? "<0.0001" : fmt(diff, 4)}</span>,
+        diff === undefined ? "—" : <span className={diff < 1e-2 ? undefined : "text-amber"}>{diff < 5e-5 ? "<0.0001" : fmt(diff, 4)}</span>,
       ],
     };
   });
@@ -60,7 +60,7 @@ export const KuhnStrategyTable = memo(function KuhnStrategyTable({ strategy }: {
           {alpha !== null && (
             <>
               {" "}
-              Solved <span className="font-mono text-foreground">α = {fmt(alpha, 4)}</span> (any α ∈ [0, ⅓] is an equilibrium).
+              Solved <span className="text-ink">α = {fmt(alpha, 4)}</span> (any α ∈ [0, ⅓] is an equilibrium).
             </>
           )}
         </>

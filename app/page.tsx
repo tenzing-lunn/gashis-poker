@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Blank, BoxButton, Line, Rule, Screen, Sheet } from "@/components/doc";
+import { AttractTable } from "@/components/table/attract-table";
 
 const ROOMS = [
   { href: "/learn", label: "LEARN", note: "TEN SHORT MODULES, EACH WITH A WORKED HAND" },
@@ -41,9 +42,7 @@ export default function Home() {
       <Rule />
       <Screen aria-label="Figure 1: table">
         <Line center>FIG. 1: TABLE</Line>
-        <Line center className="text-muted">
-          TABLE LOADING…
-        </Line>
+        <AttractTable />
       </Screen>
       <Blank />
     </Sheet>

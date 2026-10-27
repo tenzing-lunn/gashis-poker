@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Blank, Line } from "@/components/doc";
 import { LESSONS } from "./lessons";
 
 export const metadata: Metadata = {
@@ -9,28 +10,40 @@ export const metadata: Metadata = {
 
 export default function LearnIndex() {
   return (
-    <div>
-      <h1 className="text-3xl font-semibold tracking-tight">Learn</h1>
-      <p className="mt-3 max-w-prose text-zinc-600 dark:text-zinc-400">
-        Ten modules, in order. Each one derives its numbers instead of handing you rules of thumb, works an
-        example, and ends with an interactive check. Start at module 0 if you have never played.
-      </p>
-      <ol className="mt-8 divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
-        {LESSONS.map((lesson) => (
-          <li key={lesson.slug}>
-            <Link
-              href={`/learn/${lesson.slug}`}
-              className="flex gap-4 px-4 py-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
-            >
-              <span className="w-6 shrink-0 font-mono text-sm tabular-nums text-zinc-400">{lesson.module}</span>
-              <span>
-                <span className="block font-medium">{lesson.title}</span>
-                <span className="block text-sm text-zinc-600 dark:text-zinc-400">{lesson.summary}</span>
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ol>
-    </div>
+    <>
+      <Blank />
+      <Line as="h1">
+        <span className="inv">LEARN</span>
+      </Line>
+      <Line as="p" className="uppercase">
+        <span>
+          Ten modules, in order. Each one derives its numbers instead of handing you rules of thumb, works an example, and ends with an interactive check. Start at module 0 if
+          you have never played.
+        </span>
+      </Line>
+      <Blank />
+      <Line className="uppercase text-muted">
+        <span>Modules</span>
+        <span>10-module course</span>
+      </Line>
+      <nav aria-label="Modules">
+        <ol>
+          {LESSONS.map((lesson) => (
+            <li key={lesson.slug}>
+              <Line>
+                <span className="uppercase">
+                  <span className="inline-block w-[3ch] text-muted">{String(lesson.module).padStart(2, "0")}</span>
+                  <Link href={`/learn/${lesson.slug}`}>{lesson.title} →</Link>
+                </span>
+              </Line>
+              <Line as="p" className="text-muted">
+                <span className="pl-[3ch]">{lesson.summary}</span>
+              </Line>
+            </li>
+          ))}
+        </ol>
+      </nav>
+      <Blank />
+    </>
   );
 }

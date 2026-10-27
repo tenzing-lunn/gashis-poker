@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
+import { Blank, Choice, Line } from "@/components/doc";
 
 interface CheckProps {
   question: ReactNode;
@@ -27,61 +28,57 @@ export function Check({ question, choices, answer, tolerance = 0, unit, children
   const correct = value !== null && (choices ? value === answer : Math.abs(value - answer) <= tolerance + 1e-9);
 
   return (
-    <section className="my-8 rounded-lg border border-zinc-300 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-      <p className="mb-1 text-sm font-semibold uppercase tracking-wide text-zinc-500">Check yourself</p>
-      <div className="mb-3 [&>p]:my-1">{question}</div>
+    <section>
+      <Blank />
+      <Line as="div">
+        <span className="min-w-0 max-w-[72ch]">{question}</span>
+      </Line>
       {choices ? (
-        <div role="radiogroup" className="flex flex-col gap-2">
+        <div role="radiogroup" aria-label="Choices">
           {choices.map((c, i) => (
-            <button
-              key={c}
-              type="button"
-              role="radio"
-              aria-checked={picked === i}
-              onClick={() => setPicked(i)}
-              className={`rounded-md border px-3 py-2 text-left text-sm ${
-                picked === i
-                  ? i === answer
-                    ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40"
-                    : "border-red-400 bg-red-50 dark:bg-red-950/40"
-                  : "border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-              }`}
-            >
-              {c}
-            </button>
+            <Line key={c}>
+              <Choice
+                name={id}
+                checked={picked === i}
+                onChange={() => setPicked(i)}
+                className={`normal-case! ${picked === i ? (i === answer ? "text-green" : "text-red") : ""}`}
+              >
+                {c}
+              </Choice>
+            </Line>
           ))}
         </div>
       ) : (
         <form
-          className="flex items-center gap-2"
+          className="l"
           onSubmit={(e) => {
             e.preventDefault();
             const n = Number(text.replace(/[%,\s]/g, ""));
             if (text.trim() !== "" && Number.isFinite(n)) setSubmitted(n);
           }}
         >
-          <label htmlFor={id} className="sr-only">
-            Your answer
-          </label>
-          <input
-            id={id}
-            inputMode="decimal"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="w-28 rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono tabular-nums dark:border-zinc-700 dark:bg-zinc-950"
-          />
-          {unit && <span className="text-sm text-zinc-500">{unit}</span>}
-          <button type="submit" className="rounded-md bg-zinc-900 px-3 py-1 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">
-            Check
-          </button>
+          <span className="flex flex-wrap items-baseline gap-x-[2ch]">
+            <span className="flex items-baseline gap-x-[1ch]">
+              <label htmlFor={id} className="sr-only">
+                Your answer
+              </label>
+              <input id={id} inputMode="decimal" value={text} onChange={(e) => setText(e.target.value)} className="u w-[12ch]! tabular-nums" />
+              {unit && <span className="text-muted">{unit}</span>}
+            </span>
+            <button type="submit" className="apply cta">
+              Check
+            </button>
+          </span>
         </form>
       )}
       {value !== null && (
-        <div className="mt-3 border-t border-zinc-200 pt-3 text-sm dark:border-zinc-800">
-          <p className={`font-semibold ${correct ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-            {correct ? "Correct." : choices ? "Not quite." : `Not quite. The answer is ${answer}${unit ? ` ${unit}` : ""}.`}
-          </p>
-          <div className="mt-1 [&>p]:my-1">{children}</div>
+        <div>
+          <Line as="p" className="uppercase">
+            <span className={correct ? "text-green" : "text-red"}>
+              {correct ? "Correct." : choices ? "Not quite." : `Not quite. The answer is ${answer}${unit ? ` ${unit}` : ""}.`}
+            </span>
+          </Line>
+          {children}
         </div>
       )}
     </section>

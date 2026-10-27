@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { WidgetFrame, buttonClass } from "../_components/widget-frame";
+import { BoxButton, Legend, Line, TextButton } from "@/components/doc";
+import { Scroll, WidgetFrame } from "../_components/widget-frame";
 import {
   CARD_NAMES,
   INFO_GROUPS,
@@ -49,6 +50,9 @@ function snapshot(state: CfrState, history: Point[]): Snapshot {
 
 const pct = (v: number) => `${(100 * v).toFixed(1)}%`;
 
+/** A right-aligned number column of the strategy table. */
+const NUM = "pr-[2ch] text-right whitespace-nowrap";
+
 // Charts: x is log10(iterations) from 0 (1 iteration) to 5 (100,000).
 const CW = 300, CH = 150, CL = 44, CR = 16, CT = 10, CB = 28;
 const cx = (t: number) => CL + (Math.log10(Math.max(t, 1)) / 5) * (CW - CL - CR);
@@ -73,28 +77,28 @@ function Chart({
   const d = points.map((p, i) => `${i ? "L" : "M"}${cx(p.t).toFixed(1)},${cy(yLabel(y(p))).toFixed(1)}`).join(" ");
   return (
     <figure className="min-w-0 flex-1">
-      <figcaption className="mb-1 text-xs font-semibold text-zinc-600 dark:text-zinc-400">{title}</figcaption>
+      <figcaption className="text-[10px] uppercase text-muted">{title}</figcaption>
       <svg viewBox={`0 0 ${CW} ${CH}`} className="w-full" role="img" aria-label={title}>
         {yTicks.map((k) => (
           <g key={k.label}>
-            <line x1={CL} x2={CW - CR} y1={cy(k.v)} y2={cy(k.v)} className="stroke-zinc-200 dark:stroke-zinc-800" />
-            <text x={CL - 4} y={cy(k.v) + 3} textAnchor="end" className="fill-zinc-500 text-[9px]">
+            <line x1={CL} x2={CW - CR} y1={cy(k.v)} y2={cy(k.v)} className="stroke-faint" />
+            <text x={CL - 4} y={cy(k.v) + 3} textAnchor="end" className="fill-muted text-[9px]">
               {k.label}
             </text>
           </g>
         ))}
         {[1, 10, 100, 1000, 10000, 100000].map((t) => (
-          <text key={t} x={cx(t)} y={CH - CB + 12} textAnchor="middle" className="fill-zinc-500 text-[9px]">
+          <text key={t} x={cx(t)} y={CH - CB + 12} textAnchor="middle" className="fill-muted text-[9px]">
             {t >= 1000 ? `${t / 1000}k` : t}
           </text>
         ))}
-        <text x={(CL + CW - CR) / 2} y={CH - 3} textAnchor="middle" className="fill-zinc-500 text-[9px]">
+        <text x={(CL + CW - CR) / 2} y={CH - 3} textAnchor="middle" className="fill-muted text-[9px]">
           iterations (log scale: each step is 10× more)
         </text>
         {target !== undefined && (
-          <line x1={CL} x2={CW - CR} y1={cy(target)} y2={cy(target)} strokeDasharray="4 3" className="stroke-emerald-600 dark:stroke-emerald-400" />
+          <line x1={CL} x2={CW - CR} y1={cy(target)} y2={cy(target)} strokeDasharray="4 3" className="stroke-muted" />
         )}
-        <path d={d} fill="none" strokeWidth={2} className="stroke-zinc-900 dark:stroke-zinc-100" />
+        <path d={d} fill="none" strokeWidth={2} className="stroke-ink" />
       </svg>
     </figure>
   );
@@ -188,56 +192,42 @@ export function KuhnCfr() {
       title="Kuhn poker solved by CFR"
       footer="Plain CFR: each iteration plays the current regret-matching strategy through all 6 deals and updates the regrets. The average strategy is what converges. Game value and exploitability are computed exactly for the average strategy. Exploitability is the average of what a best response gains against each player (found by trying every pure strategy: each player has 6 decisions with 2 choices each, so 2 × 2 × 2 × 2 × 2 × 2 = 64 ways to always pick one action at each decision)."
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <Line className="justify-start!">
         {running ? (
-          <button type="button" className={buttonClass} onClick={stop}>
+          <BoxButton filled onClick={stop}>
             Pause
-          </button>
+          </BoxButton>
         ) : (
-          <button type="button" className={buttonClass} onClick={start} disabled={snap.iterations >= MAX_ITERATIONS}>
+          <BoxButton filled onClick={start} disabled={snap.iterations >= MAX_ITERATIONS}>
             {snap.iterations === 0 ? "Run CFR" : "Continue"}
-          </button>
+          </BoxButton>
         )}
-        <button
-          type="button"
-          onClick={() => step(1)}
-          disabled={snap.iterations >= MAX_ITERATIONS}
-          className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-        >
-          +1 iteration
-        </button>
-        <button
-          type="button"
-          onClick={() => step(100)}
-          disabled={snap.iterations >= MAX_ITERATIONS}
-          className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-        >
-          +100
-        </button>
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-        >
-          Reset
-        </button>
-      </div>
+        <span>
+          <TextButton onClick={() => step(1)} disabled={snap.iterations >= MAX_ITERATIONS}>
+            [+1 iteration]
+          </TextButton>
+          <TextButton onClick={() => step(100)} disabled={snap.iterations >= MAX_ITERATIONS}>
+            [+100]
+          </TextButton>
+          <TextButton onClick={reset}>[Reset]</TextButton>
+        </span>
+      </Line>
 
-      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <dl>
         {[
           { k: "Iterations", v: snap.iterations.toLocaleString("en-US") },
           { k: "Game value to Player 1", v: snap.iterations ? snap.value.toFixed(4) : "–" },
           { k: "Target −1/18", v: KUHN_VALUE.toFixed(4) },
           { k: "Exploitability (pair average)", v: snap.iterations ? snap.expl.toFixed(4) : "–" },
         ].map((x) => (
-          <div key={x.k} className="rounded-md bg-zinc-100 px-3 py-2 dark:bg-zinc-800">
-            <dt className="text-xs text-zinc-500">{x.k}</dt>
-            <dd className="font-mono text-base tabular-nums">{x.v}</dd>
+          <div key={x.k} className="l">
+            <dt className="uppercase">{x.k}</dt>
+            <dd>{x.v}</dd>
           </div>
         ))}
       </dl>
 
-      <div className="mt-4 flex flex-col gap-4 sm:flex-row">
+      <div className="flex flex-col gap-x-[2ch] gap-y-[0.5em] sm:flex-row">
         <Chart
           title="Game value of the average strategy"
           points={snap.history}
@@ -269,47 +259,70 @@ export function KuhnCfr() {
         />
       </div>
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full text-xs tabular-nums">
-          <thead>
-            <tr className="text-left text-zinc-500 [&_th]:px-1 [&_th]:py-1 [&_th]:font-normal">
-              <th>Situation</th>
-              <th>Card</th>
-              <th>Action</th>
-              <th className="text-right">Average</th>
-              <th className="text-right">Equilibrium (β = {betaEstimate.toFixed(3)})</th>
-              <th className="text-right">Current</th>
-              <th className="text-right">Avg regret check-or-fold / bet-or-call</th>
+      <Scroll>
+        <table className="w-full border-collapse tabular-nums">
+          <thead className="text-muted uppercase">
+            <tr>
+              <th scope="colgroup" colSpan={4} className="l table-cell! text-left">
+                Situation · card · action
+              </th>
+              <th scope="colgroup" colSpan={2} className="text-right whitespace-nowrap">
+                Avg regret
+              </th>
+            </tr>
+            <tr>
+              <td className="l table-cell!" />
+              <th scope="col" className={NUM}>
+                Average
+              </th>
+              <th scope="col" className={NUM}>
+                Equilibrium (<span className="normal-case">β</span> = {betaEstimate.toFixed(3)})
+              </th>
+              <th scope="col" className={NUM}>
+                Current
+              </th>
+              <th scope="col" className={NUM}>
+                check-or-fold
+              </th>
+              <th scope="col" className={`${NUM} pr-0!`}>
+                bet-or-call
+              </th>
             </tr>
           </thead>
-          <tbody>
-            {INFO_GROUPS.map((g, gi) =>
-              CARD_NAMES.map((card, c) => {
+          {INFO_GROUPS.map((g, gi) => (
+            <tbody key={gi}>
+              <tr>
+                <th scope="rowgroup" colSpan={6} className="l table-cell! text-left text-muted uppercase">
+                  {g.label}
+                </th>
+              </tr>
+              {CARD_NAMES.map((card, c) => {
                 const i = gi * 3 + c;
                 return (
-                  <tr key={i} className="border-t border-zinc-200 dark:border-zinc-800 [&_td]:px-1 [&_td]:py-1">
-                    <td className="text-zinc-500">{c === 0 ? g.label : ""}</td>
-                    <td className="font-mono font-semibold">{card}</td>
-                    <td>{g.bet}</td>
-                    <td className="text-right font-mono">{pct(snap.avg[i])}</td>
-                    <td className="text-right font-mono text-zinc-500">{pct(eq[i])}</td>
-                    <td className="text-right font-mono text-zinc-500">{pct(snap.current[i])}</td>
-                    <td className="text-right font-mono text-zinc-500">
-                      {snap.regretPerIter[2 * i].toFixed(3)} / {snap.regretPerIter[2 * i + 1].toFixed(3)}
-                    </td>
+                  <tr key={i} className="align-baseline">
+                    <th scope="row" className="l table-cell! pr-[2ch] text-left whitespace-nowrap uppercase">
+                      {card} {g.bet}
+                    </th>
+                    <td className={NUM}>{pct(snap.avg[i])}</td>
+                    <td className={`${NUM} text-muted`}>{pct(eq[i])}</td>
+                    <td className={`${NUM} text-muted`}>{pct(snap.current[i])}</td>
+                    <td className={`${NUM} text-muted`}>{snap.regretPerIter[2 * i].toFixed(3)}</td>
+                    <td className={`${NUM} pr-0! text-muted`}>{snap.regretPerIter[2 * i + 1].toFixed(3)}</td>
                   </tr>
                 );
-              }),
-            )}
-          </tbody>
+              })}
+            </tbody>
+          ))}
         </table>
-      </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        &ldquo;Average&rdquo; and &ldquo;Current&rdquo; give the probability of the action named (bet or call); the rest of the time the player
-        checks or folds. The equilibrium column plugs the solver&apos;s own J-betting frequency in as β. Regrets are divided by the number of
-        iterations. The positive ones shrink toward 0 as CFR learns; an action the equilibrium never takes keeps a negative average
-        regret, because it really was worse.
-      </p>
+      </Scroll>
+      <Legend>
+        <span>
+          &ldquo;Average&rdquo; and &ldquo;Current&rdquo; give the probability of the action named (bet or call); the rest of the time the player
+          checks or folds. The equilibrium column plugs the solver&apos;s own J-betting frequency in as β. Regrets are divided by the number of
+          iterations. The positive ones shrink toward 0 as CFR learns; an action the equilibrium never takes keeps a negative average
+          regret, because it really was worse.
+        </span>
+      </Legend>
     </WidgetFrame>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { WidgetFrame, buttonClass, inputClass } from "@/app/learn/_components/widget-frame";
+import { BoxButton, Field, Legend, Line, Tag, TextButton } from "@/components/doc";
+import { NumTable, WidgetFrame } from "@/app/learn/_components/widget-frame";
 import { parseCards } from "@/lib/poker/cards";
 import { parseRange } from "@/lib/poker/range";
 import { flopMatchup, type SideResult } from "./flop-range-advantage-math";
@@ -21,10 +22,10 @@ const FLOPS = [
 ];
 
 const BUCKETS = [
-  { min: 0.8, label: "≥ 80%", color: "bg-emerald-600" },
-  { min: 0.5, label: "50–80%", color: "bg-emerald-300 dark:bg-emerald-700" },
-  { min: 0.2, label: "20–50%", color: "bg-zinc-300 dark:bg-zinc-600" },
-  { min: 0, label: "< 20%", color: "bg-zinc-100 dark:bg-zinc-800" },
+  { min: 0.8, label: "≥ 80%", color: "bg-ink" },
+  { min: 0.5, label: "50–80%", color: "bg-muted" },
+  { min: 0.2, label: "20–50%", color: "bg-faint" },
+  { min: 0, label: "< 20%", color: "bg-paper" },
 ];
 
 function buckets(side: SideResult): number[] {
@@ -65,113 +66,102 @@ export function FlopRangeAdvantage() {
       title="Range vs range on the flop"
       footer="Exact: every pair of combos that share no card, with every possible turn and river (990 per pair of combos). A combo's equity is its average share of the pot against the whole opposing range. “Strong” = at least 80% equity."
     >
-      <div className="flex flex-wrap gap-1.5">
-        {FLOPS.map((f) => (
-          <button
-            key={f.cards}
-            type="button"
-            onClick={() => {
-              setFlop(f.cards);
-              setFlopText(f.cards);
-            }}
-            className={`rounded-md border px-2 py-1 text-xs ${
-              flop === f.cards ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900" : "border-zinc-300 dark:border-zinc-700"
-            }`}
-          >
-            <span className="font-mono">{f.cards}</span> · {f.label}
-          </button>
-        ))}
-      </div>
+      <Line>
+        <span className="flex flex-wrap gap-x-[1ch]">
+          {FLOPS.map((f) => (
+            <TextButton
+              key={f.cards}
+              pressed={flop === f.cards}
+              onClick={() => {
+                setFlop(f.cards);
+                setFlopText(f.cards);
+              }}
+            >
+              [<span className="normal-case">{f.cards}</span> · {f.label}]
+            </TextButton>
+          ))}
+        </span>
+      </Line>
 
       <form
-        className="mt-3 grid gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           setFlop(flopText.trim());
           setApplied({ a: rangeA, b: rangeB });
         }}
       >
-        <label className="flex items-center gap-2">
-          <span className="w-28 shrink-0 text-xs text-zinc-500">Flop</span>
-          <input className={`${inputClass} w-32`} value={flopText} onChange={(e) => setFlopText(e.target.value)} aria-label="Flop cards" />
+        <Field label="Flop" value={flopText} onChange={(e) => setFlopText(e.target.value)} aria-label="Flop cards" />
+        <label className="l field">
+          <span>Preflop raiser</span>
+          <textarea className="min-h-12" value={rangeA} onChange={(e) => setRangeA(e.target.value)} />
         </label>
-        <label className="flex items-start gap-2">
-          <span className="w-28 shrink-0 pt-1 text-xs text-zinc-500">Preflop raiser</span>
-          <textarea className={`${inputClass} min-h-12 w-full text-xs`} value={rangeA} onChange={(e) => setRangeA(e.target.value)} />
+        <label className="l field">
+          <span>Caller</span>
+          <textarea className="min-h-12" value={rangeB} onChange={(e) => setRangeB(e.target.value)} />
         </label>
-        <label className="flex items-start gap-2">
-          <span className="w-28 shrink-0 pt-1 text-xs text-zinc-500">Caller</span>
-          <textarea className={`${inputClass} min-h-12 w-full text-xs`} value={rangeB} onChange={(e) => setRangeB(e.target.value)} />
-        </label>
-        <div className="flex gap-2">
-          <button type="submit" className={buttonClass}>
+        <Line className="justify-start!">
+          <BoxButton type="submit" filled>
             Compute
-          </button>
-          <button
-            type="button"
-            className="text-xs text-zinc-500 underline"
+          </BoxButton>
+          <TextButton
             onClick={() => {
               setRangeA(RAISER_RANGE);
               setRangeB(CALLER_RANGE);
               setApplied({ a: RAISER_RANGE, b: CALLER_RANGE });
             }}
           >
-            Reset ranges
-          </button>
-        </div>
+            [Reset ranges]
+          </TextButton>
+        </Line>
       </form>
 
       {result.ok ? (
-        <div className="mt-4 grid gap-4">
-          <table className="w-full border-collapse font-mono tabular-nums">
-            <thead>
-              <tr className="text-left text-xs text-zinc-500">
-                <th className="py-1 pr-2 font-normal" />
-                <th className="py-1 pr-2 font-normal">Combos left</th>
-                <th className="py-1 pr-2 font-normal">Equity</th>
-                <th className="py-1 font-normal">Strong (≥ 80%)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sides.map(({ name, side }) => {
-                const strong = buckets(side)[0];
-                return (
-                  <tr key={name} className="border-t border-zinc-200 dark:border-zinc-800">
-                    <td className="py-1 pr-2 font-sans">{name}</td>
-                    <td className="py-1 pr-2">{side.combos}</td>
-                    <td className="py-1 pr-2 font-semibold">{pct(side.equity)}</td>
-                    <td className="py-1">
-                      {pct(strong)} ({Math.round(strong * side.combos)} combos)
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <>
+          <NumTable
+            head={["Side", "Combos left", "Equity", "Strong (≥ 80%)"]}
+            rows={sides.map(({ name, side }) => {
+              const strong = buckets(side)[0];
+              return {
+                key: name,
+                cells: [
+                  name,
+                  side.combos,
+                  <span key="eq" className="inv">
+                    {pct(side.equity)}
+                  </span>,
+                  `${pct(strong)} (${Math.round(strong * side.combos)} combos)`,
+                ],
+              };
+            })}
+          />
 
-          <div className="grid gap-2">
-            <p className="text-xs text-zinc-500">Each range split by its combos&apos; own equity</p>
-            {sides.map(({ name, side }) => (
-              <div key={name} className="flex items-center gap-2">
-                <span className="w-28 shrink-0 text-xs">{name}</span>
-                <div className="flex h-4 w-full overflow-hidden rounded border border-zinc-300 dark:border-zinc-700">
-                  {buckets(side).map((share, i) => (
-                    <div key={i} className={BUCKETS[i].color} style={{ width: `${share * 100}%` }} title={`${BUCKETS[i].label}: ${pct(share)}`} />
-                  ))}
-                </div>
-              </div>
-            ))}
-            <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+          <Line className="text-muted">
+            <span>Each range split by its combos&apos; own equity</span>
+          </Line>
+          {sides.map(({ name, side }) => (
+            <Line key={name} className="flex-nowrap! items-center">
+              <span className="w-[16ch] shrink-0 uppercase">{name}</span>
+              <span className="flex h-4 min-w-0 flex-1 border border-ink">
+                {buckets(side).map((share, i) => (
+                  <span key={i} className={BUCKETS[i].color} style={{ width: `${share * 100}%` }} title={`${BUCKETS[i].label}: ${pct(share)}`} />
+                ))}
+              </span>
+            </Line>
+          ))}
+          <Legend>
+            <span className="flex flex-wrap gap-x-[2ch]">
               {BUCKETS.map((b) => (
-                <span key={b.label} className="flex items-center gap-1">
-                  <span className={`inline-block h-3 w-3 rounded-sm border border-zinc-300 dark:border-zinc-700 ${b.color}`} /> {b.label}
+                <span key={b.label} className="flex items-center gap-[1ch]">
+                  <span className={`inline-block h-3 w-3 border border-ink ${b.color}`} /> {b.label}
                 </span>
               ))}
-            </div>
-          </div>
-        </div>
+            </span>
+          </Legend>
+        </>
       ) : (
-        <p className="mt-4 text-red-600">{result.error}</p>
+        <Line>
+          <Tag>{result.error}</Tag>
+        </Line>
       )}
     </WidgetFrame>
   );

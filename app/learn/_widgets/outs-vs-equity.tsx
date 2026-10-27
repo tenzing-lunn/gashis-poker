@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { parseCards } from "@/lib/poker/cards";
 import { exactEquity } from "@/lib/poker/equity";
 import { Cards } from "../_components/lesson-ui";
-import { WidgetFrame, inputClass } from "../_components/widget-frame";
+import { Field, Legend, Line, Tag, TextButton } from "@/components/doc";
+import { Row, WidgetFrame } from "../_components/widget-frame";
 import { nextCardOuts, oneCard, twoCards } from "./outs-math";
 
 const PRESETS = [
@@ -46,75 +47,64 @@ export function OutsVsEquity() {
       title="Outs vs real equity against a known hand"
       footer="Both hands are known here, so the unseen deck is 52 − 4 hole cards − the board (44 on the turn, 45 on the flop). Exact result: every possible runout enumerated."
     >
-      <div className="flex flex-wrap gap-2">
-        {PRESETS.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            onClick={() => {
-              setHero(p.hero);
-              setVillain(p.villain);
-              setBoard(p.board);
-            }}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Your hand</span>
-          <input className={inputClass} value={hero} onChange={(e) => setHero(e.target.value)} spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Opponent&apos;s hand</span>
-          <input className={inputClass} value={villain} onChange={(e) => setVillain(e.target.value)} spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Board (3 or 4 cards)</span>
-          <input className={inputClass} value={board} onChange={(e) => setBoard(e.target.value)} spellCheck={false} />
-        </label>
-      </div>
-      <div className="mt-4 space-y-2" aria-live="polite">
+      <Line>
+        <span className="flex flex-wrap gap-x-[1ch]">
+          {PRESETS.map((p) => (
+            <TextButton
+              key={p.label}
+              pressed={hero === p.hero && villain === p.villain && board === p.board}
+              onClick={() => {
+                setHero(p.hero);
+                setVillain(p.villain);
+                setBoard(p.board);
+              }}
+            >
+              [{p.label}]
+            </TextButton>
+          ))}
+        </span>
+      </Line>
+      <Field label="Your hand" value={hero} onChange={(e) => setHero(e.target.value)} spellCheck={false} />
+      <Field label="Opponent's hand" value={villain} onChange={(e) => setVillain(e.target.value)} spellCheck={false} />
+      <Field label="Board (3 or 4 cards)" value={board} onChange={(e) => setBoard(e.target.value)} spellCheck={false} />
+      <div aria-live="polite">
         {r.error !== null ? (
-          <p className="text-red-600 dark:text-red-400">{r.error}</p>
+          <Line>
+            <Tag>{r.error}</Tag>
+          </Line>
         ) : (
           <>
-            <p className="text-zinc-600 dark:text-zinc-400">
-              Right now you are {r.outs.now > 0 ? "ahead" : r.outs.now < 0 ? "behind" : "tied"}.
-            </p>
-            <div>
-              <p>
-                <span className="font-semibold">{r.o} outs</span>{" "}
-                <span className="text-zinc-500">(next cards that put you ahead):</span>
-              </p>
-              <div className="mt-1 flex flex-wrap gap-1">{r.o > 0 ? <Cards hand={r.outs.ahead.join("")} /> : <span className="text-zinc-500">none</span>}</div>
-              {r.outs.tie.length > 0 && (
-                <p className="mt-1 text-zinc-500">
+            <Line className="text-muted">
+              <span>Right now you are {r.outs.now > 0 ? "ahead" : r.outs.now < 0 ? "behind" : "tied"}.</span>
+            </Line>
+            <Line>
+              <span>
+                <span className="inv">{r.o} outs</span> <span className="text-muted">(next cards that put you ahead):</span>
+              </span>
+            </Line>
+            <Line>
+              <span className="flex flex-wrap gap-1">{r.o > 0 ? <Cards hand={r.outs.ahead.join("")} /> : <span className="text-muted">none</span>}</span>
+            </Line>
+            {r.outs.tie.length > 0 && (
+              <Line className="text-muted">
+                <span>
                   Plus {r.outs.tie.length} card{r.outs.tie.length > 1 ? "s" : ""} that would tie: <Cards hand={r.outs.tie.join("")} />
-                </p>
-              )}
-            </div>
-            <table className="w-full text-sm">
-              <tbody className="[&_td]:py-1">
-                <tr>
-                  <td className="text-zinc-500">Outs estimate</td>
-                  <td className="font-mono">{r.formula}</td>
-                  <td className="text-right font-mono tabular-nums">{pct(r.estimate)}</td>
-                </tr>
-                <tr>
-                  <td className="text-zinc-500">Exact equity (all runouts)</td>
-                  <td />
-                  <td className="text-right font-mono font-semibold tabular-nums">{pct(r.eq.equity)}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p className="text-xs text-zinc-500">
-              {r.street === "turn"
-                ? "With one card to come, an out either wins or it does not, so the outs count is exact when every out wins and nothing else does."
-                : "With two cards to come, the outs estimate misses runner-runner hands (two running cards that both help) and the opponent improving after you hit, so it can differ from the exact equity in either direction."}
-            </p>
+                </span>
+              </Line>
+            )}
+            <Row label="Outs estimate">
+              <span className="text-muted">{r.formula}</span> {pct(r.estimate)}
+            </Row>
+            <Row label="Exact equity (all runouts)">
+              <span className="inv">{pct(r.eq.equity)}</span>
+            </Row>
+            <Legend>
+              <span>
+                {r.street === "turn"
+                  ? "With one card to come, an out either wins or it does not, so the outs count is exact when every out wins and nothing else does."
+                  : "With two cards to come, the outs estimate misses runner-runner hands (two running cards that both help) and the opponent improving after you hit, so it can differ from the exact equity in either direction."}
+              </span>
+            </Legend>
           </>
         )}
       </div>

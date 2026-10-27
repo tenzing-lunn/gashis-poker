@@ -6,7 +6,7 @@ import type { KuhnBetProbs, KuhnPoint, KuhnResult } from "@/lib/gto/worker-proto
 import { KuhnCharts, SWATCH, VARIANT_LABEL, type KuhnSeries } from "./kuhn-charts";
 import { KuhnStrategyTable } from "./kuhn-table";
 import { fmt, fmtSigned, ms } from "./format";
-import { Button, Card, Field, Panel, Sci, Stat, StatusLine, selectClass } from "./ui";
+import { Actions, Button, Card, Figure, Panel, Sci, Stat, StatusLine, Toggles } from "./ui";
 import { useSolverWorker } from "./use-solver";
 
 const ITERATION_OPTIONS = [1_000, 10_000, 100_000, 1_000_000];
@@ -84,82 +84,67 @@ export function KuhnPanel() {
       title="Kuhn poker, solved by counterfactual regret minimisation"
       kicker="Three cards (J < Q < K), ante 1, one bet of 1. CFR plays the game against itself and averages its strategies; the average converges to a Nash equilibrium, worth −1/18 chip per hand to the first player."
     >
-      <Card>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:items-end">
-          <Field label="Algorithm" htmlFor="kuhn-variant">
-            <select id="kuhn-variant" className={selectClass} value={variant} onChange={(e) => setVariant(e.target.value as CfrVariant)} disabled={running}>
-              <option value="cfr+">CFR+</option>
-              <option value="cfr">CFR (vanilla)</option>
-            </select>
-          </Field>
-          <Field label="Iterations" htmlFor="kuhn-iterations">
-            <select id="kuhn-iterations" className={selectClass} value={iterations} onChange={(e) => setIterations(Number(e.target.value))} disabled={running}>
-              {ITERATION_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {fmt(n, 0)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Pace" htmlFor="kuhn-pace">
-            <select id="kuhn-pace" className={selectClass} value={pace} onChange={(e) => setPace(Number(e.target.value))} disabled={running}>
-              {PACE_OPTIONS.map((p) => (
-                <option key={p.ms} value={p.ms}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="flex gap-2">
-            <Button onClick={start} disabled={running}>
-              Run
-            </Button>
-            <Button onClick={halt} variant="secondary" disabled={!running}>
-              Stop
-            </Button>
-          </div>
-        </div>
-        <div className="mt-3">
-          <StatusLine tone={running ? "busy" : status === "error" ? "error" : "muted"}>
-            {status === "idle" && "Press Run to start. Runs happen in a Web Worker; the page stays responsive."}
-            {running && `${VARIANT_LABEL[runVariant]}: iteration ${fmt(last?.iteration ?? 0, 0)} of ${fmt(runTotal, 0)}`}
-            {status === "done" && result && `${VARIANT_LABEL[result.variant]}: ${fmt(result.iterations, 0)} iterations in ${ms(result.timeMs)}${runPace > 0 ? ", including the pacing delays" : ""}`}
-            {status === "stopped" && `Stopped at iteration ${fmt(last?.iteration ?? 0, 0)}.`}
-            {status === "error" && `Solver error: ${error}`}
-          </StatusLine>
-        </div>
+      <Card title="Setup">
+        <Toggles
+          label="Algorithm"
+          value={variant}
+          onChange={setVariant}
+          disabled={running}
+          options={[
+            { value: "cfr+", label: "CFR+" },
+            { value: "cfr", label: "CFR (vanilla)" },
+          ]}
+        />
+        <Toggles label="Iterations" value={iterations} onChange={setIterations} disabled={running} options={ITERATION_OPTIONS.map((n) => ({ value: n, label: fmt(n, 0) }))} />
+        <Toggles label="Pace" value={pace} onChange={setPace} disabled={running} options={PACE_OPTIONS.map((p) => ({ value: p.ms, label: p.label }))} />
+        <Actions>
+          <Button onClick={start} disabled={running}>
+            Run
+          </Button>
+          <Button onClick={halt} variant="secondary" disabled={!running}>
+            Stop
+          </Button>
+        </Actions>
+        <StatusLine tone={running ? "busy" : status === "error" ? "error" : "muted"}>
+          {status === "idle" && "Press Run to start. Runs happen in a Web Worker; the page stays responsive."}
+          {running && `${VARIANT_LABEL[runVariant]}: iteration ${fmt(last?.iteration ?? 0, 0)} of ${fmt(runTotal, 0)}`}
+          {status === "done" && result && `${VARIANT_LABEL[result.variant]}: ${fmt(result.iterations, 0)} iterations in ${ms(result.timeMs)}${runPace > 0 ? ", including the pacing delays" : ""}`}
+          {status === "stopped" && `Stopped at iteration ${fmt(last?.iteration ?? 0, 0)}.`}
+          {status === "error" && `Solver error: ${error}`}
+        </StatusLine>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        <Card
-          title="Convergence of the average strategy"
-          aside={
-            <span className="flex flex-wrap gap-3">
-              {series.map((s) => (
-                <span key={`${s.variant}-${s.ghost}`} className="flex items-center gap-1.5">
-                  <span className={`h-0.5 w-4 ${SWATCH[s.variant]} ${s.ghost ? "opacity-60" : ""}`} />
-                  {VARIANT_LABEL[s.variant]}
-                  {s.ghost ? " (previous)" : ""}
-                </span>
-              ))}
-            </span>
-          }
-        >
-          <KuhnCharts series={series} maxIterations={runTotal} />
-        </Card>
-        <Card title="Now">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-1">
-            <Stat label="Iterations" value={last ? fmt(last.iteration, 0) : "—"} />
-            <Stat label="Exploitability" value={last ? <Sci x={last.exploitability} /> : "—"} unit="chips/hand" />
-            <Stat label="P0 value" value={last ? fmtSigned(last.value, 5) : "—"} unit="chips/hand" />
-            <Stat label="Gap to −1/18" value={last ? <Sci x={Math.abs(last.value + 1 / 18)} digits={1} /> : "—"} unit="chips/hand" />
-          </div>
-          <p className="mt-4 text-xs leading-5 text-zinc-600 dark:text-zinc-400">
-            <strong className="font-semibold text-foreground">Exploitability</strong> is how much a perfect counter-strategy would win per hand against
-            this strategy, averaged over the two seats (NashConv ÷ 2). It is exactly 0 at a Nash equilibrium.
-          </p>
-        </Card>
-      </div>
+      <Figure
+        caption="FIG. 1: Convergence of the average strategy"
+        legend={
+          <span className="flex flex-wrap gap-x-[2ch]">
+            {series.map((s) => (
+              <span key={`${s.variant}-${s.ghost}`} className="inline-flex items-center gap-[1ch]">
+                <svg aria-hidden="true" width="24" height="6" className={SWATCH[s.variant]}>
+                  <line x1="0" x2="24" y1="3" y2="3" stroke="currentColor" strokeWidth={s.ghost ? 1.25 : 2} strokeDasharray={s.ghost ? "4 3" : undefined} />
+                </svg>
+                {VARIANT_LABEL[s.variant]}
+                {s.ghost ? " (previous)" : ""}
+              </span>
+            ))}
+          </span>
+        }
+      >
+        <KuhnCharts series={series} maxIterations={runTotal} />
+      </Figure>
+
+      <Card title="Now">
+        <Stat label="Iterations" value={last ? fmt(last.iteration, 0) : "—"} />
+        <Stat label="Exploitability" value={last ? <Sci x={last.exploitability} /> : "—"} unit="chips/hand" />
+        <Stat label="P0 value" value={last ? fmtSigned(last.value, 5) : "—"} unit="chips/hand" />
+        <Stat label="Gap to −1/18" value={last ? <Sci x={Math.abs(last.value + 1 / 18)} digits={1} /> : "—"} unit="chips/hand" />
+        <p className="l">
+          <span className="max-w-[72ch] text-muted">
+            <span className="text-ink uppercase">Exploitability</span> is how much a perfect counter-strategy would win per hand against this strategy, averaged over
+            the two seats (NashConv ÷ 2). It is exactly 0 at a Nash equilibrium.
+          </span>
+        </p>
+      </Card>
 
       <Card title="Average strategy vs. Kuhn's analytic equilibrium">
         <KuhnStrategyTable strategy={strategy} />

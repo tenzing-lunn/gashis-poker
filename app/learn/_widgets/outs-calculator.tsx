@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { WidgetFrame, inputClass } from "../_components/widget-frame";
+import { Choice, Field, Line } from "@/components/doc";
+import { Row, WidgetFrame } from "../_components/widget-frame";
 import { oddsAgainst, oneCard, twoCards } from "./outs-math";
 
 type Spot = "turn" | "river" | "both";
@@ -31,61 +32,40 @@ export function OutsCalculator() {
 
   return (
     <WidgetFrame title="Outs calculator: exact vs rule of thumb" footer="Unseen cards are counted from your own view: 52 minus your 2 hole cards and the board.">
-      <div className="flex flex-wrap items-end gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Outs (0–20)</span>
-          <input
-            className={`${inputClass} w-20`}
-            type="number"
-            min={0}
-            max={20}
-            value={outs}
-            onChange={(e) => setOuts(Number(e.target.value))}
-          />
-        </label>
-        <input type="range" min={0} max={20} value={o} onChange={(e) => setOuts(Number(e.target.value))} aria-label="Outs" className="w-48" />
+      <Field label="Outs (0–20)" type="number" min={0} max={20} value={outs} onChange={(e) => setOuts(Number(e.target.value))} />
+      <div className="l field">
+        <span />
+        <input type="range" min={0} max={20} value={o} onChange={(e) => setOuts(Number(e.target.value))} aria-label="Outs" className="accent-ink border-dotted! border-muted!" />
       </div>
-      <fieldset className="mt-3 flex flex-col gap-1">
-        <legend className="mb-1 text-zinc-500">Cards to come</legend>
+      <fieldset>
+        <Line as="legend" className="uppercase">
+          Cards to come
+        </Line>
         {SPOTS.map((s) => (
-          <label key={s.id} className="flex items-center gap-2">
-            <input type="radio" name="outs-spot" checked={spot === s.id} onChange={() => setSpot(s.id)} />
-            {s.label}
-          </label>
+          <Line key={s.id}>
+            <Choice name="outs-spot" checked={spot === s.id} onChange={() => setSpot(s.id)}>
+              {s.label}
+            </Choice>
+          </Line>
         ))}
       </fieldset>
-      <table className="mt-4 w-full text-sm" aria-live="polite">
-        <tbody className="[&_td]:py-1">
-          <tr>
-            <td className="text-zinc-500">Exact</td>
-            <td className="font-mono">{formula}</td>
-            <td className="text-right font-mono font-semibold tabular-nums">{pct(exact)}</td>
-          </tr>
-          <tr>
-            <td className="text-zinc-500">As odds against</td>
-            <td />
-            <td className="text-right font-mono tabular-nums">{o === 0 ? "never hits" : `${oddsAgainst(exact).toFixed(2)} to 1`}</td>
-          </tr>
-          <tr>
-            <td className="text-zinc-500">Rule of {spot === "both" ? 4 : 2}</td>
-            <td className="font-mono">
-              {spot === "both" ? 4 : 2} × {o}
-            </td>
-            <td className="text-right font-mono tabular-nums">
-              {thumb}% <span className="text-zinc-500">({signed(thumb - 100 * exact)} pts)</span>
-            </td>
-          </tr>
-          {patch !== null && (
-            <tr>
-              <td className="text-zinc-500">Patch above 8 outs</td>
-              <td className="font-mono">3 × {o} + 8</td>
-              <td className="text-right font-mono tabular-nums">
-                {patch}% <span className="text-zinc-500">({signed(patch - 100 * exact)} pts)</span>
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <div aria-live="polite">
+        <Row label="Exact">
+          <span className="text-muted">{formula}</span> <span className="inv">{pct(exact)}</span>
+        </Row>
+        <Row label="As odds against">{o === 0 ? "never hits" : `${oddsAgainst(exact).toFixed(2)} to 1`}</Row>
+        <Row label={`Rule of ${spot === "both" ? 4 : 2}`}>
+          <span className="text-muted">
+            {spot === "both" ? 4 : 2} × {o}
+          </span>{" "}
+          {thumb}% <span className="text-muted">({signed(thumb - 100 * exact)} pts)</span>
+        </Row>
+        {patch !== null && (
+          <Row label="Patch above 8 outs">
+            <span className="text-muted">3 × {o} + 8</span> {patch}% <span className="text-muted">({signed(patch - 100 * exact)} pts)</span>
+          </Row>
+        )}
+      </div>
     </WidgetFrame>
   );
 }

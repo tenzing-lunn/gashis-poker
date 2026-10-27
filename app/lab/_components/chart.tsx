@@ -88,7 +88,7 @@ export interface Frame {
   bottom: number;
 }
 
-export function makeFrame(width: number, height: number, margin = { left: 52, right: 14, top: 12, bottom: 36 }): Frame {
+export function makeFrame(width: number, height: number, margin = { left: 52, right: 14, top: 26, bottom: 36 }): Frame {
   return { width, height, left: margin.left, right: width - margin.right, top: margin.top, bottom: height - margin.bottom };
 }
 
@@ -115,17 +115,19 @@ export function ChartFrame(props: {
           <rect x={f.left} y={f.top} width={Math.max(0, f.right - f.left)} height={Math.max(0, f.bottom - f.top)} />
         </clipPath>
       </defs>
-      <g className="text-zinc-400 dark:text-zinc-600">
+      <g className="text-faint">
         {props.yTicks.map((v) => (
-          <line key={`gy${v}`} x1={f.left} x2={f.right} y1={y(v)} y2={y(v)} stroke="currentColor" strokeOpacity={0.35} strokeWidth={1} />
+          <line key={`gy${v}`} x1={f.left} x2={f.right} y1={y(v)} y2={y(v)} stroke="currentColor" strokeWidth={1} />
         ))}
         {props.xTicks.map((v) => (
-          <line key={`gx${v}`} x1={x(v)} x2={x(v)} y1={f.top} y2={f.bottom} stroke="currentColor" strokeOpacity={0.2} strokeWidth={1} />
+          <line key={`gx${v}`} x1={x(v)} x2={x(v)} y1={f.top} y2={f.bottom} stroke="currentColor" strokeDasharray="1 3" strokeWidth={1} />
         ))}
+      </g>
+      <g className="text-ink">
         <line x1={f.left} x2={f.right} y1={f.bottom} y2={f.bottom} stroke="currentColor" />
         <line x1={f.left} x2={f.left} y1={f.top} y2={f.bottom} stroke="currentColor" />
       </g>
-      <g className="fill-zinc-500 text-[11px] tabular-nums dark:fill-zinc-400">
+      <g className="fill-muted text-[10px] uppercase tabular-nums">
         {props.yTicks.map((v) => (
           <text key={`ty${v}`} x={f.left - 6} y={y(v)} dy="0.32em" textAnchor="end">
             {props.yFormat(v)}
@@ -136,10 +138,11 @@ export function ChartFrame(props: {
             {props.xFormat(v)}
           </text>
         ))}
-        <text x={(f.left + f.right) / 2} y={f.height - 4} textAnchor="middle" className="fill-zinc-600 dark:fill-zinc-300">
+        <text x={(f.left + f.right) / 2} y={f.height - 4} textAnchor="middle" className="fill-ink">
           {props.xLabel}
         </text>
-        <text transform={`translate(12 ${(f.top + f.bottom) / 2}) rotate(-90)`} textAnchor="middle" className="fill-zinc-600 dark:fill-zinc-300">
+        {/* y-axis title as a caption line above the plot (needs margin.top >= 26), so it never clips or meets the ticks */}
+        <text x={0} y={10} textAnchor="start" className="fill-ink">
           {props.yLabel}
         </text>
       </g>

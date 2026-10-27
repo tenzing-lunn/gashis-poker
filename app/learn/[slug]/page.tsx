@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { Blank, Line, Rule } from "@/components/doc";
 import { lessonComponents } from "../_components/mdx-components";
 import { LESSONS, lessonBySlug } from "../lessons";
 
@@ -21,7 +22,13 @@ export async function generateMetadata({ params }: PageProps<"/learn/[slug]">): 
 // instant shell shown during navigation.
 export default function LessonPage({ params }: PageProps<"/learn/[slug]">) {
   return (
-    <Suspense fallback={<p className="font-mono text-xs uppercase tracking-widest text-zinc-500">Loading lesson…</p>}>
+    <Suspense
+      fallback={
+        <Line as="p" className="uppercase text-muted">
+          <span>Loading lesson…</span>
+        </Line>
+      }
+    >
       <Lesson params={params} />
     </Suspense>
   );
@@ -39,28 +46,26 @@ async function Lesson({ params }: { params: Params }) {
 
   return (
     <article>
-      <p className="font-mono text-xs uppercase tracking-widest text-zinc-500">Module {lesson.module}</p>
+      <Blank />
+      <Line as="nav" aria-label="Course" className="uppercase">
+        <Link href="/learn">← All modules</Link>
+        <span className="text-muted">Module {lesson.module} · 10-module course</span>
+      </Line>
+      <Blank />
       <Content components={lessonComponents} />
-      <nav className="mt-12 flex justify-between gap-4 border-t border-zinc-200 pt-6 text-sm dark:border-zinc-800">
-        {prev ? (
-          <Link href={`/learn/${prev.slug}`} className="hover:underline">
-            ← {prev.module}. {prev.title}
-          </Link>
-        ) : (
-          <Link href="/learn" className="hover:underline">
-            ← All modules
-          </Link>
-        )}
+      <Blank />
+      <Rule />
+      <Line as="nav" aria-label="Lessons" className="uppercase">
+        {prev ? <Link href={`/learn/${prev.slug}`}>← {prev.module}. {prev.title}</Link> : <Link href="/learn">← All modules</Link>}
         {next ? (
-          <Link href={`/learn/${next.slug}`} className="text-right hover:underline">
+          <Link href={`/learn/${next.slug}`} className="text-right">
             {next.module}. {next.title} →
           </Link>
         ) : (
-          <Link href="/learn" className="hover:underline">
-            All modules →
-          </Link>
+          <Link href="/learn">All modules →</Link>
         )}
-      </nav>
+      </Line>
+      <Blank />
     </article>
   );
 }

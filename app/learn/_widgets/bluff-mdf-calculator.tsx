@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { WidgetFrame, inputClass } from "../_components/widget-frame";
+import { Field, Legend, Line, Tag, TextButton } from "@/components/doc";
+import { Row, WidgetFrame } from "../_components/widget-frame";
 
 // All three quantities depend only on the bet as a fraction of the pot, x = B / P:
 //   bluff share that makes a call break even  B / (P + 2B) = x / (1 + 2x)
@@ -26,10 +27,11 @@ const path = (f: (x: number) => number) =>
     .map((x, i) => `${i ? "L" : "M"}${sx(x).toFixed(1)},${sy(f(x)).toFixed(1)}`)
     .join(" ");
 
+// Ink only: the three curves differ by dash and tone, not hue.
 const LINES = [
-  { f: mdf, label: "MDF", color: "stroke-sky-600 dark:stroke-sky-400", dot: "fill-sky-600 dark:fill-sky-400" },
-  { f: alpha, label: "α (fold % a bluff needs)", color: "stroke-amber-600 dark:stroke-amber-400", dot: "fill-amber-600 dark:fill-amber-400" },
-  { f: bluffShare, label: "Bluff share of a balanced bet", color: "stroke-emerald-600 dark:stroke-emerald-400", dot: "fill-emerald-600 dark:fill-emerald-400" },
+  { f: mdf, label: "MDF", color: "stroke-ink", dot: "fill-ink", dash: undefined },
+  { f: alpha, label: "α (fold % a bluff needs)", color: "stroke-ink", dot: "fill-ink", dash: "6 4" },
+  { f: bluffShare, label: "Bluff share of a balanced bet", color: "stroke-muted", dot: "fill-muted", dash: undefined },
 ];
 
 export function BluffMdfCalculator() {
@@ -45,109 +47,84 @@ export function BluffMdfCalculator() {
       title="Bet size → bluff share, MDF and alpha"
       footer="All three numbers depend only on the bet as a fraction of the pot. The pot is measured before the bet. The AKQ row uses the game from this lesson: the bettor holds A or Q with equal chance and the caller always holds K."
     >
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Pot before the bet (bb)</span>
-          <input className={`${inputClass} w-28`} inputMode="decimal" value={pot} onChange={(e) => setPot(e.target.value)} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Bet (bb)</span>
-          <input className={`${inputClass} w-28`} inputMode="decimal" value={bet} onChange={(e) => setBet(e.target.value)} />
-        </label>
-        <div className="flex flex-wrap gap-1">
+      <Field label="Pot before the bet (bb)" inputMode="decimal" value={pot} onChange={(e) => setPot(e.target.value)} />
+      <Field label="Bet (bb)" inputMode="decimal" value={bet} onChange={(e) => setBet(e.target.value)} />
+      <Line>
+        <span className="flex flex-wrap gap-x-[1ch]">
           {PRESET_FRACTIONS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setBet(String(Math.round(f * (valid ? P : 10) * 100) / 100))}
-              className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            >
-              {presetLabel(f)} pot
-            </button>
+            <TextButton key={f} onClick={() => setBet(String(Math.round(f * (valid ? P : 10) * 100) / 100))}>
+              [{presetLabel(f)} pot]
+            </TextButton>
           ))}
-        </div>
-      </div>
+        </span>
+      </Line>
 
       {!valid ? (
-        <p className="mt-4 text-red-600 dark:text-red-400">Enter a positive pot and a positive bet.</p>
+        <Line>
+          <Tag>Enter a positive pot and a positive bet.</Tag>
+        </Line>
       ) : (
         <>
-          <table className="mt-4 w-full text-sm">
-            <tbody className="[&_td]:py-1">
-              <tr>
-                <td className="text-zinc-500">Bet as a fraction of the pot</td>
-                <td className="font-mono text-zinc-500">r = B / P</td>
-                <td className="text-right font-mono tabular-nums">{pct(x)}</td>
-              </tr>
-              <tr>
-                <td>Caller&apos;s required equity = bluff share s that makes calling break even</td>
-                <td className="font-mono text-zinc-500">s = B / (P + 2B)</td>
-                <td className="text-right font-mono font-semibold tabular-nums">{pct(bluffShare(x))}</td>
-              </tr>
-              <tr>
-                <td className="text-zinc-500">Bluffs : value bets in that range</td>
-                <td className="font-mono text-zinc-500">s / (1 − s) = B / (P + B)</td>
-                <td className="text-right font-mono tabular-nums">1 bluff : {((1 - bluffShare(x)) / bluffShare(x)).toFixed(2)} value bets</td>
-              </tr>
-              <tr>
-                <td>Minimum defense frequency (MDF)</td>
-                <td className="font-mono text-zinc-500">P / (P + B)</td>
-                <td className="text-right font-mono font-semibold tabular-nums">{pct(mdf(x))}</td>
-              </tr>
-              <tr>
-                <td>Alpha: how often a pure bluff must work</td>
-                <td className="font-mono text-zinc-500">B / (P + B)</td>
-                <td className="text-right font-mono font-semibold tabular-nums">{pct(alpha(x))}</td>
-              </tr>
-              <tr>
-                <td className="text-zinc-500">AKQ game: bettor bluffs Q / caller calls K</td>
-                <td className="font-mono text-zinc-500">B/(P+B), P/(P+B)</td>
-                <td className="text-right font-mono tabular-nums">
-                  {pct(alpha(x))} / {pct(mdf(x))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <Row label="Bet as a fraction of the pot">
+            <span className="text-muted normal-case">r = B / P</span> {pct(x)}
+          </Row>
+          <Row label={<>Caller&apos;s required equity = bluff share <span className="normal-case">s</span> that makes calling break even</>}>
+            <span className="text-muted normal-case">s = B / (P + 2B)</span> <span className="inv">{pct(bluffShare(x))}</span>
+          </Row>
+          <Row label="Bluffs : value bets in that range">
+            <span className="text-muted normal-case">s / (1 − s) = B / (P + B)</span> 1 bluff : {((1 - bluffShare(x)) / bluffShare(x)).toFixed(2)} value bets
+          </Row>
+          <Row label="Minimum defense frequency (MDF)">
+            <span className="text-muted">P / (P + B)</span> <span className="inv">{pct(mdf(x))}</span>
+          </Row>
+          <Row label="Alpha: how often a pure bluff must work">
+            <span className="text-muted">B / (P + B)</span> <span className="inv">{pct(alpha(x))}</span>
+          </Row>
+          <Row label="AKQ game: bettor bluffs Q / caller calls K">
+            <span className="text-muted">B/(P+B), P/(P+B)</span> {pct(alpha(x))} / {pct(mdf(x))}
+          </Row>
 
-          <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 w-full" role="img" aria-label="MDF, alpha and bluff share as the bet grows from 0 to 3 times the pot">
+          <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label="MDF, alpha and bluff share as the bet grows from 0 to 3 times the pot">
             {[0, 0.25, 0.5, 0.75, 1].map((v) => (
               <g key={v}>
-                <line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} className="stroke-zinc-200 dark:stroke-zinc-800" />
-                <text x={L - 6} y={sy(v) + 4} textAnchor="end" className="fill-zinc-500 text-[10px]">
+                <line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} className="stroke-faint" />
+                <text x={L - 6} y={sy(v) + 4} textAnchor="end" className="fill-muted text-[10px]">
                   {v * 100}%
                 </text>
               </g>
             ))}
             {[0, 0.5, 1, 1.5, 2, 2.5, 3].map((t) => (
-              <text key={t} x={sx(t)} y={H - B + 14} textAnchor="middle" className="fill-zinc-500 text-[10px]">
+              <text key={t} x={sx(t)} y={H - B + 14} textAnchor="middle" className="fill-muted text-[10px]">
                 {t}×
               </text>
             ))}
-            <text x={(L + W - R) / 2} y={H - 4} textAnchor="middle" className="fill-zinc-500 text-[10px]">
+            <text x={(L + W - R) / 2} y={H - 4} textAnchor="middle" className="fill-muted text-[10px]">
               bet size (× pot)
             </text>
             {LINES.map((l) => (
-              <path key={l.label} d={path(l.f)} fill="none" strokeWidth={2} className={l.color} />
+              <path key={l.label} d={path(l.f)} fill="none" strokeWidth={2} strokeDasharray={l.dash} className={l.color} />
             ))}
             {x <= X_MAX && (
               <>
-                <line x1={sx(x)} x2={sx(x)} y1={T} y2={H - B} className="stroke-zinc-400" strokeDasharray="3 3" />
+                <line x1={sx(x)} x2={sx(x)} y1={T} y2={H - B} className="stroke-muted" strokeDasharray="3 3" />
                 {LINES.map((l) => (
                   <circle key={l.label} cx={sx(x)} cy={sy(l.f(x))} r={4} className={l.dot} />
                 ))}
               </>
             )}
           </svg>
-          <div className="mt-1 flex flex-wrap gap-4 text-xs">
-            {LINES.map((l) => (
-              <span key={l.label} className="flex items-center gap-1">
-                <svg width="16" height="4" aria-hidden="true">
-                  <line x1="0" x2="16" y1="2" y2="2" strokeWidth={3} className={l.color} />
-                </svg>
-                {l.label}
-              </span>
-            ))}
-          </div>
+          <Legend>
+            <span className="flex flex-wrap gap-x-[2ch]">
+              {LINES.map((l) => (
+                <span key={l.label} className="flex items-center gap-[1ch]">
+                  <svg width="24" height="4" aria-hidden="true">
+                    <line x1="0" x2="24" y1="2" y2="2" strokeWidth={2} strokeDasharray={l.dash} className={l.color} />
+                  </svg>
+                  {l.label}
+                </span>
+              ))}
+            </span>
+          </Legend>
         </>
       )}
     </WidgetFrame>

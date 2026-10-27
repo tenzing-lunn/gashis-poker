@@ -15,13 +15,15 @@ export interface KuhnSeries {
 }
 
 export const VARIANT_LABEL: Record<CfrVariant, string> = { cfr: "CFR", "cfr+": "CFR+" };
+// Two tones on the band: CFR+ in ink, vanilla CFR in muted grey. Earlier runs are dashed.
 const STROKE: Record<CfrVariant, string> = {
-  cfr: "stroke-violet-600 dark:stroke-violet-400",
-  "cfr+": "stroke-emerald-600 dark:stroke-emerald-400",
+  cfr: "stroke-muted",
+  "cfr+": "stroke-ink",
 };
+/** Text colour for a legend swatch drawn with currentColor. */
 export const SWATCH: Record<CfrVariant, string> = {
-  cfr: "bg-violet-600 dark:bg-violet-400",
-  "cfr+": "bg-emerald-600 dark:bg-emerald-400",
+  cfr: "text-muted",
+  "cfr+": "text-ink",
 };
 
 function Series({ s, x, y, field }: { s: KuhnSeries; x: (v: number) => number; y: (v: number) => number; field: "exploitability" | "value" }) {
@@ -32,7 +34,7 @@ function Series({ s, x, y, field }: { s: KuhnSeries; x: (v: number) => number; y
   return (
     <g className={STROKE[s.variant]}>
       <path d={linePath(xs, ys, x, y)} fill="none" strokeWidth={s.ghost ? 1.25 : 2} strokeDasharray={s.ghost ? "4 3" : undefined} strokeOpacity={s.ghost ? 0.7 : 1} strokeLinejoin="round" />
-      {!s.ghost && <circle cx={x(last.iteration)} cy={y(field === "exploitability" ? Math.max(last.exploitability, 1e-12) : last.value)} r={3} className="fill-background" strokeWidth={2} />}
+      {!s.ghost && <circle cx={x(last.iteration)} cy={y(field === "exploitability" ? Math.max(last.exploitability, 1e-12) : last.value)} r={3} className="fill-paper" strokeWidth={2} />}
     </g>
   );
 }
@@ -62,7 +64,7 @@ export const KuhnCharts = memo(function KuhnCharts({ series, maxIterations }: { 
   const xTicks = decadeTicks(1, xMax).filter((v) => v <= xMax * 1.0001);
 
   return (
-    <div ref={ref} className="flex w-full flex-col gap-4 overflow-hidden">
+    <div ref={ref} className="flex w-full flex-col gap-[1.8em] overflow-hidden">
       <ChartFrame
         frame={f1}
         x={x1}
@@ -93,8 +95,8 @@ export const KuhnCharts = memo(function KuhnCharts({ series, maxIterations }: { 
         title="Expected value of the average strategy for player 0, converging to minus one eighteenth"
         clipId="kuhn-value"
       >
-        <line x1={f2.left} x2={f2.right} y1={y2(KUHN_VALUE)} y2={y2(KUHN_VALUE)} className="stroke-amber-500" strokeDasharray="6 4" strokeWidth={1.5} />
-        <text x={f2.right - 4} y={y2(KUHN_VALUE) - 6} textAnchor="end" className="fill-amber-600 text-[11px] dark:fill-amber-400">
+        <line x1={f2.left} x2={f2.right} y1={y2(KUHN_VALUE)} y2={y2(KUHN_VALUE)} className="stroke-ink" strokeDasharray="6 4" strokeWidth={1} />
+        <text x={f2.right - 4} y={y2(KUHN_VALUE) - 6} textAnchor="end" className="fill-ink text-[10px]">
           −1/18 ≈ −0.0556
         </text>
         {series.map((s) => (

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { createRng, formatCards, parseCards, rankOf, shuffle, type Card } from "@/lib/poker/cards";
 import { evaluate, handCategory, type HandCategory } from "@/lib/poker/evaluator";
 import { Cards } from "../_components/lesson-ui";
-import { WidgetFrame, buttonClass, inputClass } from "../_components/widget-frame";
+import { BoxButton, Field, Line, Tag } from "@/components/doc";
+import { WidgetFrame } from "../_components/widget-frame";
 
 const CATEGORY_LABEL: Record<HandCategory, string> = {
   "high card": "High card",
@@ -121,45 +122,44 @@ export function HandEvaluator() {
       title="Hand evaluator: best five of seven"
       footer="Computed with the course's 7-card evaluator. With fewer than five board cards it shows each player's best hand so far."
     >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Player 1 hole cards</span>
-          <input className={inputClass} value={p1} onChange={(e) => setP1(e.target.value)} spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Player 2 hole cards</span>
-          <input className={inputClass} value={p2} onChange={(e) => setP2(e.target.value)} spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-zinc-500">Board (0–5 cards)</span>
-          <input className={inputClass} value={board} onChange={(e) => setBoard(e.target.value)} spellCheck={false} />
-        </label>
-      </div>
-      <div className="mt-3">
-        <button type="button" className={buttonClass} onClick={deal}>
+      <Field label="Player 1 hole cards" value={p1} onChange={(e) => setP1(e.target.value)} spellCheck={false} />
+      <Field label="Player 2 hole cards" value={p2} onChange={(e) => setP2(e.target.value)} spellCheck={false} />
+      <Field label="Board (0–5 cards)" value={board} onChange={(e) => setBoard(e.target.value)} spellCheck={false} />
+      <Line>
+        <BoxButton filled onClick={deal}>
           Deal a random hand
-        </button>
-      </div>
-      <div className="mt-4" aria-live="polite">
+        </BoxButton>
+      </Line>
+      <div aria-live="polite">
         {result.error ? (
-          <p className="text-red-600 dark:text-red-400">{result.error}</p>
+          <Line>
+            <Tag>{result.error}</Tag>
+          </Line>
         ) : !players ? (
-          <p className="text-zinc-500">Add at least three board cards (the flop) to see each player&apos;s best five-card hand.</p>
+          <Line className="text-muted">
+            <span>Add at least three board cards (the flop) to see each player&apos;s best five-card hand.</span>
+          </Line>
         ) : (
-          <div className="space-y-2">
+          <>
             {players.map((p, i) => (
-              <p key={i} className="flex flex-wrap items-center gap-2">
-                <span className="w-20 text-zinc-500">Player {i + 1}</span>
-                <Cards hand={formatCards(p.five)} />
-                <span className="font-medium">{CATEGORY_LABEL[p.category]}</span>
-              </p>
+              <Line key={i}>
+                <span className="uppercase">Player {i + 1}</span>
+                <span className="flex flex-wrap items-center gap-x-[2ch]">
+                  <Cards hand={formatCards(p.five)} />
+                  <span className="uppercase">{CATEGORY_LABEL[p.category]}</span>
+                </span>
+              </Line>
             ))}
             {verdict ? (
-              <p className="pt-1 font-semibold">{verdict}</p>
+              <Line>
+                <span className="inv">{verdict}</span>
+              </Line>
             ) : (
-              <p className="pt-1 text-zinc-500">The river is not out yet, so nobody has won. Add board cards to reach five.</p>
+              <Line className="text-muted">
+                <span>The river is not out yet, so nobody has won. Add board cards to reach five.</span>
+              </Line>
             )}
-          </div>
+          </>
         )}
       </div>
     </WidgetFrame>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Blank, Line, Sheet } from "@/components/doc";
 import DrillClient from "./drill-client";
 
 export const metadata: Metadata = {
@@ -8,10 +9,17 @@ export const metadata: Metadata = {
 
 export default function DrillPage() {
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Drills</h1>
-      <p className="mt-1 text-sm text-zinc-500">Pick a drill, answer, press Enter. Every answer is computed exactly.</p>
+    <Sheet className="flex-1">
+      <Blank />
+      <Line as="h1">
+        <span className="inv">DRILLS</span>
+      </Line>
+      <Line as="p" className="uppercase">
+        <span>Pick a drill, answer, press Enter. Every answer is computed exactly.</span>
+      </Line>
+      <Blank />
       <DrillClient />
-    </main>
+      <Blank />
+    </Sheet>
   );
 }

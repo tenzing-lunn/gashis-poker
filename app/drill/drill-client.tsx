@@ -11,18 +11,20 @@ import {
   type DrillType,
   type Question,
 } from "@/lib/drills";
+import { Blank, BoxButton, Line, Screen, Tag, TextButton } from "@/components/doc";
 
-/** Renders "A♥ K♦"-style cards inside text, with hearts and diamonds in red. */
+/**
+ * Renders "A♥ K♦"-style cards inside text, kept in their own case and drawn in ink (suit carried by the glyph).
+ * Display only: rank T is written 10, as on cards and in lessons (DESIGN.md §4.3).
+ */
 function CardText({ text }: { text: string }) {
   return (
     <>
       {text.split(/([2-9TJQKA][♣♦♥♠])/).map((part, i) =>
         i % 2 === 1 ? (
-          <span
-            key={i}
-            className={`font-mono font-semibold ${part.endsWith("♥") || part.endsWith("♦") ? "text-red-600" : ""}`}
-          >
-            {part}
+          <span key={i} className="whitespace-nowrap normal-case">
+            {part[0] === "T" ? `10${part.slice(1)}` : part}
+            {"\uFE0E"}
           </span>
         ) : (
           <span key={i}>{part}</span>
@@ -35,11 +37,6 @@ function CardText({ text }: { text: string }) {
 // Event-handler-only helpers (kept outside the component: they are impure).
 const randomSeed = () => Math.floor(Math.random() * 2 ** 31);
 const now = () => Date.now();
-
-const pill = (active: boolean) =>
-  `rounded border px-3 py-1.5 text-sm ${
-    active ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-black" : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-  }`;
 
 export default function DrillClient() {
   const [type, setType] = useState<DrillType | null>(null);
@@ -93,116 +90,143 @@ export default function DrillClient() {
   const isAction = question?.unit === "action";
 
   return (
-    <div className="mt-6 space-y-6">
-      <section className="space-y-3">
-        <div className="flex flex-wrap gap-2">
+    <>
+      <Line className="uppercase">
+        <span>Drill</span>
+      </Line>
+      <Line as="div" role="group" aria-label="Drill type">
+        <span className="flex flex-wrap gap-x-[2ch]">
           {DRILL_TYPES.map((t) => (
-            <button
+            <TextButton
               key={t}
-              type="button"
-              className={pill(t === type)}
+              pressed={t === type}
               onClick={() => {
                 setType(t);
                 next(t, difficulty);
               }}
             >
               {DRILL_LABELS[t]}
-            </button>
+            </TextButton>
           ))}
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-zinc-500">Difficulty</span>
+        </span>
+      </Line>
+      <Line as="div" role="group" aria-label="Difficulty">
+        <span className="uppercase">Difficulty</span>
+        <span className="flex gap-x-[1ch]">
           {([1, 2, 3] as const).map((d) => (
-            <button
+            <TextButton
               key={d}
-              type="button"
-              className={pill(d === difficulty)}
+              pressed={d === difficulty}
               onClick={() => {
                 setDifficulty(d);
                 if (type) next(type, d);
               }}
             >
               {d}
-            </button>
+            </TextButton>
           ))}
-        </div>
-      </section>
-
-      <p className="text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
-        Session: {tally.correct} / {tally.attempted} correct
-        {tally.attempted > 0 && ` · ${(tally.ms / tally.attempted / 1000).toFixed(1)} s per answer`}
-      </p>
+        </span>
+      </Line>
+      <Line as="p" className="uppercase">
+        <span>Session:</span>
+        <span>
+          {tally.correct} / {tally.attempted} correct
+          {tally.attempted > 0 && ` · ${(tally.ms / tally.attempted / 1000).toFixed(1)} s per answer`}
+        </span>
+      </Line>
+      <Blank />
 
       {!question ? (
-        <p className="rounded border border-dashed border-zinc-300 p-6 text-zinc-500 dark:border-zinc-700">
-          Pick a drill type to start.
-        </p>
+        <Screen aria-label="Question">
+          <Line center className="uppercase text-muted">
+            <span>Pick a drill type to start.</span>
+          </Line>
+        </Screen>
       ) : (
-        <form onSubmit={onSubmit} className="space-y-4 rounded border border-zinc-300 p-5 dark:border-zinc-700">
-          <p className="text-lg leading-relaxed">
-            <CardText text={question.prompt} />
-          </p>
+        <Screen as="section" aria-label="Question">
+          <form onSubmit={onSubmit}>
+            <Line center className="uppercase">
+              <span>FIG. 1: {DRILL_LABELS[question.type]}</span>
+            </Line>
+            <Line as="p">
+              <span className="max-w-[72ch]">
+                <CardText text={question.prompt} />
+              </span>
+            </Line>
+            <Blank />
 
-          {isAction ? (
-            <div className="flex gap-3">
-              {(["call", "fold"] as const).map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  disabled={!!result}
-                  onClick={() => answer(a)}
-                  className="rounded bg-zinc-900 px-5 py-2 font-medium capitalize text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-black"
-                >
-                  {a}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                readOnly={!!result}
-                inputMode="decimal"
-                autoComplete="off"
-                aria-label="Your answer"
-                className="w-40 rounded border border-zinc-300 bg-transparent px-3 py-2 tabular-nums dark:border-zinc-700"
-              />
-              <span className="text-zinc-500">{question.unit}</span>
-              {!result && (
-                <button type="submit" className="rounded bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-black">
-                  Check
-                </button>
-              )}
-              {question.tolerance > 0 && <span className="text-sm text-zinc-500">±{question.tolerance} accepted</span>}
-            </div>
-          )}
+            {isAction ? (
+              <Line>
+                <span className="flex flex-wrap gap-x-[2ch]">
+                  {(["call", "fold"] as const).map((a) => (
+                    <BoxButton key={a} disabled={!!result} onClick={() => answer(a)}>
+                      {a}
+                    </BoxButton>
+                  ))}
+                </span>
+              </Line>
+            ) : (
+              <Line>
+                <span className="flex flex-wrap items-baseline gap-x-[2ch]">
+                  <span className="uppercase" aria-hidden="true">
+                    Answer
+                  </span>
+                  <span className="flex items-baseline gap-x-[1ch]">
+                    <input
+                      ref={inputRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      readOnly={!!result}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      aria-label="Your answer"
+                      className="u w-[12ch]!"
+                    />
+                    <span className="text-muted uppercase">{question.unit}</span>
+                  </span>
+                  {!result && (
+                    <button type="submit" className="apply cta">
+                      Check
+                    </button>
+                  )}
+                </span>
+                {question.tolerance > 0 && <span className="text-muted uppercase">±{question.tolerance} accepted</span>}
+              </Line>
+            )}
 
-          {unreadable && !result && (
-            <p className="text-sm text-amber-600">Couldn&apos;t read that. Type a number, like 28.6.</p>
-          )}
+            {unreadable && !result && (
+              <Line as="p">
+                <span>
+                  <Tag>Couldn&apos;t read that. Type a number, like 28.6.</Tag>
+                </span>
+              </Line>
+            )}
 
-          {result && (
-            <div className="space-y-2">
-              <p className={`font-semibold ${result.correct ? "text-green-600" : "text-red-600"}`}>
-                {result.correct ? "Correct" : "Wrong"}
-                {" — "}answer: {result.expected}
-              </p>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                <CardText text={question.explanation} />
-              </p>
-              <button
-                ref={nextRef}
-                type="submit"
-                className="rounded border border-zinc-900 px-4 py-2 dark:border-zinc-100"
-              >
-                Next (Enter)
-              </button>
-            </div>
-          )}
-        </form>
+            {result && (
+              <>
+                <Blank />
+                <Line as="p" className="uppercase">
+                  <span className={result.correct ? "text-green" : "text-red"}>
+                    {result.correct ? "Correct" : "Wrong"}
+                    {" — "}answer: {result.expected}
+                  </span>
+                </Line>
+                <Line as="p">
+                  <span className="max-w-[72ch] text-muted">
+                    <CardText text={question.explanation} />
+                  </span>
+                </Line>
+                <Blank />
+                <Line>
+                  <button ref={nextRef} type="submit" className="apply cta">
+                    Next (Enter)
+                  </button>
+                </Line>
+              </>
+            )}
+          </form>
+        </Screen>
       )}
-    </div>
+    </>
   );
 }

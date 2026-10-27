@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { HAND_CLASSES, combosOfClass } from "@/lib/poker/combinatorics";
 import { formatRange, parseRange } from "@/lib/poker/range";
+import { Legend, Line, Tag, TextButton } from "@/components/doc";
 import { WidgetFrame } from "../_components/widget-frame";
 
 // Heuristic 6-max opening ranges (100bb cash, first in, open to 2.5bb). Starting points, not solver output.
@@ -57,41 +58,30 @@ export function OpeningRanges() {
       title="6-max opening ranges by position"
       footer="Heuristic starting points for a 100bb cash game when everyone before you has folded; open to 2.5bb. Click any cell to add or remove that hand class and watch the count change. Percent = combos / 1,326."
     >
-      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Position">
-        {POSITIONS.map((p, i) => (
-          <button
-            key={p.pos}
-            type="button"
-            role="tab"
-            aria-selected={i === posIndex}
-            onClick={() => choose(i)}
-            className={`rounded-md border px-3 py-1 font-mono text-xs ${
-              i === posIndex
-                ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                : "border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            }`}
-          >
-            {p.pos}
-          </button>
-        ))}
-        {edited && (
-          <button
-            type="button"
-            onClick={() => choose(posIndex)}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            Reset {original.pos}
-          </button>
-        )}
-      </div>
+      <Line role="group" aria-label="Position">
+        <span>
+          {POSITIONS.map((p, i) => (
+            <TextButton key={p.pos} pressed={i === posIndex} onClick={() => choose(i)}>
+              {p.pos}
+            </TextButton>
+          ))}
+        </span>
+        {edited && <TextButton onClick={() => choose(posIndex)}>[Reset {original.pos}]</TextButton>}
+      </Line>
 
-      <p className="mt-3 font-mono tabular-nums" aria-live="polite">
-        <span className="text-lg font-semibold">{stats.combos}</span> combos ={" "}
-        <span className="text-lg font-semibold">{((100 * stats.combos) / 1326).toFixed(1)}%</span> of 1,326
-        {edited && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(edited)</span>}
-      </p>
+      <Line aria-live="polite">
+        <span>
+          <span className="inv">{stats.combos}</span> combos = <span className="inv">{((100 * stats.combos) / 1326).toFixed(1)}%</span> of 1,326
+          {edited && (
+            <>
+              {" "}
+              <Tag>(edited)</Tag>
+            </>
+          )}
+        </span>
+      </Line>
 
-      <div className="mt-3 grid gap-px overflow-hidden rounded-md bg-zinc-300 dark:bg-zinc-700" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
+      <div className="grid w-full max-w-[26rem] gap-px border border-faint bg-faint" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
         {HAND_CLASSES.map((c) => {
           const on = selected.has(c.name);
           return (
@@ -101,12 +91,8 @@ export function OpeningRanges() {
               aria-pressed={on}
               title={`${c.name}: ${c.combos} combos`}
               onClick={() => toggle(c.name)}
-              className={`aspect-square font-mono text-[0.55rem] leading-none sm:text-[0.7rem] ${
-                on
-                  ? "bg-emerald-600 font-semibold text-white"
-                  : c.kind === "pair"
-                    ? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800"
-                    : "bg-white text-zinc-400 dark:bg-zinc-900 dark:text-zinc-500"
+              className={`aspect-square text-[9px] leading-none hover:outline hover:-outline-offset-1 hover:outline-ink sm:text-[11px] ${
+                on ? "bg-ink text-paper" : c.kind === "pair" ? "bg-paper text-ink" : "bg-paper text-muted"
               }`}
             >
               {c.name}
@@ -114,10 +100,12 @@ export function OpeningRanges() {
           );
         })}
       </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        Top-right triangle: suited (4 combos each). Bottom-left: offsuit (12). Diagonal: pairs (6).
-      </p>
-      <p className="mt-3 break-words font-mono text-xs">{stats.text}</p>
+      <Legend>
+        <span>Top-right triangle: suited (4 combos each). Bottom-left: offsuit (12). Diagonal: pairs (6).</span>
+      </Legend>
+      <Line>
+        <span className="break-words">{stats.text}</span>
+      </Line>
     </WidgetFrame>
   );
 }

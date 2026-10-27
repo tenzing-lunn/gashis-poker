@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { WidgetFrame, inputClass } from "../_components/widget-frame";
+import { Field, Line, Tag } from "@/components/doc";
+import { Row, WidgetFrame } from "../_components/widget-frame";
 import { callEV, impliedOddsNeeded, potOddsRatio, requiredEquity } from "./pot-odds-math";
 
 const W = 520, H = 220, PAD_L = 48, PAD_R = 12, PAD_T = 12, PAD_B = 36;
@@ -27,83 +28,74 @@ export function PotOddsCalculator() {
 
   return (
     <WidgetFrame title="Pot odds and the EV of a call" footer="Assumes no more betting after your call: you either win the pot at showdown or lose your call.">
-      <div className="flex flex-wrap gap-4">
-        <Field label="Pot before the bet (bb)" value={pot} onChange={setPot} />
-        <Field label="Bet you face (bb)" value={bet} onChange={setBet} />
-        <Field label="Your equity (%)" value={eqPct} onChange={setEqPct} step={0.1} />
-      </div>
+      <NumField label="Pot before the bet (bb)" value={pot} onChange={setPot} />
+      <NumField label="Bet you face (bb)" value={bet} onChange={setBet} />
+      <NumField label="Your equity (%)" value={eqPct} onChange={setEqPct} step={0.1} />
       {!valid ? (
-        <p className="mt-4 text-red-600 dark:text-red-400">Use a pot of 0 or more, a bet above 0 and an equity from 0 to 100%.</p>
+        <Line>
+          <Tag>Use a pot of 0 or more, a bet above 0 and an equity from 0 to 100%.</Tag>
+        </Line>
       ) : (
         <>
-          <table className="mt-4 w-full text-sm" aria-live="polite">
-            <tbody className="[&_td]:py-1">
-              <tr>
-                <td className="text-zinc-500">Pot odds</td>
-                <td className="font-mono">
-                  ({num(pot)} + {num(bet)}) : {num(bet)}
-                </td>
-                <td className="text-right font-mono tabular-nums">{num(ratio)} to 1</td>
-              </tr>
-              <tr>
-                <td className="text-zinc-500">Required equity</td>
-                <td className="font-mono">
-                  {num(bet)} / ({num(pot)} + 2 × {num(bet)})
-                </td>
-                <td className="text-right font-mono font-semibold tabular-nums">{(100 * req).toFixed(1)}%</td>
-              </tr>
-              <tr>
-                <td className="text-zinc-500">EV of calling</td>
-                <td className="font-mono">
-                  {num(e, 3)} × {num(pot + bet)} − {num(1 - e, 3)} × {num(bet)}
-                </td>
-                <td className={`text-right font-mono font-semibold tabular-nums ${ev >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {ev >= 0 ? "+" : "−"}
-                  {Math.abs(ev).toFixed(2)} bb
-                </td>
-              </tr>
-              <tr>
-                <td className="text-zinc-500">Verdict</td>
-                <td colSpan={2} className="text-right">
-                  {Math.abs(e - req) < 1e-9 ? "Break-even: calling and folding are worth the same." : e > req ? "Call: you have more equity than the call needs." : "Fold, unless you expect to win more later (implied odds)."}
-                </td>
-              </tr>
-              {implied !== null && (
-                <tr>
-                  <td className="text-zinc-500">Implied odds needed</td>
-                  <td className="font-mono">
-                    {num(bet)} × {num(1 - e, 3)} / {num(e, 3)} − {num(pot + bet)}
-                  </td>
-                  <td className="text-right font-mono tabular-nums">{implied.toFixed(2)} bb more when you hit</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 w-full" role="img" aria-label={`EV of calling against equity. Break-even at ${(100 * req).toFixed(1)}% equity.`}>
+          <div aria-live="polite">
+            <Row label="Pot odds">
+              <span className="text-muted">
+                ({num(pot)} + {num(bet)}) : {num(bet)}
+              </span>{" "}
+              {num(ratio)} to 1
+            </Row>
+            <Row label="Required equity">
+              <span className="text-muted">
+                {num(bet)} / ({num(pot)} + 2 × {num(bet)})
+              </span>{" "}
+              <span className="inv">{(100 * req).toFixed(1)}%</span>
+            </Row>
+            <Row label="EV of calling">
+              <span className="text-muted">
+                {num(e, 3)} × {num(pot + bet)} − {num(1 - e, 3)} × {num(bet)}
+              </span>{" "}
+              <span className={ev >= 0 ? "text-green" : "text-red"}>
+                {ev >= 0 ? "+" : "−"}
+                {Math.abs(ev).toFixed(2)} bb
+              </span>
+            </Row>
+            <Row label="Verdict">
+              {Math.abs(e - req) < 1e-9 ? "Break-even: calling and folding are worth the same." : e > req ? "Call: you have more equity than the call needs." : "Fold, unless you expect to win more later (implied odds)."}
+            </Row>
+            {implied !== null && (
+              <Row label="Implied odds needed">
+                <span className="text-muted">
+                  {num(bet)} × {num(1 - e, 3)} / {num(e, 3)} − {num(pot + bet)}
+                </span>{" "}
+                {implied.toFixed(2)} bb more when you hit
+              </Row>
+            )}
+          </div>
+          <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label={`EV of calling against equity. Break-even at ${(100 * req).toFixed(1)}% equity.`}>
             {[0, 0.25, 0.5, 0.75, 1].map((t) => (
               <g key={t}>
-                <line x1={x(t)} x2={x(t)} y1={PAD_T} y2={H - PAD_B} className="stroke-zinc-200 dark:stroke-zinc-800" />
-                <text x={x(t)} y={H - PAD_B + 16} textAnchor="middle" className="fill-zinc-500 text-[11px]">
+                <line x1={x(t)} x2={x(t)} y1={PAD_T} y2={H - PAD_B} className="stroke-faint" />
+                <text x={x(t)} y={H - PAD_B + 16} textAnchor="middle" className="fill-muted text-[10px]">
                   {t * 100}%
                 </text>
               </g>
             ))}
-            <text x={(PAD_L + W - PAD_R) / 2} y={H - 4} textAnchor="middle" className="fill-zinc-500 text-[11px]">
+            <text x={(PAD_L + W - PAD_R) / 2} y={H - 4} textAnchor="middle" className="fill-muted text-[10px]">
               your equity
             </text>
-            <line x1={PAD_L} x2={W - PAD_R} y1={y(0)} y2={y(0)} className="stroke-zinc-400 dark:stroke-zinc-600" />
-            <text x={PAD_L - 6} y={y(0) + 4} textAnchor="end" className="fill-zinc-500 text-[11px]">0</text>
-            <text x={PAD_L - 6} y={y(yMax) + 8} textAnchor="end" className="fill-zinc-500 text-[11px]">+{num(yMax, 1)}</text>
-            <text x={PAD_L - 6} y={y(yMin)} textAnchor="end" className="fill-zinc-500 text-[11px]">−{num(bet, 1)}</text>
-            <text x={12} y={(PAD_T + H - PAD_B) / 2} textAnchor="middle" transform={`rotate(-90 12 ${(PAD_T + H - PAD_B) / 2})`} className="fill-zinc-500 text-[11px]">
+            <line x1={PAD_L} x2={W - PAD_R} y1={y(0)} y2={y(0)} className="stroke-muted" />
+            <text x={PAD_L - 6} y={y(0) + 4} textAnchor="end" className="fill-muted text-[10px]">0</text>
+            <text x={PAD_L - 6} y={y(yMax) + 8} textAnchor="end" className="fill-muted text-[10px]">+{num(yMax, 1)}</text>
+            <text x={PAD_L - 6} y={y(yMin)} textAnchor="end" className="fill-muted text-[10px]">−{num(bet, 1)}</text>
+            <text x={12} y={(PAD_T + H - PAD_B) / 2} textAnchor="middle" transform={`rotate(-90 12 ${(PAD_T + H - PAD_B) / 2})`} className="fill-muted text-[10px]">
               EV (bb)
             </text>
-            <line x1={x(0)} y1={y(-bet)} x2={x(1)} y2={y(pot + bet)} className="stroke-zinc-900 dark:stroke-zinc-100" strokeWidth={2} />
-            <line x1={x(req)} x2={x(req)} y1={PAD_T} y2={H - PAD_B} strokeDasharray="4 3" className="stroke-amber-600" />
-            <text x={x(req) + 4} y={PAD_T + 10} className="fill-amber-700 text-[11px] dark:fill-amber-400">
+            <line x1={x(0)} y1={y(-bet)} x2={x(1)} y2={y(pot + bet)} className="stroke-ink" strokeWidth={2} />
+            <line x1={x(req)} x2={x(req)} y1={PAD_T} y2={H - PAD_B} strokeDasharray="4 3" className="stroke-ink" />
+            <text x={x(req) + 4} y={PAD_T + 10} className="fill-ink text-[10px]">
               break-even {(100 * req).toFixed(1)}%
             </text>
-            <circle cx={x(e)} cy={y(ev)} r={5} className={ev >= 0 ? "fill-emerald-600" : "fill-red-600"} />
+            <circle cx={x(e)} cy={y(ev)} r={5} className={ev >= 0 ? "fill-green" : "fill-red"} />
           </svg>
         </>
       )}
@@ -111,18 +103,15 @@ export function PotOddsCalculator() {
   );
 }
 
-function Field({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (v: number) => void; step?: number }) {
+function NumField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (v: number) => void; step?: number }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-zinc-500">{label}</span>
-      <input
-        className={`${inputClass} w-28`}
-        type="number"
-        min={0}
-        step={step}
-        value={Number.isFinite(value) ? value : ""}
-        onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
-      />
-    </label>
+    <Field
+      label={label}
+      type="number"
+      min={0}
+      step={step}
+      value={Number.isFinite(value) ? value : ""}
+      onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
+    />
   );
 }

@@ -43,6 +43,9 @@ Put these on `:root` in `app/globals.css` and expose them to Tailwind via `@them
 | `--green` | `#078420` | Net-positive numbers only — 4.85:1 on paper |
 | `--red` | `#d0141e` | Net-negative numbers only — 5.53:1 on paper |
 
+`--green` / `--red` also mark correct / wrong feedback in drills and lesson checks (`CORRECT`, `WRONG`, the picked
+choice). That is meaning, not decoration, and the word always carries it too.
+
 `--green` is darker than the source site's `#0cab2c` (3.05:1 on white): these colors are used for small text,
 so every semantic color must reach ≥ 4.5:1 against the band it sits on.
 
@@ -177,21 +180,32 @@ Seat positions (`left%`, `top%`) for 8 seats, clockwise from bottom-left; seat 1
 | 7 | 89.73% | 64.92% |
 | 8 | 66.46% | 86.03% |
 
-For 2–6 seats, compute points on the same ellipse (center 50%/50%, radii ≈ 40% × 36%) evenly by angle,
-with the hero always at bottom-center-left. Heads-up = bottom vs top.
+For 2–7 seats, compute points evenly by angle on a ring around the center, with the hero always at the
+bottom (bottom-left for 4/6/8, else bottom-center). Heads-up = bottom vs top. **Accepted deviation:** the
+radii are tuned per seat count and layout (`RINGS` in `components/table/model.ts`; the tall 7- and 8-seat
+rings are bent toward a rounded rectangle) so that seat boxes never overlap each other, the board or the
+figure edge at 320, 375, 700, 820 and 1440px for 2–8 seats — asserted in `model.test.ts`. Wide 8 stays exactly
+the table above.
 
 Seat stack, top to bottom:
 1. `.hole` — two small cards, `gap: 4px; min-height: 37px; margin-bottom: 4px` (empty space reserved when no cards).
 2. `.who` — `S3 MONTE (D)`: seat number, name, `(D)` for dealer. `padding: 0 .6ch; white-space: nowrap`.
-3. `.meta` — `9,200 10%`: stack, then share/equity %. `--` when unknown.
+3. `.meta` — `9,200 10%`: stack, then share %. `--` before the seat is first dealt in.
+   **Accepted deviation:** the reference shows live equity; we show the seat's share of the chips at the
+   table (stack + chips committed this hand while it is live; stack alone once the pot is awarded).
+   Equity would leak hole cards.
 4. `.bar` — `width:10ch; height:4px; border:1px solid var(--ink); margin:2px 0` with an inner `<i>` filled `var(--ink)`
-   to the stack fraction (or equity in coach mode).
-5. `.act` — last action: `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`. `min-height: 1.35em`.
+   to exactly the `%` shown (empty under `--`), as on the reference.
+5. `.act` — last action: `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`. `min-height: 1.35em`. At hand end a
+   winner shows its net result for the hand, `+408` in `--green` (or `-1,200` in `--red` when a side pot
+   won back less than it put in); a showdown loser shows its hand name.
 
 States:
 - `.turn` and `.win` → `.who` inverts (ink background, paper text). That is the *only* "whose turn" signal.
 - `.out` (folded / sitting out) → whole seat `var(--muted)`; its cards and bar border go `var(--faint)` and lose their shadow.
 - Hero seat additionally shows a `--warn` tag `YOUR TURN` on its `.act` line when it's their decision.
+- **Accepted deviation:** folded opponents keep two card backs (muted, `.out`) until the next hand, so the
+  table still shows who was dealt in.
 
 ### 4.3 Cards
 Small (`.cd`, hole cards): `26×36px; border:1px solid var(--ink); border-radius:3px; background: var(--paper);
@@ -202,6 +216,8 @@ Card back (`.cd.back`): `outline:1px solid var(--ink); outline-offset:-5px` (an 
 `radial-gradient(var(--ink) .6px, transparent .8px) 0 0/3px 3px`.
 
 - Suits are glyphs `♠︎ ♥︎ ♦︎ ♣︎` with the text variation selector (U+FE0E) so they never render as emoji.
+  Source Code Pro has no suit glyphs, so the suit `<i>` names monospace faces that do —
+  `ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace` — ahead of next/font's (wide) fallback: a suit is 0.6em wide.
 - **Cards are ink, not red/black.** Suit is carried by the glyph only. (Optional accessibility setting: four-color deck using `--red` / `--green` / ink / `--amber`.)
 - Rank `10` is written `10`, not `T`, on cards; `T` is fine in compact notation (`ATs`).
 
@@ -222,15 +238,24 @@ For live play replace `REPLAY` + transport with `LIVE` + seat count / time bank:
 ### 4.6 Action strip (under the table)
 A per-seat timeline across streets — the hand history as a figure.
 - Header `.strip.head`: name column then a track labeled `PRE  FLOP  TURN  RIVER  SHOW` (clickable to jump in replay).
+  When two neighbouring labels are closer than half of each label plus a space (an all-in runout), both are
+  drawn as their initial (`F T R S`, full name in `title`), as the reference does; measured on the live track width.
 - One `.strip` per seat: `.name` (`12ch`, nowrap) + `.track` (flex:1). Inside the track a 1px ink line (`.ln`, `top:53%`)
   runs up to "now"; the remainder is a `--faint` line. Action letters (`b X C B R A F W`) sit on the line at their
   time position; `W` is inverted. Future marks are `--muted`. Folded seats' names go `--muted`.
 - Legend line beneath.
 
 ### 4.7 Mobile (< 680px)
-Table figure `aspect-ratio: 3 / 4` with seats on a tall ellipse; seat width `11ch`; names use a `.short` form
-(`S3`), full name revealed on tap. Board cards drop to the small size. Action controls dock to the bottom of the
-screen band.
+Table figure `aspect-ratio: 3 / 4` (`3 / 5` at ≤ 400px) with seats on a tall ring; names use a `.short` form
+(`S3`), full name revealed on tap. Action controls dock to the bottom of the screen band.
+**Accepted deviation (sizes taken from the reference's mobile CSS):** seat `12ch` at `9.5px`, hole cards `19×27px`
+(suit `9.5px`), board cards `28×40px` (suit `14px`), center `10px`, felt `inset: 12% 16%`, strip names `3ch`.
+Text buttons on the table, its header and the controls are at least 24px tall on mobile.
+
+### 4.8 Home attract table
+Eight bots, every hole card face down until showdown, an `ACTION` line centered above the strip. It has no live
+region (it would announce every bot action), runs only while the tab is visible and the table is on screen, and
+starts paused under `prefers-reduced-motion` (`[PLAY]` starts it).
 
 ---
 
@@ -242,9 +267,20 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
 62  TO CALL 200   POT 1,350   POT ODDS 12.9%                   STACK 9,200
 63  [FOLD]  [CALL 200]  [RAISE TO ____]   1/2  2/3  POT  ALL-IN
 ```
-- `[FOLD] [CHECK] [CALL n]` are boxed buttons (§3.4); the default/safe action is the filled `.cta`.
-- Raise input is an underlined field in `ch` width; the sizing presets are `button.t` toggles.
-- Keyboard: `F` fold, `C` check/call, `R` focus raise, `Enter` confirm, `1–4` presets — shown in the legend line.
+- `[FOLD] [CHECK] [CALL n]` are boxed buttons (§3.4); the default/safe action is the filled `.cta`:
+  **CHECK when it is free, else FOLD**. FOLD is disabled when checking is free.
+- **Accepted deviation:** the controls sit under the table figure (not under the header), so the seats stay in view
+  above them.
+- Raise input is an underlined, digits-only field in `ch` width followed by the legal range (`200–9,700`); the
+  sizing presets are `button.t` toggles. A preset fills the field and selects it, so typing replaces it.
+- Raise validation: the amount is never clamped. Out of range (or empty on submit) the field gets `aria-invalid`
+  and a `Tag` says why — `MIN 200` or `MAX 9,700 (ALL-IN)` — and nothing is sent until the number is in range
+  or ALL-IN is chosen explicitly.
+- Buttons that don't apply are `aria-disabled` (not `disabled`), so focus stays where it was after an action; when
+  the hero's next decision comes up focus returns to the default action, unless the user has moved it off the controls.
+- Keyboard: `F` fold, `C` check/call, `R` focus raise, `Enter` confirm, `Esc` back out of the field, `1–4` presets — shown
+  in the legend line. In the raise field digits type (no presets); letters never go in, and `F`/`C` still act.
+- `NEW SESSION` wipes the stats, so it asks again: `[NEW SESSION →]` then `[CONFIRM — WIPES STATS →]`.
 - Coach mode adds a line above: `YOUR EQUITY EST. ____%  [SUBMIT]` and, after acting, a graded line using `--green`/`--red` for EV.
 
 ---

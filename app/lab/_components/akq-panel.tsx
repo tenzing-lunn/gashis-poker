@@ -76,47 +76,35 @@ export function AkqPanel() {
       title="The [A, K, Q] game"
       kicker="Chen & Ankenman's half-street toy game. X and Y each get one of A > K > Q; the pot is P. X checks; Y bets B or checks; X calls or folds. The closed form falls out of two indifference equations; CFR+ re-derives it numerically."
     >
-      <Card>
-        <div className="grid grid-cols-2 gap-3 sm:max-w-md">
-          <Field label="Pot P" unit="chips" htmlFor="akq-pot">
-            <input id="akq-pot" className={inputClass} type="number" inputMode="decimal" min={0.1} step={0.5} value={potText} aria-invalid={pot === null} onChange={(e) => onChange("pot", e.target.value)} />
-          </Field>
-          <Field label="Bet B" unit="chips" htmlFor="akq-bet">
-            <input id="akq-bet" className={inputClass} type="number" inputMode="decimal" min={0.1} step={0.5} value={betText} aria-invalid={bet === null} onChange={(e) => onChange("bet", e.target.value)} />
-          </Field>
-        </div>
-        <div className="mt-3">
-          <StatusLine tone={error ? "error" : busy ? "busy" : "muted"}>
-            {pot === null || bet === null
-              ? "Pot and bet must be positive numbers (up to 1,000)."
-              : error
-                ? `Solver error: ${error}`
-                : busy
-                  ? `Solving P = ${fmt(pot, 2)}, B = ${fmt(bet, 2)} with ${fmt(ITERATIONS, 0)} CFR+ iterations…`
-                  : cfr && (
-                      <>
-                        CFR+: {fmt(cfr.iterations, 0)} iterations in {ms(cfr.timeMs)}, exploitability <Sci x={cfr.exploitability} digits={1} /> chips/hand
-                      </>
-                    )}
-          </StatusLine>
-        </div>
+      <Card title="Inputs">
+        <Field label="Pot P" unit="chips" htmlFor="akq-pot">
+          <input id="akq-pot" className={inputClass} type="number" inputMode="decimal" min={0.1} step={0.5} value={potText} aria-invalid={pot === null} onChange={(e) => onChange("pot", e.target.value)} />
+        </Field>
+        <Field label="Bet B" unit="chips" htmlFor="akq-bet">
+          <input id="akq-bet" className={inputClass} type="number" inputMode="decimal" min={0.1} step={0.5} value={betText} aria-invalid={bet === null} onChange={(e) => onChange("bet", e.target.value)} />
+        </Field>
+        <StatusLine tone={error ? "error" : busy ? "busy" : "muted"}>
+          {pot === null || bet === null
+            ? "Pot and bet must be positive numbers (up to 1,000)."
+            : error
+              ? `Solver error: ${error}`
+              : busy
+                ? `Solving P = ${fmt(pot, 2)}, B = ${fmt(bet, 2)} with ${fmt(ITERATIONS, 0)} CFR+ iterations…`
+                : cfr && (
+                    <>
+                      CFR+: {fmt(cfr.iterations, 0)} iterations in {ms(cfr.timeMs)}, exploitability <Sci x={cfr.exploitability} digits={1} /> chips/hand
+                    </>
+                  )}
+        </StatusLine>
       </Card>
 
       {closed && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Card>
-            <Stat label="Bet / pot" value={fmt(closed.bet / closed.pot, 3)} unit="× pot" />
-          </Card>
-          <Card>
-            <Stat label="Y bluffs Q" value={pct(closed.yBluff, 1)} hint="β = B/(P+B)" />
-          </Card>
-          <Card>
-            <Stat label="K calls" value={pct(closed.kCall, 1)} hint="c = (P−B)/(P+B)" />
-          </Card>
-          <Card>
-            <Stat label="Value to Y" value={fmtSigned(closed.valueY, 4)} unit="chips/deal" />
-          </Card>
-        </div>
+        <Card>
+          <Stat label="Bet / pot" value={fmt(closed.bet / closed.pot, 3)} unit="× pot" />
+          <Stat label="Y bluffs Q" value={pct(closed.yBluff, 1)} hint="β = B/(P+B)" />
+          <Stat label="K calls" value={pct(closed.kCall, 1)} hint="c = (P−B)/(P+B)" />
+          <Stat label="Value to Y" value={fmtSigned(closed.valueY, 4)} unit="chips/deal" />
+        </Card>
       )}
 
       {closed && (
@@ -140,15 +128,16 @@ export function AkqPanel() {
                 key: r.key,
                 cells: [
                   r.label,
-                  <span key="f" className="font-sans text-xs text-zinc-500 dark:text-zinc-400">{closed.unique || r.key === "value" || r.key === "potshare" ? r.formula : "see note"}</span>,
+                  <span key="f" className="text-muted normal-case">{closed.unique || r.key === "value" || r.key === "potshare" ? r.formula : "see note"}</span>,
                   closedText,
-                  v === null ? "—" : <span className={cfrMatches ? "" : "opacity-40"}>{show(r, v)}</span>,
+                  v === null ? "—" : <span className={cfrMatches ? "" : "text-muted"}>{show(r, v)}</span>,
                   d === null ? "—" : r.kind === "pct" ? (d < 5e-5 ? "<0.01 pp" : `${fmt(100 * d, 2)} pp`) : d < 5e-5 ? "<0.0001" : fmt(d, 4),
                 ],
               };
             })}
           />
-          <p className="mt-3 text-xs leading-5 text-zinc-600 dark:text-zinc-400">
+          <p className="l">
+            <span className="max-w-[72ch] text-muted">
             {closed.unique ? (
               <>
                 With P &gt; B the equilibrium is unique: K is indifferent to calling when −B + β(P + B) = 0, and Q is indifferent to bluffing when −B + (1 − c)P − cB = 0.
@@ -161,6 +150,7 @@ export function AkqPanel() {
                 So the closed form shows one equilibrium: CFR+&apos;s bluff is checked against the whole interval, and rows with no unique answer get no |Δ|.
               </>
             )}
+            </span>
           </p>
         </Card>
       )}

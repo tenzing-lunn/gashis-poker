@@ -8,7 +8,8 @@ import { RIVER_PRESETS, type RiverForm } from "./river-presets";
 import { RiverChart } from "./river-chart";
 import { RiverExplorer } from "./river-strategy";
 import { fmt, fmtSigned, ms, pct } from "./format";
-import { Button, Card, Field, Panel, Sci, Stat, StatusLine, inputClass, selectClass } from "./ui";
+import { Choice, Line, Tag } from "@/components/doc";
+import { Actions, Button, Card, FIELD_ROW, Field, Figure, Panel, Sci, Stat, StatusLine, Toggles, inputClass, selectClass } from "./ui";
 import { useSolverWorker } from "./use-solver";
 
 const TARGETS = [1, 0.3, 0.1, 0.03, 0.01];
@@ -161,6 +162,12 @@ export function RiverPanel() {
   const r = result;
   const preset = RIVER_PRESETS.find((p) => p.id === presetId);
 
+  const note = (key: keyof RiverForm, hint: string | undefined) => (
+    <span id={`river-${key}-note`} className={parsed.errors[key] ? undefined : "text-muted"}>
+      {parsed.errors[key] ? <Tag>{parsed.errors[key]}</Tag> : hint}
+    </span>
+  );
+
   const text = (key: "board" | "pot" | "stack" | "oopBets" | "ipBets" | "raises", label: string, unit?: string, hint?: string) => (
     <Field label={label} unit={unit} htmlFor={`river-${key}`}>
       <input
@@ -175,9 +182,7 @@ export function RiverPanel() {
         onChange={(e) => edit(key, e.target.value)}
         className={inputClass}
       />
-      <span id={`river-${key}-note`} className={`text-[11px] leading-4 ${parsed.errors[key] ? "text-rose-600 dark:text-rose-400" : "text-zinc-500 dark:text-zinc-400"}`}>
-        {parsed.errors[key] ?? hint}
-      </span>
+      {note(key, hint)}
     </Field>
   );
 
@@ -191,11 +196,9 @@ export function RiverPanel() {
         aria-invalid={Boolean(parsed.errors[key])}
         aria-describedby={`river-${key}-note`}
         onChange={(e) => edit(key, e.target.value)}
-        className={`${inputClass} h-auto py-2 leading-5`}
+        className="resize-y"
       />
-      <span id={`river-${key}-note`} className={`text-[11px] leading-4 ${parsed.errors[key] ? "text-rose-600 dark:text-rose-400" : "text-zinc-500 dark:text-zinc-400"}`}>
-        {parsed.errors[key] ?? `${fmt(n, 0)} combos after removing the board cards`}
-      </span>
+      {note(key, `${fmt(n, 0)} combos after removing the board cards`)}
     </Field>
   );
 
@@ -204,158 +207,141 @@ export function RiverPanel() {
       title="River solver (Discounted CFR)"
       kicker="Heads-up, on a fixed river board. OOP checks or bets; facing a bet, a player folds, calls or raises; check-check and calls go to showdown. Our own DCFR solver finds the equilibrium over every combo in both ranges, with exact card removal, and grades it with an exact best response."
     >
-      <p className="-mt-2 max-w-3xl rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200">
-        <strong className="font-semibold">What this is:</strong> an exact equilibrium of a simplified river betting abstraction, where players may use only the bet and raise sizes listed below.
-        It is not a full no-limit hold&apos;em solver: real players can bet any amount, and the earlier streets that produced these ranges are not modelled.
-      </p>
+      <Line as="p">
+        <span className="max-w-[72ch]">
+          <Tag>What this is:</Tag> an exact equilibrium of a simplified river betting abstraction, where players may use only the bet and raise sizes listed below. It is not a
+          full no-limit hold&apos;em solver: real players can bet any amount, and the earlier streets that produced these ranges are not modelled.
+        </span>
+      </Line>
+      <Line />
 
-      <Card>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,12rem)]">
-            <Field label="Preset" htmlFor="river-preset">
-              <select id="river-preset" className={selectClass} value={presetId} onChange={(e) => choosePreset(e.target.value)} disabled={running}>
-                {RIVER_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-                <option value="custom" disabled>
-                  Custom
+      <Card title="Spot">
+        <form onSubmit={submit}>
+          <Field label="Preset" htmlFor="river-preset">
+            <select id="river-preset" className={selectClass} value={presetId} onChange={(e) => choosePreset(e.target.value)} disabled={running}>
+              {RIVER_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
-              </select>
-            </Field>
-            {text("board", "Board", "5 cards", "e.g. Ks7d2c9h4s")}
+              ))}
+              <option value="custom" disabled>
+                Custom
+              </option>
+            </select>
+            {preset && <span className="text-muted">{preset.blurb}</span>}
+          </Field>
+          {text("board", "Board", "5 cards", "e.g. Ks7d2c9h4s")}
+          {range("oopRange", "OOP range (acts first)", parsed.combos[0])}
+          {range("ipRange", "IP range", parsed.combos[1])}
+          {text("pot", "Pot", "bb")}
+          {text("stack", "Stack", "bb behind")}
+          {text("oopBets", "OOP bets", "% pot", "Empty: OOP only checks")}
+          {text("ipBets", "IP bets", "% pot", "After OOP checks")}
+          {text("raises", "Raises", "% pot after call", "100 = pot-sized")}
+          <Toggles
+            label="Raise cap"
+            value={form.maxRaises}
+            onChange={(k) => edit("maxRaises", k)}
+            options={[0, 1, 2, 3].map((k) => ({ value: k, label: k === 0 ? "No raises" : `${k} raise${k > 1 ? "s" : ""}` }))}
+          />
+          <div className={FIELD_ROW}>
+            <span className="uppercase">All-in</span>
+            <span>
+              <Choice type="checkbox" id="river-allin" checked={form.allIn} onChange={(e) => edit("allIn", e.target.checked)}>
+                All-in option
+              </Choice>
+            </span>
           </div>
-          {preset && <p className="-mt-1 text-xs leading-5 text-zinc-600 dark:text-zinc-400">{preset.blurb}</p>}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {range("oopRange", "OOP range (acts first)", parsed.combos[0])}
-            {range("ipRange", "IP range", parsed.combos[1])}
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {text("pot", "Pot", "bb")}
-            {text("stack", "Stack", "bb behind")}
-            {text("oopBets", "OOP bets", "% pot", "Empty: OOP only checks")}
-            {text("ipBets", "IP bets", "% pot", "After OOP checks")}
-            {text("raises", "Raises", "% pot after call", "100 = pot-sized")}
-            <Field label="Raise cap" htmlFor="river-maxraises">
-              <select id="river-maxraises" className={selectClass} value={form.maxRaises} onChange={(e) => edit("maxRaises", Number(e.target.value))}>
-                {[0, 1, 2, 3].map((k) => (
-                  <option key={k} value={k}>
-                    {k === 0 ? "No raises" : `${k} raise${k > 1 ? "s" : ""}`}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:items-end">
-            <label htmlFor="river-allin" className="flex h-9 items-center gap-2 text-sm">
-              <input id="river-allin" type="checkbox" checked={form.allIn} onChange={(e) => edit("allIn", e.target.checked)} className="size-4 accent-emerald-600" />
-              All-in option
-            </label>
-            <Field label="Stop at" unit="exploitability" htmlFor="river-target">
-              <select id="river-target" className={selectClass} value={targetPct} onChange={(e) => setTargetPct(Number(e.target.value))}>
-                {TARGETS.map((t) => (
-                  <option key={t} value={t}>
-                    {fmt(t, t < 0.1 ? 2 : 1)}% of pot
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Max iterations" htmlFor="river-maxit">
-              <select id="river-maxit" className={selectClass} value={maxIterations} onChange={(e) => setMaxIterations(Number(e.target.value))}>
-                {MAX_ITERATIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {fmt(n, 0)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div className="flex gap-2">
-              <Button type="submit" disabled={running || !parsed.ok}>
-                Run
-              </Button>
-              <Button onClick={halt} variant="secondary" disabled={!running}>
-                Stop
-              </Button>
-            </div>
-          </div>
+          <Toggles
+            label="Stop at (% of pot)"
+            value={targetPct}
+            onChange={setTargetPct}
+            options={TARGETS.map((t) => ({ value: t, label: `${fmt(t, t < 0.1 ? 2 : 1)}%` }))}
+          />
+          <Toggles label="Max iterations" value={maxIterations} onChange={setMaxIterations} options={MAX_ITERATIONS.map((n) => ({ value: n, label: fmt(n, 0) }))} />
+          <Actions>
+            <Button type="submit" disabled={running || !parsed.ok}>
+              Run
+            </Button>
+            <Button onClick={halt} variant="secondary" disabled={!running}>
+              Stop
+            </Button>
+          </Actions>
         </form>
-        <div className="mt-3">
-          <StatusLine tone={running ? "busy" : status === "error" ? "error" : "muted"}>
-            {running && (last ? `Solving: iteration ${fmt(last.iteration, 0)}, exploitability ${fmt(last.exploitabilityPct, 3)}% of the pot` : "Building the tree…")}
-            {status === "done" && r && (
-              <>
-                {r.stoppedBy === "target" ? "Reached" : "Stopped short of"} the target ({fmt(r.targetPct, 2)}% of pot): {fmt(r.iterations, 0)} DCFR iterations in {ms(r.timeMs)}.
-              </>
-            )}
-            {status === "stopped" && `Stopped at iteration ${fmt(last?.iteration ?? 0, 0)}. Results below are from the previous finished run.`}
-            {status === "error" && `Solver error: ${error}`}
-            {status === "idle" && "Press Run to solve."}
-          </StatusLine>
-        </div>
+        <StatusLine tone={running ? "busy" : status === "error" ? "error" : "muted"}>
+          {running && (last ? `Solving: iteration ${fmt(last.iteration, 0)}, exploitability ${fmt(last.exploitabilityPct, 3)}% of the pot` : "Building the tree…")}
+          {status === "done" && r && (
+            <>
+              {r.stoppedBy === "target" ? "Reached" : "Stopped short of"} the target ({fmt(r.targetPct, 2)}% of pot): {fmt(r.iterations, 0)} DCFR iterations in {ms(r.timeMs)}.
+            </>
+          )}
+          {status === "stopped" && `Stopped at iteration ${fmt(last?.iteration ?? 0, 0)}. Results below are from the previous finished run.`}
+          {status === "error" && `Solver error: ${error}`}
+          {status === "idle" && "Press Run to solve."}
+        </StatusLine>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        <Card title="Convergence of the average strategy">
-          <RiverChart points={points} targetPct={running ? runTarget : (r?.targetPct ?? runTarget)} />
-        </Card>
-        <Card title="Tree">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-1">
-            <Stat label="Combos" value={tree ? `${fmt(tree.combos[0], 0)} × ${fmt(tree.combos[1], 0)}` : "—"} unit="OOP × IP" hint="Live combos after removing board cards" />
-            <Stat label="Hand pairs" value={tree ? fmt(tree.pairs, 0) : "—"} hint="Card-disjoint (OOP, IP) combo pairs: every deal the solver weighs" />
-            <Stat label="Decision nodes" value={tree ? fmt(tree.counts.decision, 0) : "—"} unit={tree ? `of ${fmt(tree.counts.total, 0)}` : undefined} hint="Decision nodes out of all nodes in the betting tree" />
-            <Stat label="Fold / showdown" value={tree ? `${fmt(tree.counts.fold, 0)} / ${fmt(tree.counts.showdown, 0)}` : "—"} hint="Terminal nodes: hands that end in a fold, and hands that reach showdown" />
-            <Stat label="Info sets" value={tree ? fmt(tree.counts.infoSets, 0) : "—"} hint="Decision nodes × combos of the player to act" />
-          </div>
-        </Card>
-      </div>
+      <Figure caption="FIG. 1: Convergence of the average strategy" legend="Dashed: target exploitability">
+        <RiverChart points={points} targetPct={running ? runTarget : (r?.targetPct ?? runTarget)} />
+      </Figure>
 
-      <div className={`grid grid-cols-2 gap-4 transition-opacity sm:grid-cols-3 xl:grid-cols-6 ${running && r ? "opacity-50" : ""}`}>
-        <Card>
+      <Card title="Tree">
+        <Stat label="Combos" value={tree ? `${fmt(tree.combos[0], 0)} × ${fmt(tree.combos[1], 0)}` : "—"} unit="OOP × IP" hint="Live combos after removing board cards" />
+        <Stat label="Hand pairs" value={tree ? fmt(tree.pairs, 0) : "—"} hint="Card-disjoint (OOP, IP) combo pairs: every deal the solver weighs" />
+        <Stat label="Decision nodes" value={tree ? fmt(tree.counts.decision, 0) : "—"} unit={tree ? `of ${fmt(tree.counts.total, 0)}` : undefined} hint="Decision nodes out of all nodes in the betting tree" />
+        <Stat label="Fold / showdown" value={tree ? `${fmt(tree.counts.fold, 0)} / ${fmt(tree.counts.showdown, 0)}` : "—"} hint="Terminal nodes: hands that end in a fold, and hands that reach showdown" />
+        <Stat label="Info sets" value={tree ? fmt(tree.counts.infoSets, 0) : "—"} hint="Decision nodes × combos of the player to act" />
+      </Card>
+
+      <div className={running && r ? "text-muted" : undefined}>
+        <Card title="Result">
           <Stat label="OOP EV" value={r ? fmt(r.potShare[0], 3) : "—"} unit={r ? `bb · ${pct(r.potShare[0] / r.pot, 1)}` : "bb"} hint="OOP's expected share of the pot (bb and % of the pot), counting what it wins or loses beyond it" />
-        </Card>
-        <Card>
           <Stat label="IP EV" value={r ? fmt(r.potShare[1], 3) : "—"} unit={r ? `bb · ${pct(r.potShare[1] / r.pot, 1)}` : "bb"} />
-        </Card>
-        <Card>
           <Stat label="OOP vs even split" value={r ? fmtSigned(r.value, 3) : "—"} unit="bb" hint="Zero-sum value: OOP's EV minus half the pot; IP's is the negative" />
-        </Card>
-        <Card>
           <Stat label="Exploitability" value={r ? `${fmt(r.exploitabilityPct, 3)}%` : "—"} unit="of pot" hint="NashConv / 2, as a share of the starting pot" />
-        </Card>
-        <Card>
           <Stat label="Exploitability" value={r ? <Sci x={r.exploitability} digits={1} /> : "—"} unit="bb" />
-        </Card>
-        <Card>
           <Stat label="Iterations" value={r ? fmt(r.iterations, 0) : "—"} unit={r ? `in ${ms(r.timeMs)}` : undefined} />
         </Card>
       </div>
 
-      <Card title="Strategy explorer" aside={r ? `Board ${r.board} · pot ${fmt(r.pot, 2)} bb · ${fmt(r.stack, 2)} bb behind` : undefined}>
+      <Figure caption="FIG. 2: Strategy explorer">
+        {r && (
+          <Line className="text-muted uppercase">
+            <span>
+              Board <span className="normal-case">{r.board}</span> · pot {fmt(r.pot, 2)} bb · {fmt(r.stack, 2)} bb behind
+            </span>
+          </Line>
+        )}
         {r ? (
-          <div className={`transition-opacity ${running ? "opacity-50" : ""}`}>
+          <div className={running ? "opacity-50" : undefined}>
             <RiverExplorer key={runId} result={r} />
           </div>
         ) : (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">{status === "error" ? "Fix the input and run again." : "Solving…"}</p>
+          <Line as="p" className="text-muted">
+            <span>{status === "error" ? "Fix the input and run again." : "Solving…"}</span>
+          </Line>
         )}
-      </Card>
+      </Figure>
 
-      <div className="flex max-w-3xl flex-col gap-2 text-xs leading-5 text-zinc-600 dark:text-zinc-400">
-        <p>
-          <strong className="font-semibold text-foreground">How it works.</strong> Discounted CFR (Brown &amp; Sandholm, 2019, with α = 1.5, β = 0, γ = 2) plays the spot against
-          itself. Each decision node keeps a regret and a strategy sum for every combo of the player to act; positive regrets are discounted by t<sup>1.5</sup>/(t<sup>1.5</sup>+1), negative ones
+      <Line as="p">
+        <span className="max-w-[72ch] text-muted">
+          <span className="text-ink uppercase">How it works.</span> Discounted CFR (Brown &amp; Sandholm, 2019, with α = 1.5, β = 0, γ = 2) plays the spot against itself. Each
+          decision node keeps a regret and a strategy sum for every combo of the player to act; positive regrets are discounted by t<sup>1.5</sup>/(t<sup>1.5</sup>+1), negative ones
           halved, and iteration t counts t² in the average. Showdowns and folds remove the opponent combos that share a card with yours, so blockers are exact.
-        </p>
-        <p>
-          <strong className="font-semibold text-foreground">Sizes.</strong> Bets are a percentage of the pot. A raise of r% means call, then add r% of the pot after calling (100 = a
-          pot-sized raise), never less than the previous raise. Any size at or above the stack becomes all-in.
-        </p>
-        <p>
-          <strong className="font-semibold text-foreground">Exploitability</strong> is what a perfect counter-strategy would gain, averaged over the two players (NashConv ÷ 2), found by an
-          exact best response over the whole tree. EVs are each player&apos;s share of the {r ? `${fmt(r.pot, 2)} bb ` : ""}pot; they add up to the pot.
-        </p>
-      </div>
+        </span>
+      </Line>
+      <Line as="p">
+        <span className="max-w-[72ch] text-muted">
+          <span className="text-ink uppercase">Sizes.</span> Bets are a percentage of the pot. A raise of r% means call, then add r% of the pot after calling (100 = a pot-sized
+          raise), never less than the previous raise. Any size at or above the stack becomes all-in.
+        </span>
+      </Line>
+      <Line as="p">
+        <span className="max-w-[72ch] text-muted">
+          <span className="text-ink uppercase">Exploitability</span> is what a perfect counter-strategy would gain, averaged over the two players (NashConv ÷ 2), found by an exact
+          best response over the whole tree. EVs are each player&apos;s share of the {r ? `${fmt(r.pot, 2)} bb ` : ""}pot; they add up to the pot.
+        </span>
+      </Line>
     </Panel>
   );
 }

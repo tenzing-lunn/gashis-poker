@@ -11,7 +11,7 @@ const pctLabel = (v: number): string => `${fmt(v, Math.max(0, Math.round(-Math.l
 export const RiverChart = memo(function RiverChart({ points, targetPct }: { points: readonly RiverPoint[]; targetPct: number }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const h = width < 500 ? 200 : 240;
-  const f = makeFrame(width, h, { left: 56, right: 14, top: 12, bottom: 36 });
+  const f = makeFrame(width, h, { left: 56, right: 14, top: 26, bottom: 36 });
   const xs = points.map((p) => p.iteration);
   const ys = points.map((p) => Math.max(p.exploitabilityPct, 1e-6));
   const xMax = Math.max(10, ...xs);
@@ -36,14 +36,14 @@ export const RiverChart = memo(function RiverChart({ points, targetPct }: { poin
         title="Exploitability of the DCFR average strategy, as a percentage of the pot, against iterations"
         clipId="river-expl"
       >
-        <line x1={f.left} x2={f.right} y1={y(targetPct)} y2={y(targetPct)} className="stroke-amber-500" strokeDasharray="6 4" strokeWidth={1.5} />
-        <text x={f.right - 4} y={y(targetPct) - 6} textAnchor="end" className="fill-amber-600 text-[11px] dark:fill-amber-400">
+        <line x1={f.left} x2={f.right} y1={y(targetPct)} y2={y(targetPct)} className="stroke-ink" strokeDasharray="6 4" strokeWidth={1} />
+        <text x={f.right - 4} y={y(targetPct) - 6} textAnchor="end" className="fill-ink text-[10px] uppercase">
           target {pctLabel(targetPct)}
         </text>
         {points.length > 0 && (
-          <g className="stroke-rose-600 dark:stroke-rose-400">
+          <g className="stroke-ink">
             <path d={linePath(xs, ys, x, y)} fill="none" strokeWidth={2} strokeLinejoin="round" />
-            <circle cx={x(last.iteration)} cy={y(Math.max(last.exploitabilityPct, 1e-6))} r={3} className="fill-background" strokeWidth={2} />
+            <circle cx={x(last.iteration)} cy={y(Math.max(last.exploitabilityPct, 1e-6))} r={3} className="fill-paper" strokeWidth={2} />
           </g>
         )}
       </ChartFrame>
