@@ -43,6 +43,8 @@ All of these are exact, two specific hands all-in before the flop:
 | <Cards hand="AhKd" /> vs <Cards hand="QsJc" /> | two higher cards vs two lower | 64.3% |
 | <Cards hand="AhKh" /> vs <Cards hand="7d2c" /> | strong hand vs weak hand | 69.3% |
 
+Heads-up, the two hands' shares add up to the whole pot, so the second hand's equity is 100% minus the number shown. For example, AQ against AK has 100 − 74.0 = 26.0%.
+
 Three patterns explain most of the table.
 
 **A pair against two higher cards is close to even.** Players call this a **coin flip**. The pair is ahead now. The other hand has 6 cards that pair one of its two cards (3 of each rank) and five board cards to hit one. Even the lowest pair, 22, keeps 53.0% against AK.
@@ -109,22 +111,22 @@ The calculator below handles all three cases. Try the presets, then type your ow
 
 ## Equity realization
 
-Equity assumes the cards are dealt out with no more betting. Real hands keep going. Sometimes you fold a hand that would have won, and lose your share. Sometimes a bet makes your opponent fold a hand that would have won, and you collect more than your share. **Equity realization (EQR)** measures the net effect: the share of the pot you actually end up winning on average, divided by your equity. That gives a quick approximation:
+Equity assumes the cards are dealt out with no more betting. Real hands keep going. Sometimes you fold a hand that would have won, and lose your share. Sometimes a bet makes your opponent fold a hand that would have won, and you collect more than your share. **Equity realization (EQR)** is the factor that captures the net effect. It is defined by:
 
-<Formula>expected pot share ≈ equity × EQR × pot</Formula>
+<Formula>expected share of the current pot = equity × EQR × current pot</Formula>
 
-The **expected pot share** is the part of the current pot you collect on average. It is not the EV of module 3: it does not subtract the chips you will put in on later streets.
+The **expected share of the current pot** is how much of the chips already in the middle you collect on average, once the rest of the hand is played. It counts only the current pot, not chips bet later, and it is not the EV of module 3: it does not subtract the chips you will put in on later streets. The formula itself is exact by definition. The approximation is in the EQR value: you cannot compute it from the cards, only estimate it.
 
 An EQR of 1 means you collect exactly your equity. Below 1 you collect less; above 1, more. Two things move it:
 
-- **Position.** A player who acts last after the flop (module 0) sees what the opponent does before deciding. They fold less often by mistake and bluff (bet a weak hand hoping the opponent folds; module 5 studies this) at better moments, so they tend to realize more of their equity. Out of position, EQR tends to be lower.
+- **Position.** A player who acts last after the flop (module 0) sees what the opponent does before deciding. They fold less often by mistake and bluff (bet a hand that is usually behind if called, profiting mainly when the opponent folds; module 5 studies this) at better moments, so they tend to realize more of their equity. Out of position, EQR tends to be lower.
 - **Playability.** Suited and connected hands (connected means adjacent ranks, like 9-8) make flushes and straights, strong hands that are easy to play for a big pot. Offsuit hands with a weak kicker tend to make a medium pair that has to give up to pressure, so they realize less.
 
 <Example title="Worked example: equity realization">
 
 The pot is 10bb. You have 40% equity, but you are out of position with a hand that is hard to play, and you estimate an EQR of 0.8.
 
-Expected pot share ≈ 0.40 × 0.8 × 10 = **3.2bb**, not the 4bb that raw equity (0.40 × 10) suggests.
+Expected share of the current pot ≈ 0.40 × 0.8 × 10 = **3.2bb** (≈ because 0.8 is an estimate), not the 4bb that raw equity (0.40 × 10) suggests.
 
 </Example>
 
@@ -153,4 +155,4 @@ This is an approximation, and the EQR values in it are estimates, not facts abou
 - Opponents hold ranges. Your equity against a range is the combo-weighted average of your equity against each hand in it, after card removal (JJ vs `QQ+, AK`: 36.2%).
 - The same hand can be a big underdog or a big favorite depending on the range (AQ: 24.4% to 60.7%).
 - Monte Carlo estimates are approximate with a known margin; say "≈" when you quote them.
-- Expected pot share ≈ equity × EQR × pot (a gross share of the pot, not module 3's EV). Position and playability push EQR up; being out of position with a hard-to-play hand pushes it down. EQR is an estimate, not exact math.
+- Expected share of the current pot = equity × EQR × current pot (a gross share, not module 3's EV); EQR itself can only be estimated. Position and playability push EQR up; being out of position with a hard-to-play hand pushes it down. EQR is an estimate, not exact math.

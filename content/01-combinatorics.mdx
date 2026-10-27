@@ -78,7 +78,7 @@ Every card you can see is a card nobody else holds. Your own hole cards and the 
 - **AK when one ace is on the board.** 3 aces × 4 kings = 12 combos instead of 16.
 - **AK when an ace and a king are both visible.** 3 × 3 = 9 combos.
 
-A card you hold that removes combos from an opponent's range is called a **blocker**. On a board of <Cards hand="Ks 8s 3s" />, 10 spades are unseen, so an opponent could hold C(10, 2) = 45 two-spade combos (each one a flush). If you hold <Cards hand="As" />, only 9 spades are unseen: C(9, 2) = 36 combos. And none of those 36 can be the best possible flush, because you hold its key card.
+A card you hold that removes combos from an opponent's range is called a **blocker**. On a board of <Cards hand="Ks 8s 3s" />, 10 spades are unseen, so an opponent could hold C(10, 2) = 45 two-spade combos (each one a flush). If you hold <Cards hand="As" />, only 9 spades are unseen: C(9, 2) = 36 combos. On this flop no straight flush is possible, so the strongest hand anyone can hold is an ace-high spade flush, and that needs the ace of spades. You hold it, so none of the opponent's 36 flush combos can be ace-high: every one of them loses to your flush.
 
 <Example title="Counting a range on a flop">
 

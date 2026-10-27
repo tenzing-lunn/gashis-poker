@@ -27,7 +27,7 @@ export function GeometricSizing() {
           <input className={`${inputClass} w-24`} inputMode="decimal" value={pot} onChange={(e) => setPot(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Effective stack S (bb)</span>
+          <span className="text-xs text-zinc-500">Effective stack behind S (bb)</span>
           <input className={`${inputClass} w-24`} inputMode="decimal" value={stack} onChange={(e) => setStack(e.target.value)} />
         </label>
         <div className="flex flex-col gap-1">

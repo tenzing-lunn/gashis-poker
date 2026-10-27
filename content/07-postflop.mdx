@@ -77,14 +77,14 @@ The bet size and the shape go together. From module 5, a polarized bettor can in
 Put the advantages and the sizes together and you get the standard starting points for c-betting. These are **heuristics**: summaries of what strong players and solvers tend to do, not results we derive here.
 
 - **Dry, high or paired flops** (K-7-2, A-K-4, 8-8-3): the raiser's range is ahead almost everywhere, so it bets **often and small** (around a third of the pot), with a merged range.
-- **Connected, wet flops** (J-9-8, 7-6-5): the caller has many strong hands and draws, so the raiser bets **less often but bigger**, with a more polarized range. The reasoning: the raiser's medium hands (one pair, say) are easily outdrawn and do not want to face a raise, so they check; without a clear range advantage the raiser cannot profitably bet its whole range. What is left to bet is strong hands, which want a big bet so that draws must pay worse pot odds to continue (module 3), plus some draws as bluffs. Strong hands plus bluffs, with the middle checked, is a polarized range, and a polarized range pairs with a big size (module 5).
+- **Connected, wet flops** (J-9-8, 7-6-5): the caller has many strong hands and draws, so the raiser bets **less often but bigger**, with a more polarized range. The reasoning: the raiser's medium hands (one pair, say) are easily outdrawn and do not want to face a raise, so they check; without a clear range advantage the raiser cannot profitably bet its whole range. What is left to bet is strong hands, which want a big bet so that draws must pay worse pot odds to continue (module 3), plus some draws bet as **semi-bluffs**: bluffs that can still improve to the best hand when called. Strong hands plus bluffs and semi-bluffs, with the middle checked, is a polarized range, and a polarized range pairs with a big size (module 5).
 - **Monotone flops** (Q-9-4 all hearts): the raiser bets **less often and smaller**. The usual explanation: any further heart can flip which hand is ahead, so neither side wants to build a big pot with a medium hand.
 
 The table above backs up the first two: on K-7-2 UTG has a large edge in both measures; on J-9-8 the BB leads in both (narrowly in equity, 51.6% to 48.4%, and clearly in strong combos, 25 to 12).
 
 ## Stack-to-pot ratio
 
-The **stack-to-pot ratio** (**SPR**) is the effective stack divided by the pot at the start of the flop. It tells you how many pots are left to bet.
+The **stack-to-pot ratio** (**SPR**) is the effective stack still behind (the chips not yet in the pot) divided by the pot at the start of the flop. It tells you how many pots are left to bet.
 
 <Formula>SPR = effective stack ÷ pot on the flop</Formula>
 
@@ -104,7 +104,7 @@ A low SPR means one or two normal bets put everyone all-in, so a hand like top p
 
 Suppose you hold a very strong hand and want to get all the chips in by the river, betting the same fraction of the pot on each street. What fraction?
 
-Call the pot P, the effective stack S, the number of streets left n, and the bet fraction r (bet = r × the pot at that moment, so r = B/P as in module 3). On any street, if the pot is p before the bet, the bet is r·p and the call adds another r·p, so the pot becomes
+Call the pot P, the effective stack S still behind (chips not yet in the pot: 97.5bb in the single-raised pot above, not the 100bb each player started with, which is what S meant in module 6), the number of streets left n, and the bet fraction r (bet = r × the pot at that moment, so r = B/P as in module 3). On any street, if the pot is p before the bet, the bet is r·p and the call adds another r·p, so the pot becomes
 
 <Formula>p + 2·r·p = p·(1 + 2r)</Formula>
 
@@ -145,7 +145,7 @@ Why not bet small, small, then shove? It works, but the last bet becomes a huge 
 The pot is 2.5 + 2.5 + 0.5 + 1 = 6.5bb (both blinds stay in the pot). Each stack is 100 − 2.5 = 97.5bb. SPR = 97.5 / 6.5 = 15.
 </Check>
 
-<Check question="The pot is 10bb and the effective stack is 40bb. You want to get all in over two streets with the same pot fraction each time. What fraction of the pot do you bet?" answer={100} tolerance={1} unit="%">
+<Check question="The pot is 10bb and the effective stack behind is 40bb. You want to get all in over two streets with the same pot fraction each time. What fraction of the pot do you bet?" answer={100} tolerance={1} unit="%">
 1 + 2S/P = 1 + 80/10 = 9. The square root of 9 is 3, so r = (3 − 1) / 2 = 1, a pot-sized bet. Check it: bet 10 into 10, the pot is 30 and 30 is left; bet 30 into 30, the pot is 90 and the stack is 0.
 </Check>
 

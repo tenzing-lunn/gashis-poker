@@ -43,7 +43,7 @@ Here is the smallest game that contains bluffing. The deck has three cards, A > 
 
 Only one player can bet, so this is called a **half-street** game.
 
-**The easy parts.** With the A, betting is never worse than checking: it wins P if the caller folds and P + B if they call, against P for checking. So the bettor always bets the A. A bet made to get called by worse is a **value bet**. With the Q, checking loses for sure (EV 0). Betting can only win if the caller folds. A bet with a hand that wins only when the opponent folds is a **bluff**. The caller's K beats every bluff and loses to every value bet. A hand like that is a **bluff-catcher**.
+**The easy parts.** With the A, betting is never worse than checking: it wins P if the caller folds and P + B if they call, against P for checking. So the bettor always bets the A. A bet made to get called by worse is a **value bet**. With the Q, checking loses for sure (EV 0). Betting can only win if the caller folds. A **bluff** is a bet with a hand that is usually behind if called, so it makes its money mainly from the opponent folding. A **pure bluff** is the extreme case: a hand that never wins when called (zero equity), like the Q here. The formulas in this lesson assume pure bluffs. The caller's K beats every bluff and loses to every value bet. A hand like that is a **bluff-catcher**.
 
 So the bettor's betting range holds only the best hand and the worst one, nothing in between. A range made of strong value hands and bluffs is **polarized**. The two open questions are how often the Q bluffs, and how often the K calls.
 
@@ -84,7 +84,7 @@ Each one-sided deviation hands the opponent 2.5bb. The equilibrium strategies gi
 
 The AKQ game had two numbers. Each one is a general rule for polarized betting.
 
-**Bluff share.** A polarized betting range can be up to s = B / (P + 2B) bluffs and still leave a bluff-catcher indifferent. A betting range is **balanced** when its bluff share is exactly this: the opponent's bluff-catchers are then indifferent between calling and folding. To turn the share into a ratio, divide bluffs by value bets: s / (1 − s). Since 1 − s = (P + B) / (P + 2B), the (P + 2B) cancels and the ratio is B / (P + B) bluffs per value bet:
+**Bluff share.** A polarized betting range can be up to s = B / (P + 2B) pure bluffs and still leave a bluff-catcher indifferent. A betting range is **balanced** when its bluff share is exactly this: the opponent's bluff-catchers are then indifferent between calling and folding. To turn the share into a ratio, divide bluffs by value bets: s / (1 − s). Since 1 − s = (P + B) / (P + 2B), the (P + 2B) cancels and the ratio is B / (P + B) bluffs per value bet:
 
 | Bet size | Bluff share s = B / (P + 2B) | Bluffs : value bets |
 |---|---:|---:|
@@ -152,7 +152,7 @@ Player 1 holds the Q and checks; Player 2 bets. Should Player 1 call?
 3. The pot before the bet is 2 (the antes) and the bet is 1. From module 3, the required equity is 1 / (2 + 2 × 1) = ¼.
 4. Calling with the Q wins exactly when Player 2 has the J, so Player 1's equity is ¼: exactly break-even.
 
-Player 2's J bluffs at the frequency that makes Player 1's Q indifferent, just as in the AKQ game: ⅓ = B / (P + B) with P = 2 and B = 1. The same check works the other way. When Player 1 bets, their range is K with weight 3β and J with weight β, so whenever β is above 0, Player 2's Q faces bluffs ¼ of the time and is again indifferent. (At β = 0, Player 1 bets only the K, so Player 2 never holds the Q facing a bet.)
+Player 2's J bluffs at the frequency that makes Player 1's Q indifferent, just as in the AKQ game: ⅓ = B / (P + B) with P = 2 and B = 1. The same check works the other way. When Player 1 bets, their range is K with weight 3β and J with weight β, so whenever β is above 0, Player 2's Q faces bluffs ¼ of the time and is again indifferent. (At β = 0, Player 1 bets the K 3 × 0 = 0 of the time too, so Player 1 never bets first and Player 2 never faces a bet.)
 
 </Example>
 
