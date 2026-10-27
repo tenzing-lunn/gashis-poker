@@ -37,11 +37,23 @@ You learn the math, drill it until it's fast, then use it in real hands against 
 Plus **Review** (every hand graded decision by decision, EV lost in bb, with the math shown) and
 **Stats** (accuracy/speed per drill type, VPIP/PFR, *actual winnings vs all-in-EV winnings* — the luck/skill split).
 
+### Training mechanics (from RESEARCH.md §3)
+- **Grading = EV loss with tiers**: best / correct / inaccuracy / mistake / blunder, by EV lost as % of pot. Never "wrong" for a mixed action. Every verdict names the concept and shows the math.
+- **Glicko-2 rating** on the player *and* on every drill item; serve items at ~85% expected success. Hints reduce rating gain.
+- **FSRS spaced repetition** on every mistake/blunder spot and concept card.
+- **Fixed 120 s sprints** (auto-submit, wrong answers penalized) so scores compare over time.
+- **Blocked → interleaved**: drill one concept, then mixed spots.
+- **Feedback modes**: learn (immediate) vs test (end of session; only unassisted answers count).
+- **Leak dashboard**: EV loss by street / position / mistake type, biggest first.
+- **Simplified actions for beginners** (fold / call / one raise), widening with rating.
+
 ---
 
 ## 2. Curriculum (Learn)
 
 Each module: objective → derivation → worked example → interactive check → links to its drill.
+Sequencing follows MIT 15.S50 (EV/odds → preflop → game theory) with CMU 15-888's CFR track behind the Lab.
+Formulas and worked numbers live in RESEARCH.md §2; anything marked ⚠ there gets checked before it ships.
 
 0. **Rules & mechanics** — hand rankings, positions, blinds, betting rounds, side pots.
 1. **Combinatorics** — 1326 starting hands = C(52,2); 169 classes (13 pairs, 78 suited, 78 offsuit);
@@ -101,6 +113,14 @@ workers/       equity.worker.ts, solver.worker.ts
 The evaluator and equity engine are written from scratch, not pulled from a library — that's where a lot
 of the CS lives (bit tricks, lookup tables, why exact enumeration on the flop is ~1k boards but preflop needs sampling).
 
+**Technical decisions from the GitHub survey (RESEARCH.md §4):**
+- Evaluator: **perfect-hash / rank-key + flush-mask** (~100–500 KB tables), modeled on HenryRLee/PokerHandEvaluator.
+  Not Two Plus Two: ~130 MB per worker for ~1.6× speed in V8. Equity loops use **incremental eval** (precompute the board key).
+- Engine correctness: **differential fuzzing against pokerkit** (Python, MIT) — it implements WSOP Rule 96 (incomplete all-in doesn't reopen betting).
+- Bots: baseline policy + persona parameters + seeded noise, including a "micro-stakes pool" persona.
+- Push/fold solver: built ourselves (169×169 equity matrix + fictitious play/CFR).
+- **License rule:** never copy or bundle AGPL / GPL / unlicensed code (this rules out every open postflop solver). Card art: public-domain/CC0 only.
+
 ---
 
 ## 5. Build phases, agents, and judges
@@ -114,8 +134,9 @@ of the CS lives (bit tricks, lookup tables, why exact enumeration on the flop is
 - Parallel builders never share files.
 
 ### Phase 1 — Math core (1 builder, 1 math judge)
-Scaffold Next.js + git init; build `lib/poker/`.
+Scaffold Next.js + git init (**done**: Next.js 16, Vitest, first commit); build `lib/poker/`.
 **Acceptance:**
+- Evaluator agrees with HenryRLee/PokerHandEvaluator's `test_data/` fixtures (Apache-2.0).
 - Enumerating all 2,598,960 five-card hands gives exactly: straight flush 40, quads 624, full house 3,744,
   flush 5,108, straight 10,200, trips 54,912, two pair 123,552, pair 1,098,240, high card 1,302,540.
 - Seven-card enumeration (slow test) totals 133,784,560 with the known category counts.
@@ -127,9 +148,9 @@ Scaffold Next.js + git init; build `lib/poker/`.
 ### Phase 2 — Four parallel workstreams (4 builders, judges per stream)
 | Stream | Owns | Judge checks |
 |---|---|---|
-| **A. Game engine + bots** | `lib/engine/`, `lib/bots/` | Fuzz 100k random hands: chips conserved, no illegal actions, side pots correct; heads-up order (button = SB, acts first preflop, last postflop); short all-in doesn't reopen betting; each bot style is measurably different (VPIP/PFR/aggression) |
+| **A. Game engine + bots** | `lib/engine/`, `lib/bots/` | Differential fuzz vs pokerkit (pots, legal actions, min-raise identical at every step); 100k random hands: chips conserved, no illegal actions, side pots correct; heads-up order (button = SB, acts first preflop, last postflop); short all-in doesn't reopen betting; each bot style is measurably different (VPIP/PFR/aggression) |
 | **B. Drills** | `lib/drills/`, `/drill` | Judge re-derives the answer to 500 generated questions independently; zero mismatches |
-| **C. Lab + game theory** | `lib/gto/`, `/lab` | Kuhn CFR → value −1/18, exploitability → 0; push/fold solver exploitability < 0.01 bb; variance sim matches analytic mean/SD |
+| **C. Lab + game theory** | `lib/gto/`, `/lab` | Kuhn CFR → value −1/18, exploitability → 0 (cross-checked vs OpenSpiel); push/fold solver exploitability < 0.01 bb; variance sim matches analytic mean/SD. *Stretch:* our own Discounted-CFR river solver for small spots |
 | **D. Curriculum** | `content/`, `/learn` | Math judge recomputes every number in every lesson; pedagogy judge reads it as a beginner and flags any jump in logic |
 
 ### Phase 3 — Play, coach, review, stats (1–2 builders, engine + UX judges)
@@ -145,8 +166,9 @@ Mobile-usable. Deploy to Vercel. Final judge: full walkthrough as a new player, 
 
 ## 6. Decisions I need from you (defaults in bold — I'll use them unless you say otherwise)
 
-1. **What did you actually like about PurePoker?** I'm assuming "play hands vs bots and get feedback."
-   If it's something specific (a drill, a review screen), tell me so it shapes the build.
+1. **PurePoker is a social / real-money play app, not a trainer** (RESEARCH.md §1). Its core is private tables with friends.
+   Do you want that? **Default: no for v1** — solo trainer vs bots. Friends' tables means realtime multiplayer + accounts
+   (Supabase), which would be a Phase 5 of its own. Real money is out of scope regardless.
 2. Format focus: **100bb cash, heads-up + 6-max** / tournaments / both.
 3. Accounts: **local-only v1** / Supabase login + sync from day one.
 4. AI coach (Claude explaining your mistakes in words): **off for v1** — every explanation is computed, not generated.
