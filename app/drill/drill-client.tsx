@@ -47,6 +47,7 @@ export default function DrillClient() {
   const [question, setQuestion] = useState<Question | null>(null);
   const [input, setInput] = useState("");
   const [result, setResult] = useState<CheckResult | null>(null);
+  const [unreadable, setUnreadable] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const [tally, setTally] = useState({ attempted: 0, correct: 0, ms: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,12 +58,19 @@ export default function DrillClient() {
     setQuestion(generate(t, randomSeed(), d));
     setInput("");
     setResult(null);
+    setUnreadable(false);
     setStartedAt(now());
   }
 
   function answer(value: string) {
     if (!question || result) return;
     const r = check(question, value);
+    // A typo shouldn't cost the question: ask again instead of grading it.
+    if (r.given === null) {
+      setUnreadable(true);
+      return;
+    }
+    setUnreadable(false);
     setResult(r);
     setTally((s) => ({
       attempted: s.attempted + 1,
@@ -171,10 +179,14 @@ export default function DrillClient() {
             </div>
           )}
 
+          {unreadable && !result && (
+            <p className="text-sm text-amber-600">Couldn&apos;t read that. Type a number, like 28.6.</p>
+          )}
+
           {result && (
             <div className="space-y-2">
               <p className={`font-semibold ${result.correct ? "text-green-600" : "text-red-600"}`}>
-                {result.correct ? "Correct" : result.given === null ? "Couldn't read that answer" : "Wrong"}
+                {result.correct ? "Correct" : "Wrong"}
                 {" — "}answer: {result.expected}
               </p>
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
