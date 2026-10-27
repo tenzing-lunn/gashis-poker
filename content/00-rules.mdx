@@ -1,3 +1,167 @@
-# 00-rules
+import { HandEvaluator } from "@/app/learn/_widgets/hand-evaluator";
+import { SidePotCalculator } from "@/app/learn/_widgets/side-pot-calculator";
 
-Placeholder. Written in stream D.
+# Rules & mechanics
+
+This lesson assumes you have never played. By the end you will be able to read any card and hand written in this course, rank two poker hands against each other, follow the order of betting in a six-player game, and split the chips into a main pot and side pots when players go all-in for different amounts. Every later module builds on the words defined here.
+
+## The deck and how cards are written
+
+Poker uses a standard 52-card deck. Each card has one of **13 ranks** and one of **4 suits**. From lowest to highest, the ranks are 2, 3, 4, 5, 6, 7, 8, 9, T, J, Q, K, A. "T" means ten, so every rank fits in one character. J is jack, Q is queen, K is king and A is ace. The ace is the highest card, but it can also play as the lowest card in one special straight (see below).
+
+The four suits are clubs (c), diamonds (d), hearts (h) and spades (s). A card is written as its rank followed by its suit: `As` is the ace of spades, `Kd` the king of diamonds, `Th` the ten of hearts, `7c` the seven of clubs. On screen, cards look like this: <Cards hand="As Kd Th 7c" />. Suits never rank against each other. A spade is not better than a heart.
+
+## Texas Hold'em in one paragraph
+
+This course teaches **No-Limit Texas Hold'em**. Each player is dealt two private cards, face down, called **hole cards**. Then up to five shared cards are dealt face up in the middle of the table. These are the **community cards**, and together they are called the **board**. Every player can use them. The deal happens in four stages called **streets**, and there is a round of betting on each one:
+
+| Street | What is dealt | Board size afterward |
+|---|---|---|
+| **Preflop** | Two hole cards to each player | 0 |
+| **Flop** | Three community cards at once | 3 |
+| **Turn** | One more community card | 4 |
+| **River** | One last community card | 5 |
+
+"No-limit" means a player may bet any amount up to all the chips they have in front of them.
+
+## Best five of seven
+
+At the end, each player makes the best possible **five-card hand** from seven cards: their two hole cards plus the five board cards. You may use both hole cards, one, or even none (then you "play the board"). Only five cards count. The other two do nothing.
+
+<Example title="Best five of seven">
+
+You hold <Cards hand="Ah 5h" /> and the board is <Cards hand="Kh 9h 2c 7h Qd" />. Five of your seven cards are hearts: Ah and 5h in your hand, and Kh, 9h and 7h on the board. So your best hand is a flush, <Cards hand="Ah Kh 9h 7h 5h" />. The 2c and Qd do not play.
+
+</Example>
+
+## The nine hand categories
+
+Every five-card hand falls into exactly one of nine categories. A hand in a higher category beats any hand in a lower one. The order is not arbitrary: **rarer hands rank higher**. The table counts how many of the 2,598,960 possible five-card hands land in each category. (Module 1 shows where 2,598,960 comes from. It is the number of ways to choose 5 cards from 52.) These counts come from checking every one of the 2,598,960 hands with the course's evaluator.
+
+| Category | Example | Five-card hands | Probability |
+|---|---|---:|---:|
+| Straight flush: five in a row, all one suit | <Cards hand="9s 8s 7s 6s 5s" /> | 40 | ≈ 0.0015% |
+| Four of a kind ("quads") | <Cards hand="Qc Qd Qh Qs 4d" /> | 624 | ≈ 0.0240% |
+| Full house: three of one rank plus two of another | <Cards hand="7c 7d 7h 2s 2d" /> | 3,744 | ≈ 0.1441% |
+| Flush: five of one suit, not in a row | <Cards hand="Ah Jh 8h 4h 3h" /> | 5,108 | ≈ 0.1965% |
+| Straight: five in a row, mixed suits | <Cards hand="Td 9c 8h 7s 6d" /> | 10,200 | ≈ 0.3925% |
+| Three of a kind ("trips") | <Cards hand="5c 5d 5s Kh 9c" /> | 54,912 | ≈ 2.1128% |
+| Two pair | <Cards hand="Jc Jd 4h 4s Ac" /> | 123,552 | ≈ 4.7539% |
+| One pair | <Cards hand="8c 8h Ks 6d 2c" /> | 1,098,240 | ≈ 42.2569% |
+| High card: none of the above | <Cards hand="Ks Jd 9c 6h 3s" /> | 1,302,540 | ≈ 50.1177% |
+
+Each probability is the count divided by 2,598,960, rounded to four decimals. For example, 624 / 2,598,960 ≈ 0.000240, or about 1 hand in 4,165. The counts add up to exactly 2,598,960. (They describe five random cards. With seven cards to choose from, as in Hold'em, every category except high card gets more common, and one pair and two pair both end up more common than high card. The ranking does not change, though: hands are always compared by this table.)
+
+A few rules settle edge cases:
+
+- **Straights.** The ace counts high (T-J-Q-K-A is the highest straight) or low (A-2-3-4-5, the lowest, called "five-high"). It cannot wrap around: Q-K-A-2-3 is not a straight.
+- **A royal flush** is just the highest straight flush, A-K-Q-J-T of one suit. It is included in the 40.
+- **The flush and straight counts exclude straight flushes**, so the nine categories never overlap.
+
+## Kickers and split pots
+
+When two hands are in the same category, compare the cards that define the category first, then the remaining cards from highest to lowest. Those remaining cards are called **kickers**. Two pair of kings and sevens with an ace beats kings and sevens with a queen. If all five cards tie in rank, the hands are equal and the players **split the pot**: they share the chips equally. Suits never break a tie.
+
+<Example title="A kicker decides">
+
+The board is <Cards hand="Ks Qd 7c 7s 2h" />. Player 1 holds <Cards hand="Ah Kd" />; player 2 holds <Cards hand="Kc Jc" />.
+
+1. Both players have two pair, kings and sevens: one king in hand, one on the board, two sevens on the board.
+2. The fifth card is each player's highest remaining card. Player 1's is the ace in hand.
+3. Player 2's jack does not play. The queen on the board is higher than it, so player 2's best five are K-K-7-7-Q.
+4. Ace beats queen, so player 1 wins the whole pot.
+
+If instead the board were <Cards hand="9h 9d 5c 5s Kh" /> and the hands <Cards hand="Ac 3d" /> and <Cards hand="Ad 4h" />, both players would make 9-9-5-5-A. The 3 and 4 do not play, so the pot is split.
+
+</Example>
+
+<HandEvaluator />
+
+## Blinds, the button, and the bb unit
+
+Somebody has to put chips in before the cards are dealt, or nobody would have a reason to play. These forced bets are the **blinds**. The player in the **small blind (SB)** posts a small amount, and the player in the **big blind (BB)** posts twice as much. In a game played for $0.50 and $1, the SB posts $0.50 and the BB posts $1.
+
+From here on, the course measures every amount in **big blinds, written bb**. One bb is the size of the big blind, so the SB posts 0.5bb and the BB posts 1bb. Measuring in bb makes a decision look the same at any stakes.
+
+A marker called the **button** (BTN, also called the dealer) moves one seat clockwise after each hand. The SB sits directly to the button's left, and the BB is to the SB's left. Because the button moves, everyone pays the blinds in turn.
+
+## Positions and the order of action
+
+This course plays **6-max**: six seats. Going clockwise from the button, the positions are BTN, SB, BB, **UTG** ("under the gun", first to act preflop), **HJ** (hijack), and **CO** (cutoff, just before the button).
+
+- **Preflop**, action starts with UTG (the player to the left of the BB) and goes clockwise: UTG, HJ, CO, BTN, SB, BB. The big blind acts last, because the blinds are already in.
+- **On the flop, turn and river**, the first player still in the hand to the left of the button acts first: SB, BB, UTG, HJ, CO, BTN. The button acts last.
+
+Acting after your opponent is an advantage, because you see what they did before you decide. A player who acts last after the flop is **in position**. A player who must act first is **out of position**. The button is in position against everyone.
+
+**Heads-up** (only two players) changes the blinds: the button posts the small blind. It acts first preflop and last on every later street. The other player posts the big blind.
+
+## Actions and the betting round
+
+When it is your turn you choose one action:
+
+- **Fold**: give up the hand. Any chips you already put in stay in the pot.
+- **Check**: pass without putting in chips. Allowed only when nobody has bet on this street.
+- **Bet**: put chips in when nobody has yet on this street.
+- **Call**: put in enough to match the current bet.
+- **Raise**: put in more than the current bet, forcing others to match the new amount.
+- **All-in**: put in every chip you have. This is the most anyone can bet in no-limit.
+
+The **pot** is all the chips put in so far in the hand. A **minimum raise** must raise by at least as much as the last bet or raise on that street. Preflop the big blind counts as a bet of 1bb. If UTG raises to 2.5bb, the raise is 2.5 − 1 = 1.5bb, so the next player who raises must make it at least 2.5 + 1.5 = 4bb. A player going all-in for less than a full raise is allowed, but it does not let players who already acted raise again.
+
+A **betting round ends** when every player still in the hand has acted at least once and all of them have put in the same amount on this street (or are all-in). Preflop, if nobody raises, the BB still gets to act: they may check or raise. If everyone but one player folds, that player wins the pot at once without showing cards. Otherwise, after the river betting ends, the players left reveal their hands. This is the **showdown**, and the best five-card hand wins the pot.
+
+## Stacks and side pots
+
+Your **stack** is the chips in front of you. The **effective stack** between two players is the smaller of their two stacks, because that is the most either can win from the other or lose to them. The games in this course are **100bb cash games**: every player starts with a stack of 100bb, the chips are worth real money (here, pretend money), and you may leave or top up between hands.
+
+A player who goes **all-in** can only win, from each opponent, as much as they put in. When stacks differ, the chips are split into layers. The **main pot** holds the amount that everyone still in the hand matched. A **side pot** holds the extra chips that only the bigger stacks matched, and only those players can win it. Chips that nobody matched go back to the player who put them in.
+
+<Example title="Building the pots">
+
+Four players. D raises to 10bb and then folds. A goes all-in for 20bb, B all-in for 50bb, and C, with the biggest stack, puts in 100bb. Totals put in: A 20, B 50, C 100, D 10, which is 180bb.
+
+1. **Main pot.** Everyone still in (A, B, C) put in at least 20. Take up to 20 from each player: 20 + 20 + 20 + 10 (D's chips stay in, even though D folded) = **70bb**. A, B and C can win it.
+2. **Side pot.** Only B and C went beyond 20, up to B's 50: (50 − 20) from B plus (50 − 20) from C = **60bb**. Only B and C can win it.
+3. **Unmatched chips.** C's last 100 − 50 = **50bb** were matched by nobody, so they go back to C.
+4. **Check:** 70 + 60 + 50 = 180. Every chip is accounted for.
+
+At showdown, compare all three hands for the main pot, then only B and C for the side pot. If A has the best hand and C the second best, A wins 70bb and C wins 60bb.
+
+</Example>
+
+<SidePotCalculator />
+
+## Check yourself
+
+<Check
+  question={<>The board is <Cards hand="As Kd 8h 8c 3s" />. You hold <Cards hand="Kh Qh" />; your opponent holds <Cards hand="Ac 2d" />. Who wins at showdown?</>}
+  choices={["You", "Your opponent", "Split pot"]}
+  answer={1}
+>
+  You have two pair, kings and eights, with the board's ace as your fifth card: K-K-8-8-A. Your opponent has two pair, aces and eights: A-A-8-8-K. Both are two pair, so compare the top pair first: aces beat kings. Your queen never plays.
+</Check>
+
+<Check
+  question="Three players are all in. A put in 30bb, B 80bb and C 80bb, and nobody folded. How big is the side pot, in bb?"
+  answer={100}
+  unit="bb"
+>
+  Main pot: 30 from each of the three players, 3 × 30 = 90bb, which anyone can win. Side pot: (80 − 30) from B plus (80 − 30) from C = 100bb, which only B or C can win. Check: 90 + 100 = 190 = 30 + 80 + 80.
+</Check>
+
+<Check
+  question="Heads-up, who acts first before the flop?"
+  choices={["The big blind", "The button, which also posts the small blind", "Whoever has more chips"]}
+  answer={1}
+>
+  Heads-up, the button posts the small blind and acts first preflop. On the flop, turn and river it acts last, which puts it in position for the rest of the hand.
+</Check>
+
+## Key points
+
+- Cards are written rank then suit (`As`, `Td`). Ranks run 2 to A with T for ten, and suits never rank.
+- Each player has two hole cards and shares the board: flop (3), turn (1), river (1). Your hand is the best five of those seven cards.
+- Nine categories, from straight flush down to high card. Rarer hands rank higher. Kickers break ties within a category, and equal hands split the pot.
+- Amounts are measured in big blinds (bb). Preflop action starts at UTG and ends with the BB. After the flop it starts left of the button and ends with the button, which is in position.
+- When players are all-in for different amounts, each layer of chips forms its own pot, and only players who matched that layer can win it.

@@ -1,3 +1,167 @@
-# 09-variance
+import { VarianceSimulator } from "@/app/learn/_widgets/variance-simulator";
 
-Placeholder. Written in stream D.
+# Variance and bankroll
+
+After this lesson you can measure a win rate in bb/100, say how far your results can drift from it through luck alone, put a 95% confidence interval on a win rate, estimate how many hands it takes to show you are a winner, compute the risk of losing a whole bankroll, and separate luck from decisions with all-in EV. No statistics background is assumed: every term is defined as it comes up.
+
+## Win rate
+
+Poker players measure results in **bb/100**: big blinds won per 100 hands. If you win 1,500bb over 30,000 hands, that is 30,000 / 100 = 300 blocks of 100 hands, and 1,500 / 300 = **5 bb/100**.
+
+The win rate you *observe* is not the win rate you *have*. Your true win rate is what you would average over an endless number of hands, given how you play and whom you play. Any finite sample mixes that in with luck. The rest of this lesson measures the luck.
+
+## How spread out are results? Standard deviation
+
+The **mean** of a set of numbers is their average. The **standard deviation** (**SD**) measures how far the numbers typically sit from the mean. Its recipe:
+
+1. Subtract the mean from each number (the deviations).
+2. Square each deviation, so negative and positive distances both count.
+3. Average the squares. This average is the **variance**.
+4. Take the square root, which brings the units back to the original ones (bb, not bb²).
+
+<Example title="Worked example: five blocks of 100 hands">
+
+Results (bb): +100, −80, +40, −120, +85. Mean = (100 − 80 + 40 − 120 + 85) / 5 = 25 / 5 = 5.
+
+Deviations: 95, −85, 35, −125, 80. Squares: 9,025, 7,225, 1,225, 15,625, 6,400. Their sum is 39,500, so the variance is 39,500 / 5 = 7,900.
+
+SD = √7,900 ≈ 88.9bb per 100 hands.
+
+</Example>
+
+In poker the SD is quoted per 100 hands, in **bb/100**, just like the win rate. A rough typical value for 100bb 6-max cash games is **about 90 bb/100** (players commonly report 75–110), and higher heads-up (around 130). These are rough figures, not measurements from this app: your own SD depends on your style. An aggressive player who plays big pots has a bigger SD.
+
+Notice the scale: a 5 bb/100 winner has an SD of about 90 bb/100. In any one block of 100 hands, luck is roughly eighteen times larger than skill.
+
+## The normal distribution
+
+When you add up many independent random results, the total tends to follow a bell-shaped curve called the **normal distribution**, whatever the shape of the individual results. (This is the central limit theorem; for poker totals over thousands of hands it is a good approximation, not an exact law.) A normal distribution is fully described by its mean and its SD, and two facts about it are all we need:
+
+- About 68.3% of outcomes land within 1 SD of the mean.
+- About 95% land within **1.96 SD** of the mean.
+
+## Why luck grows like a square root
+
+Treat each block of 100 hands as an independent draw with mean w (your win rate) and SD σ (sigma, your SD). Over N hands there are N/100 blocks.
+
+- The **means add**: the expected total is w · N/100.
+- The **variances add** (a fact about independent results), so the variance of the total is (N/100) · σ², and its SD is the square root:
+
+<Formula>SD of total = σ · √(N/100)</Formula>
+
+The SD does not add straight up because good and bad blocks partly cancel. Two blocks with σ = 90 have a total SD of 90 · √2 ≈ 127.3bb, not 180bb.
+
+This is the key fact of the lesson. Your expected winnings grow in proportion to N, but the luck grows only in proportion to √N. Skill wins in the long run because N outruns √N, but it takes a lot of hands.
+
+<Example title="Worked example: how often does a winner show a loss?">
+
+A 5 bb/100 player with σ = 90 plays 10,000 hands, so N/100 = 100 blocks.
+
+Expected total = 5 × 100 = 500bb. SD of the total = 90 × √100 = 900bb.
+
+Zero is 500 / 900 ≈ 0.56 SDs below the mean. A normal-distribution calculator (or the simulator below) gives the share of outcomes more than 0.56 SDs below the mean: **≈ 28.9%**. More than one time in four, this winning player is losing after 10,000 hands.
+
+At 100,000 hands: expected total 5,000bb, SD 90 × √1,000 ≈ 2,846bb, zero is 1.76 SDs below the mean, and the chance of being behind drops to **≈ 3.9%**.
+
+</Example>
+
+## A confidence interval for your win rate
+
+Divide the total by the number of blocks to get the observed win rate. Dividing by N/100 also divides the SD by N/100, so
+
+<Formula>SD of observed win rate = σ · √(N/100) / (N/100) = σ / √(N/100)</Formula>
+
+A **95% confidence interval** is a range built so that, over many samples, it contains the true value 95% of the time. From the 1.96 fact:
+
+<Formula>95% interval = observed win rate ± 1.96 · σ / √(N/100)</Formula>
+
+<Example title="Worked example: 10,000 hands">
+
+σ = 90, N = 10,000: σ / √100 = 90 / 10 = 9 bb/100. The margin is 1.96 × 9 = 17.64 ≈ **±17.6 bb/100**.
+
+If you observed 5 bb/100, the interval runs from about −12.6 to +22.6 bb/100. Your 10,000 hands cannot tell a strong winner from a losing player.
+
+At 100,000 hands the margin is ±5.6 bb/100, and at 1,000,000 hands ±1.8 bb/100.
+
+</Example>
+
+## How many hands to show you are a winner
+
+You have shown a true win rate above zero when the bottom of the interval is above zero: w − 1.96 · σ / √(N/100) &gt; 0. Rearranging, √(N/100) &gt; 1.96 · σ / w, and squaring:
+
+<Formula>N / 100 = (1.96 · σ / w)²</Formula>
+
+For w = 3 bb/100 and σ = 90: 1.96 × 90 / 3 = 58.8, and 58.8² = 3,457.44, so N ≈ 345,744, about **346,000 hands**. A 10 bb/100 winner needs about 31,000. Halving the win rate quadruples the hands. This assumes the observed rate matches the true one, so read it as the scale of the problem, not a precise target.
+
+<VarianceSimulator />
+
+Try 10,000 hands, then 100,000, then 1,000,000 with the same win rate. Watch the band around the green line widen while the line itself pulls away from zero faster.
+
+## Risk of ruin
+
+Your **bankroll** is the money you set aside for poker. A **buy-in** here is one 100bb stack. **Risk of ruin** (**RoR**) is the probability of eventually losing the entire bankroll if you keep playing the same stakes and never move down. Under the normal approximation:
+
+<Formula>RoR = exp(−2 · w · B / σ²)</Formula>
+
+with w in bb/100, σ in bb/100 (so σ² in bb² per 100 hands) and B in bb. The units cancel, as they must inside exp. Here exp(x) means e raised to the power x, with e ≈ 2.718.
+
+Why an exponential? To lose 2B you must first lose B, which has probability RoR(B), and then, now holding B, lose B again, also RoR(B). So RoR(2B) = RoR(B)². Only exponential functions behave this way. The constant 2w/σ² comes from the shape of the normal distribution; we take it from probability theory without deriving it here. You can compare it with the simulator: with many hands (say 500,000) the share of ruined runs comes close to the formula.
+
+<Example title="Worked example: 5 bb/100, σ = 90">
+
+σ² = 8,100. With 30 buy-ins (B = 3,000bb): 2 × 5 × 3,000 / 8,100 ≈ 3.704, and exp(−3.704) ≈ **2.5%**.
+
+With 20 buy-ins (2,000bb): exp(−2.469) ≈ 8.5%. With 10 buy-ins: exp(−1.235) ≈ 29.1%.
+
+Turn it around for a 1% risk: B = σ² · ln(100) / (2w) = 8,100 × 4.605 / 10 ≈ 3,730bb, about 37 buy-ins. A 3 bb/100 player needs ≈ 6,217bb, about 62 buy-ins.
+
+</Example>
+
+The formula assumes you play forever. The simulator stops after a fixed number of hands, so its share of ruined runs comes out lower than the formula.
+
+### Kelly intuition
+
+This part is **intuition**, not a derivation. For a repeated bet with an edge, the **Kelly criterion** says the bet size that grows a bankroll fastest over the long run is proportional to your edge. For an even-money bet you win 55% of the time, Kelly says to stake 0.55 − 0.45 = 10% of your bankroll each time. Stake more and growth slows while the risk of a wipeout climbs.
+
+In poker you don't choose a stake each hand, but you do choose your stakes. The bankroll formula above, B = σ² · ln(1/RoR) / (2w), carries the same idea: a bigger edge lets you play bigger relative to your bankroll, and more variance forces you to play smaller. Bankroll rules of thumb such as "keep 30 to 40 buy-ins" are heuristics consistent with these numbers for a solid winner.
+
+## Luck versus skill: all-in EV
+
+The single biggest source of luck is the all-in before the river. **All-in EV** replaces the actual result of such a hand with its expected value: your equity times the pot, minus what you put in. That is the EV of a call from module 3, applied after the fact.
+
+<Example title="Worked example: aces against kings">
+
+You hold <Cards hand="AsAh" /> against <Cards hand="KdKc" />, all-in before the flop for 100bb each (ignore the blinds, so the pot is 200bb). The exact equity of the aces is ≈ 81.3% (all 1,712,304 boards enumerated, module 4).
+
+All-in EV = 0.8126 × 200 − 100 ≈ **+62.5bb**.
+
+If a king comes, your actual result is −100bb. Your luck on that hand is −100 − 62.5 = −162.5bb. Your decision was worth +62.5bb either way.
+
+</Example>
+
+Comparing your actual winnings with your all-in EV winnings separates the cards you were dealt from the choices you made. It removes only the all-in part of the luck: pots that never go all-in still carry variance.
+
+## Check yourself
+
+<Check question="Your SD is 100 bb/100 and you have played 40,000 hands. What is the half-width of the 95% confidence interval for your win rate, in bb/100?" answer={9.8} tolerance={0.1} unit="bb/100">
+N/100 = 400 and √400 = 20. The SD of the observed win rate is 100 / 20 = 5 bb/100, and 1.96 × 5 = 9.8 bb/100.
+</Check>
+
+<Check question="With σ = 90 bb/100, about how many hands does a 5 bb/100 winner need before the 95% interval sits above zero? (Answer to the nearest thousand.)" answer={124468} tolerance={1000} unit="hands">
+1.96 × 90 / 5 = 35.28, and 35.28² ≈ 1,244.68 blocks of 100 hands, so ≈ 124,468 hands, about 124,000.
+</Check>
+
+<Check question="Win rate 4 bb/100, σ = 100 bb/100, bankroll 2,500bb. What is the risk of ruin from the normal formula?" answer={13.5} tolerance={0.2} unit="%">
+2 × 4 × 2,500 / 100² = 20,000 / 10,000 = 2, and exp(−2) ≈ 0.135, so ≈ 13.5%.
+</Check>
+
+<Practice drill="EV of a call (given equity, pot, bet)">All-in EV is this calculation, done after the hand.</Practice>
+
+## Key points
+
+- Win rate and SD are both measured in bb/100; a typical 6-max SD of about 90 bb/100 is a rough figure, not a constant.
+- Over N hands the expected result grows like N but its SD grows like √N: SD of total = σ · √(N/100).
+- 95% interval for a win rate: ± 1.96 · σ / √(N/100). At σ = 90 and 10,000 hands that is ±17.6 bb/100.
+- Hands needed to show a win rate w above zero: N/100 = (1.96 · σ / w)²; about 346,000 hands at 3 bb/100.
+- Risk of ruin ≈ exp(−2 · w · B / σ²); bankroll needs rise with variance and fall with edge (the Kelly intuition).
+- All-in EV separates luck from decisions for hands that go all-in before the river.

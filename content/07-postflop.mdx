@@ -1,3 +1,160 @@
-# 07-postflop
+import { FlopRangeAdvantage } from "@/app/learn/_widgets/flop-range-advantage";
+import { GeometricSizing } from "@/app/learn/_widgets/geometric-sizing";
 
-Placeholder. Written in stream D.
+# Postflop: texture, range advantage and bet sizing
+
+After this lesson you can describe a flop in a few standard words, measure which player's range the flop favors (and in what way), explain why the same player bets small on some flops and big on others, compute the stack-to-pot ratio, and work out the one bet size that, repeated on every street, puts all the chips in by the river.
+
+## Describing a flop: board texture
+
+**Board texture** is the shape of the community cards: what they make easy and what they make hard. Players use a short vocabulary for it. These are descriptions, not math, but each one points at something we can count.
+
+- **High** or **low**: in this course, a high flop contains an ace, king or queen; a low flop has nothing above a 9.
+- **Paired**: two of the three cards share a rank, like <Cards hand="8s8d3c" />.
+- **Suits**: **rainbow** means three different suits, **two-tone** means exactly two share a suit (a flush draw is possible), **monotone** means all three share a suit (a flush is already possible with two cards of that suit).
+- **Connected**: the ranks sit close together, so many two-card holdings make a straight or a straight draw, like <Cards hand="7h6h5c" />.
+- **Dry** versus **wet**: a dry flop offers few draws and few ways for a hand to have improved a lot (<Cards hand="Ks7d2c" />). A wet flop offers many (<Cards hand="Jc9c8d" />).
+
+Why care? Because texture decides whose range the flop helps. That is the next idea.
+
+## Range advantage and nut advantage
+
+In module 4 you computed the equity of one range against another. On a flop, that single number already tells you something: whoever has the higher range equity has the **range advantage** on this board. It is an average over every combo in the range.
+
+An average hides the top end. A range can have lower average equity and still hold more of the very best hands. Having more of the strongest hands is called the **nut advantage** (the "nuts" is the best possible hand on a board).
+
+To measure "the strongest hands," we need a rule. In this course a combo is **strong** if its own equity against the opponent's whole range is at least 80%. The 80% line is a convention we chose, not a law; the widget below lets you see the full split, so nothing depends on where exactly the line sits.
+
+### The example ranges
+
+We need two concrete ranges. This is a **single-raised pot** (one raise before the flop): the under-the-gun player (UTG) opens to 2.5bb, everyone folds to the big blind (BB), and the BB calls.
+
+- UTG opens `22+, A2s+, K9s+, QTs+, JTs, T9s, 98s, 87s, 76s, ATo+, KQo`: 230 combos, 230 / 1,326 ≈ 17.3% of hands.
+- BB calls with `22-JJ, A2s-AQs, K6s+, Q8s+, J8s+, T8s+, 97s+, 86s+, 75s+, 64s+, 53s+, 43s, ATo-AQo, KTo+, QTo+, JTo, T9o, 98o, 87o`: 356 combos ≈ 26.8%.
+
+Our BB re-raises (3-bets) with QQ+ and AK, so those hands are missing from the calling range. Both ranges are example starting points in the spirit of module 6, not solver output.
+
+On each flop below, the combo counts drop because of card removal (module 1): any combo that uses a flop card is gone. The equities are exact, not sampled. The calculation takes every pair of combos that share no card (one from each range) and deals every turn and river they leave possible: 52 − 3 flop cards − 4 hole cards = 45 unseen cards, so C(45, 2) = 990 runouts per pair. Each pair counts equally, as in module 4.
+
+| Flop | UTG combos | UTG equity | UTG strong | BB combos | BB equity | BB strong |
+|---|---|---|---|---|---|---|
+| <Cards hand="Ks7d2c" /> | 206 | 60.1% | 23.3% (48 combos) | 324 | 39.9% | 2.5% (8 combos) |
+| <Cards hand="7h6h5c" /> | 216 | 53.7% | 6.0% (13 combos) | 328 | 46.3% | 8.8% (29 combos) |
+| <Cards hand="Jc9c8d" /> | 207 | 48.4% | 5.8% (12 combos) | 304 | 51.6% | 8.2% (25 combos) |
+
+<Example title="Reading the table">
+
+**K-7-2 rainbow.** UTG has 60.1% equity, so UTG has the range advantage. UTG also has the nut advantage: 48 strong combos against 8. Where do they come from? UTG holds AA, KK and AK, and the BB does not (it 3-bets them). On this board UTG's strong combos are AA, KK, 77, 22, AK and its other king-high hands (KQ, KJs, KTs, K9s). The BB's strong combos are only the sets (77 and 22, 3 combos each) and two combos of K7s.
+
+
+**7-6-5 two-tone.** UTG still has the range advantage, 53.7% to 46.3%. Its 42 overpair combos (88 through AA) average 67.7% equity against the BB's range, and more of its range is ahead: 51.9% of UTG's combos have at least 50% equity, against 39.6% of the BB's. But the BB has the nut advantage, 29 strong combos to 13. Both players have the sets (55, 66, 77: 9 combos each). The difference is straights: both have 98s (4 combos), but only the BB calls with 98o (12 combos) and 43s (4 combos). UTG never opened those.
+
+
+**J-9-8 two-tone.** Here the BB has both: 51.6% equity and 25 strong combos to 12, largely thanks to QTo (12 combos of a straight) that UTG does not open.
+
+
+</Example>
+
+So the two advantages can point the same way (K-7-2), split (7-6-5), or both favor the caller (J-9-8). Choose other flops in the widget to see more.
+
+<FlopRangeAdvantage />
+
+## The continuation bet, and two shapes of betting range
+
+After the flop, the BB acts first (module 0: postflop, the first player still in the hand to the left of the button acts first). The BB usually checks, and UTG decides whether to bet. A bet on the flop by the player who made the last preflop raise is a **continuation bet**, or **c-bet**.
+
+A betting range comes in two broad shapes:
+
+- **Polarized**: the bets are very strong hands plus bluffs, with the medium hands checked. You met this in module 5.
+- **Merged** (also called **linear**): the bets are the strongest hands *and* the medium-strength hands below them, with few or no pure bluffs.
+
+The bet size and the shape go together. From module 5, a polarized bettor can include bluffs in a share of B / (P + 2B) of the betting range and keep a bluff-catcher indifferent. That share grows with the bet: 20% at a third of the pot, 33% at pot. A big bet lets a polarized range carry more bluffs. A medium hand, though, dislikes a big bet: the hands that call a big bet tend to be the hands that beat it, and the hands it beats fold. A small bet is the opposite: it risks little, so a medium hand can bet and still be called by worse hands, and a weak hand loses little when it gets called.
+
+### Texture heuristics
+
+Put the advantages and the sizes together and you get the standard starting points for c-betting. These are **heuristics**: summaries of what strong players and solvers tend to do, not results we derive here.
+
+- **Dry, high or paired flops** (K-7-2, A-K-4, 8-8-3): the raiser's range is ahead almost everywhere, so it bets **often and small** (around a third of the pot), with a merged range.
+- **Connected, wet flops** (J-9-8, 7-6-5): the caller has many strong hands and draws, so the raiser bets **less often but bigger**, with a more polarized range.
+- **Monotone flops** (Q-9-4 all hearts): the raiser bets **less often and smaller**. The usual explanation: any further heart can flip which hand is ahead, so neither side wants to build a big pot with a medium hand.
+
+The table above backs up the first two: on K-7-2 UTG has a large edge in both measures; on J-9-8 the BB does.
+
+## Stack-to-pot ratio
+
+The **stack-to-pot ratio** (**SPR**) is the effective stack divided by the pot at the start of the flop. It tells you how many pots are left to bet.
+
+<Formula>SPR = effective stack ÷ pot on the flop</Formula>
+
+<Example title="Worked example: two SPRs from 100bb stacks">
+
+**Single-raised pot.** UTG opens to 2.5bb and the BB calls, the small blind (SB) folds. The pot is 2.5 + 2.5 + 0.5 = 5.5bb (the SB's 0.5bb stays in). Each player has 100 − 2.5 = 97.5bb left. SPR = 97.5 / 5.5 ≈ 17.7.
+
+
+**3-bet pot.** The button opens to 2.5bb, the SB 3-bets to 10bb (4× the open, the out-of-position size from module 6), the BB folds and the button calls. The pot is 10 + 10 + 1 = 21bb and each stack is 90bb. SPR = 90 / 21 ≈ 4.3.
+
+
+</Example>
+
+A low SPR means one or two normal bets put everyone all-in, so a hand like top pair is often worth all the chips. A high SPR means it takes several large bets, so you need a stronger hand to want all of them in. That last sentence is a rule of thumb; the next section makes "several large bets" exact.
+
+## Geometric bet sizing
+
+Suppose you hold a very strong hand and want to get all the chips in by the river, betting the same fraction of the pot on each street. What fraction?
+
+Call the pot P, the effective stack S, the number of streets left n, and the bet fraction f (bet = f × the current pot). One street of bet-and-call adds f·P from each player, so the pot becomes
+
+<Formula>P + 2·f·P = P·(1 + 2f)</Formula>
+
+The pot is multiplied by (1 + 2f) each street, so after n streets it is P·(1 + 2f)^n. If all the chips are in by then, each player has added S, and the pot is P + 2S. Set the two equal:
+
+<Formula>P·(1 + 2f)^n = P + 2S  →  (1 + 2f)^n = 1 + 2S/P  →  f = ((1 + 2S/P)^(1/n) − 1) / 2</Formula>
+
+This is **geometric sizing**: geometric because the pot grows by the same factor each street. Notice it depends only on S/P, which is the SPR.
+
+<Example title="Worked example: pot 100, stack 300, three streets">
+
+SPR = 300 / 100 = 3. So 1 + 2S/P = 1 + 6 = 7.
+
+The cube root of 7 is ≈ 1.9129, so f ≈ (1.9129 − 1) / 2 ≈ 0.4565: bet about **45.6% of the pot** each street.
+
+Flop: bet 0.4565 × 100 ≈ 45.6. The pot becomes 100 + 2 × 45.6 ≈ 191.3, and the stack 300 − 45.6 ≈ 254.4.
+
+Turn: bet 0.4565 × 191.3 ≈ 87.3. The pot becomes ≈ 365.9, the stack ≈ 167.0.
+
+River: bet 0.4565 × 365.9 ≈ 167.0, exactly the stack that is left. The final pot is 100 + 2 × 300 = 700.
+
+Compare half-pot bets: 50, then 100, then the river would need 200, but only 150 is left, so the river bet is a leftover all-in of 0.375 pot. Third-pot bets (33%) leave ≈ 121.3 behind after the river. Geometric sizing is the one constant fraction that finishes exactly.
+
+
+</Example>
+
+Run the single-raised pot from above through the formula: SPR ≈ 17.7 over three streets needs f ≈ 115.8% of the pot every street. That is why most single-raised pots do not end with 100bb stacks all-in unless someone raises: normal bet sizes cannot get there. In the 3-bet pot (SPR ≈ 4.3) three streets need only ≈ 56.2% each.
+
+Why not bet small, small, then shove? It works, but the last bet becomes a huge fraction of the pot, which gives the opponent an easy fold on the river with every hand that cannot beat a big bet. Spreading the stack evenly is the cleanest way to get it all in; treat that as a guideline, not a theorem.
+
+<GeometricSizing />
+
+## Check yourself
+
+<Check question="The cutoff (CO) opens to 2.5bb, the button calls, and both blinds fold. Stacks started at 100bb. What is the SPR on the flop?" answer={15} tolerance={0.1}>
+The pot is 2.5 + 2.5 + 0.5 + 1 = 6.5bb (both blinds stay in the pot). Each stack is 100 − 2.5 = 97.5bb. SPR = 97.5 / 6.5 = 15.
+</Check>
+
+<Check question="The pot is 10bb and the effective stack is 40bb. You want to get all in over two streets with the same pot fraction each time. What fraction of the pot do you bet?" answer={100} tolerance={1} unit="%">
+1 + 2S/P = 1 + 80/10 = 9. The square root of 9 is 3, so f = (3 − 1) / 2 = 1, a pot-sized bet. Check it: bet 10 into 10, the pot is 30 and 30 is left; bet 30 into 30, the pot is 90 and the stack is 0.
+</Check>
+
+<Check question="In this lesson's example, on 7♥ 6♥ 5♣, which statement is true?" choices={["UTG has both the range advantage and the nut advantage", "UTG has the range advantage; the BB has the nut advantage", "The BB has both advantages", "Neither player has an advantage"]} answer={1}>
+UTG's range equity is 53.7% (range advantage), but the BB has 29 strong combos to UTG's 13 (nut advantage), mostly 98o and 43s, which UTG does not open.
+</Check>
+
+<Practice drill="Hand vs range equity estimate">Estimating equity against a range is the skill underneath range advantage.</Practice>
+
+## Key points
+
+- Board texture (high/low, paired, suits, connected, dry/wet) decides which range a flop helps.
+- Range advantage = higher average equity on the board. Nut advantage = more of the strongest hands. They can point in different directions.
+- A polarized range (strong hands plus bluffs) pairs with big bets; a merged range (strong and medium hands) pairs with small bets.
+- Texture heuristics (starting points): dry/high/paired → bet often and small; connected → less often and bigger; monotone → less often and smaller.
+- SPR = effective stack ÷ flop pot. Geometric sizing f = ((1 + 2·SPR)^(1/n) − 1) / 2 gets the stacks in over n streets; at SPR 3 over three streets that is ≈ 45.6% pot.
