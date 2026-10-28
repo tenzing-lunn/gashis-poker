@@ -696,6 +696,11 @@ input.u:focus-visible {
   white-space: pre;
 }
 
+/* the meta line is fitted per seat width (seatMeta): 14ch here, 12ch on the tall figure */
+.table-fig .seat .meta .tall {
+  display: none;
+}
+
 .table-fig .seat .bar {
   width: 10ch;
   height: 4px;
@@ -724,6 +729,12 @@ input.u:focus-visible {
 .table-fig .seat.win .who {
   background: var(--ink);
   color: var(--paper);
+}
+
+/* the hero's turn: YOUR TURN on the warn highlight in place of the name; .act keeps the bet */
+.table-fig .seat.you .who {
+  background: var(--warn);
+  color: var(--on-warn);
 }
 
 .table-fig .seat.out {
@@ -825,7 +836,8 @@ button.t.lc {
   column-gap: 2ch;
 }
 
-/* §5 Play controls */
+/* §5 Play controls; the status line above them (status-block.tsx) */
+.l.status .cols,
 .controls-dock .cols,
 .controls-dock .presets {
   display: inline-flex;
@@ -849,13 +861,20 @@ button.t.lc {
   border-color: var(--faint);
 }
 
-.controls-dock .raise .range {
+/* the range and an error share one slot as wide as the longest error (--slot), so an error never reflows the line */
+.controls-dock .raise .slot {
+  display: inline-block;
+  width: var(--slot);
   margin-left: 1ch;
-  color: var(--muted);
+  white-space: nowrap;
 }
 
-.controls-dock .raise .tag {
-  margin-left: 1ch;
+.controls-dock .apply {
+  white-space: nowrap;
+}
+
+.controls-dock .raise .range {
+  color: var(--muted);
 }
 
 /* aria-disabled, not disabled: the control keeps focus after an action */
@@ -877,9 +896,10 @@ button.t.lc {
   outline-offset: 2px;
 }
 
+/* 681-860px: 2/1 but never under 368px tall (the seat boxes need it), so 800x600 holds header to controls */
 @media (min-width: 680px) and (max-width: 860px) {
   .table-fig {
-    aspect-ratio: 5 / 3;
+    min-height: 368px;
   }
 }
 
@@ -907,6 +927,20 @@ button.t.lc {
   .table-fig .seat .hole {
     gap: 3px;
     min-height: 28px;
+  }
+
+  /* the docked controls keep to the measure: no reserved slot, no EQUITY (4 TO 1) tail */
+  .table-fig .seat .meta .wide,
+  .controls-dock .long {
+    display: none;
+  }
+
+  .controls-dock .raise .slot {
+    width: auto;
+  }
+
+  .table-fig .seat .meta .tall {
+    display: inline;
   }
 
   .table-fig .cd {
@@ -1000,6 +1034,108 @@ button.t.lc {
 
   .strips .track .ln.future {
     background: GrayText;
+  }
+}
+
+/* ==========================================================================
+   Bot info sheet (components/table/bot-sheet.tsx)
+   Tokens only, so it follows the band it is mounted in (paper or .screen).
+   ========================================================================== */
+
+/* label column + text that wraps under itself (STYLE, TO BEAT IT, opening rows) */
+.bot-sheet .l.kv {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr);
+  column-gap: 2ch;
+}
+
+/* muted acronyms and side notes; spacing in the text is kept */
+.bot-sheet .ac {
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* stats: plain-words label with its muted acronym, then the number, right-aligned */
+.bot-sheet .tx.st {
+  grid-template-columns: minmax(0, 1fr) 5ch;
+}
+
+.bot-sheet .tx.st > :last-child {
+  text-align: right;
+}
+
+/* padded numbers keep their alignment */
+.bot-sheet .v {
+  white-space: pre;
+}
+
+/* opening ranges stay on one line; the full range is in the title */
+.bot-sheet .rg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the dialog: a sheet of the current band with a 1px ink edge, no shadow */
+dialog.bot-sheet-dialog {
+  box-sizing: border-box;
+  width: calc(72ch + 88px);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: calc(var(--lh) * 0.5em) 24px calc(var(--lh) * 0.5em) 64px;
+  overflow-y: auto;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  /* reset whatever it inherits from where it is mounted (e.g. 11px seat text) */
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: var(--lh);
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+}
+
+/* its lines number from 1 (reset on the inner block so the page's numbering is untouched) */
+dialog.bot-sheet-dialog > .bot-sheet {
+  counter-reset: ln;
+}
+
+dialog.bot-sheet-dialog::backdrop {
+  background: color-mix(in srgb, var(--paper) 80%, transparent);
+}
+
+@media (max-width: 679px) {
+  /* full width, docked to the bottom */
+  dialog.bot-sheet-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100dvh;
+    margin: auto 0 0;
+    padding-left: 40px;
+    padding-right: 16px;
+    border-width: 1px 0 0;
+  }
+
+  /* text rows: the label runs inline before its sentence instead of taking a column */
+  .bot-sheet .l.kv:not(.op) {
+    display: block;
+  }
+
+  .bot-sheet .l.kv:not(.op) > :first-child {
+    margin-right: 2ch;
+  }
+
+  .bot-sheet .l.kv.op {
+    grid-template-columns: 8ch minmax(0, 1fr);
+  }
+}
+
+@media (forced-colors: active) {
+  dialog.bot-sheet-dialog {
+    border-color: CanvasText;
   }
 }
 

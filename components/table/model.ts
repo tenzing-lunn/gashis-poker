@@ -34,14 +34,21 @@ export interface SeatModel {
   kind: SeatKind;
   /** Chips behind. */
   stack: number;
-  /** Share of the chips at the table, in %; null (not dealt in yet) renders `--`. */
+  /** Stack depth in big blinds (`stack / bigBlind`); null for an empty seat. Drawn by `seatMeta`. */
+  bbDepth: number | null;
+  /** Share of the chips at the table, in % (drawn only as the bar); null for an empty seat. */
   metaPct: number | null;
   /** 0..1, fill of the stack bar: the same share as `metaPct`. */
   barFraction: number;
-  /** `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`, a winner's net `+408` / `-1,200`, or "" for nothing yet this street. */
+  /**
+   * The `.act` line: `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`, "" for nothing yet this street; at hand end
+   * a showdown hand in its seat form (`TWO PAIR`, `STR FLUSH`) or `WINS` for an uncontested winner.
+   */
   lastAction: string;
-  /** A winner's net result for the hand (drawn green/red), else null. */
+  /** Net result for the hand of a winner or a showdown loser (drawn green/red on the meta line), else null. */
   net: number | null;
+  /** Hand shown at showdown (`TWO PAIR`), else null. */
+  category: string | null;
   holeCards: HoleCards;
   /** True when face-up cards were revealed at showdown (drawn with the flip animation). */
   revealed: boolean;
@@ -90,6 +97,32 @@ export interface StripModel {
   now: number;
 }
 
+/** One winner of a finished hand. */
+export interface ResultWinner {
+  seat: number;
+  label: string;
+  name: string;
+  /** Chips awarded (all pots this seat won). */
+  amount: number;
+  /** Net result for the hand, when the starting stacks are known. */
+  net: number | null;
+  /** Hand shown at showdown, else null. */
+  category: string | null;
+  isHero: boolean;
+}
+
+/** How a finished hand ended, for the status line (`YOU WIN 3,516 WITH TWO PAIR`). */
+export interface HandResult {
+  winners: ResultWinner[];
+  /** More than one seat won chips. */
+  split: boolean;
+  showdown: boolean;
+  /** The hero's net result for the hand; null without a dealt-in hero or starting stacks. */
+  heroNet: number | null;
+  /** One line in CAPS. */
+  text: string;
+}
+
 export interface TableModel {
   handNo: number;
   smallBlind: number;
@@ -111,6 +144,8 @@ export interface TableModel {
   strip: StripModel;
   /** One sentence on the latest event, for a polite live region. */
   lastEvent: string;
+  /** Who won what, once the hand is complete; null while it runs. */
+  result: HandResult | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +225,69 @@ const SUIT_WORD = ["clubs", "diamonds", "hearts", "spades"];
 export const rankText = (c: Card): string => RANK_TEXT[c >> 2];
 export const suitGlyph = (c: Card): string => SUIT_GLYPH[c & 3];
 export const cardWords = (c: Card): string => `${RANK_WORD[c >> 2]} of ${SUIT_WORD[c & 3]}`;
+
+/** Stack depth: `100 BB` (whole BBs from 10 up, one decimal below, `0 BB` for none). Rounded down. */
+export function bbText(depth: number): string {
+  if (depth <= 0) return "0 BB";
+  if (depth >= 10) return `${fmt(Math.floor(depth))} BB`;
+  return `${(Math.floor(depth * 10) / 10).toFixed(1)} BB`;
+}
+
+/** `12,345` → `12.3K`, `1,234,567` → `1.2M` (rounded down); below 10,000 as `fmt`. */
+function compact(n: number): string {
+  const a = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  const cut = (x: number, unit: string) => `${sign}${x >= 100 ? Math.floor(x) : (Math.floor(x * 10) / 10).toFixed(1)}${unit}`;
+  if (a < 10_000) return `${sign}${fmt(a)}`;
+  if (a < 1_000_000) return cut(a / 1000, "K");
+  return cut(a / 1_000_000, "M");
+}
+
+/** Seat width in characters: 14ch on the wide figure, 12ch on the tall (mobile) one (DESIGN.md §4.2, §4.7). */
+export const SEAT_CHARS = { wide: 14, tall: 12 } as const;
+
+/**
+ * The `.meta` line fitted to `width` characters: the stack, then its depth in big blinds, or at hand end
+ * the seat's net result (`21,750  +1,783`). `tail` is drawn green/red when it is a net result.
+ */
+export function seatMeta(s: SeatModel, width: number): { head: string; tail: string } {
+  if (s.kind === "empty") return { head: "--", tail: "" };
+  const net = s.net !== null;
+  const tail = net ? signed(s.net!) : s.bbDepth === null ? "" : bbText(s.bbDepth);
+  const tailShort = net ? (s.net! < 0 ? compact(s.net!) : `+${compact(s.net!)}`) : tail.replace(" BB", "BB");
+  const stack = fmt(s.stack);
+  const options = [
+    [`${stack}  `, tail],
+    [`${stack} `, tail],
+    [`${stack} `, tailShort],
+    [`${compact(s.stack)} `, tail],
+    [`${compact(s.stack)} `, tailShort],
+  ];
+  for (const [head, t] of options) if (head.length + t.length <= width) return { head, tail: t };
+  return { head: compact(s.stack).slice(0, width), tail: "" };
+}
+
+const SEAT_CATEGORY: Record<string, string> = {
+  "THREE OF A KIND": "TRIPS",
+  "FOUR OF A KIND": "QUADS",
+  "STRAIGHT FLUSH": "STR FLUSH",
+  "ROYAL FLUSH": "STR FLUSH",
+};
+/** A showdown hand short enough for the seat's `.act` line (12 characters at most). */
+export const seatCategory = (category: string): string => (SEAT_CATEGORY[category] ?? category).slice(0, SEAT_CHARS.tall);
+
+const CATEGORY_PHRASE: Record<string, string> = {
+  PAIR: "A PAIR",
+  TRIPS: "THREE OF A KIND",
+  STRAIGHT: "A STRAIGHT",
+  FLUSH: "A FLUSH",
+  "FULL HOUSE": "A FULL HOUSE",
+  QUADS: "FOUR OF A KIND",
+  "STRAIGHT FLUSH": "A STRAIGHT FLUSH",
+  "ROYAL FLUSH": "A ROYAL FLUSH",
+};
+/** The full hand name for the result line: `A STRAIGHT`, `THREE OF A KIND`, `TWO PAIR`. */
+export const categoryPhrase = (category: string): string => CATEGORY_PHRASE[category] ?? category;
 
 function actionText(e: Extract<TimelineEvent, { kind: "action" }>): string {
   if (e.action === "fold") return "FOLD";
@@ -317,10 +415,12 @@ export function buildModel(input: TableInput): TableModel {
         name: "EMPTY",
         kind: "empty",
         stack: 0,
+        bbDepth: null,
         metaPct: null,
         barFraction: 0,
         lastAction: "",
         net: null,
+        category: null,
         holeCards: null,
         revealed: false,
         isButton: false,
@@ -331,12 +431,15 @@ export function buildModel(input: TableInput): TableModel {
       };
     }
     const folded = input.folded[i];
-    const net = input.complete && won.has(i) ? (input.startingStacks ? input.stacks[i] - input.startingStacks[i] : won.get(i)!) : null;
-    const metaPct = totalChips > 0 && input.holeCards[i] !== null ? Math.round((100 * chips[i]) / totalChips) : null;
+    const category = input.complete && !folded ? input.categories[i] || null : null;
+    const startNet = input.startingStacks ? input.stacks[i] - input.startingStacks[i] : null;
+    // Winners and showdown losers show their net result; without starting stacks a winner shows `+` its winnings.
+    const net = !input.complete ? null : won.has(i) ? (startNet ?? won.get(i)!) : category !== null ? startNet : null;
+    const metaPct = totalChips > 0 ? Math.round((100 * chips[i]) / totalChips) : null;
     let lastAction = "";
-    if (net !== null) lastAction = signed(net);
-    else if (folded) lastAction = "FOLD";
-    else if (input.complete && input.categories[i]) lastAction = input.categories[i]!;
+    if (folded) lastAction = "FOLD";
+    else if (category !== null) lastAction = seatCategory(category);
+    else if (input.complete && won.has(i)) lastAction = "WINS";
     else if (!input.complete && lastStreet[i] === input.street) lastAction = last[i];
     else if (!input.inHand[i] && input.handNo > 0) lastAction = "SITTING OUT";
     return {
@@ -345,10 +448,12 @@ export function buildModel(input: TableInput): TableModel {
       name: src.name,
       kind: src.kind,
       stack: input.stacks[i],
+      bbDepth: input.bigBlind > 0 ? input.stacks[i] / input.bigBlind : null,
       metaPct,
       barFraction: (metaPct ?? 0) / 100,
       lastAction,
       net,
+      category,
       holeCards: input.holeCards[i],
       revealed: input.revealed[i],
       isButton: input.button === i,
@@ -376,7 +481,41 @@ export function buildModel(input: TableInput): TableModel {
     capacity: n,
     strip: buildStrip(input, seats),
     lastEvent: describe(timeline[timeline.length - 1], seats),
+    result: input.complete && winners.length > 0 ? buildResult(input, seats, won) : null,
   };
+}
+
+/**
+ * The result line: `YOU WIN 3,516 WITH TWO PAIR`, `S4 STATION WINS 400 WITH A STRAIGHT · YOU LOSE 100`,
+ * `S2 LAG WINS 150 · EVERYONE ELSE FOLDED`, `SPLIT POT: S2 LAG AND S4 BEA EACH WIN 375`.
+ */
+function buildResult(input: TableInput, seats: SeatModel[], won: Map<number, number>): HandResult {
+  const winners: ResultWinner[] = [...won]
+    .sort((a, b) => a[0] - b[0])
+    .map(([seat, amount]) => {
+      const s = seats[seat];
+      return { seat, label: s.label, name: s.name, amount, net: s.net, category: s.category, isHero: s.isHero };
+    });
+  const hero = input.heroSeat;
+  const heroNet =
+    hero !== null && input.startingStacks && input.inHand[hero] && input.seats[hero] ? input.stacks[hero] - input.startingStacks[hero] : null;
+  const who = (w: ResultWinner) => (w.isHero ? "YOU" : `${w.label} ${w.name}`);
+  const withHand = (c: string | null) => (c ? ` WITH ${categoryPhrase(c)}` : "");
+
+  let text: string;
+  const split = winners.length > 1;
+  if (split && winners.every((w) => w.amount === winners[0].amount)) {
+    const names = winners.map(who);
+    const list = `${names.slice(0, -1).join(", ")} AND ${names[names.length - 1]}`;
+    const same = winners.every((w) => w.category === winners[0].category);
+    text = `SPLIT POT: ${list} EACH WIN ${fmt(winners[0].amount)}${same ? withHand(winners[0].category) : ""}`;
+  } else {
+    text = winners.map((w) => `${who(w)} ${w.isHero ? "WIN" : "WINS"} ${fmt(w.amount)}${withHand(w.category)}`).join(" · ");
+  }
+  if (!input.showdown) text += " · EVERYONE ELSE FOLDED";
+  else if (hero !== null && !won.has(hero) && seats[hero]?.category && heroNet !== null && heroNet < 0) text += ` · YOU LOSE ${fmt(-heroNet)}`;
+
+  return { winners, split, showdown: input.showdown, heroNet, text };
 }
 
 const LABEL_OF: Record<Street, StripLabelText> = { preflop: "PRE", flop: "FLOP", turn: "TURN", river: "RIVER" };

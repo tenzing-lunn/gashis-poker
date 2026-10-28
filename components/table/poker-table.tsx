@@ -4,7 +4,7 @@ import { useState, type CSSProperties } from "react";
 import { cx } from "@/components/doc/cx";
 import { TextButton } from "@/components/doc";
 import { Card } from "./card";
-import { cardWords, fmt, seatPoints, type SeatModel, type TableModel } from "./model";
+import { SEAT_CHARS, bbText, cardWords, fmt, seatMeta, seatPoints, type SeatModel, type TableModel } from "./model";
 
 type PokerTableProps = {
   model: TableModel;
@@ -82,7 +82,7 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit }: SeatProps) {
   const yourTurn = s.isHero && s.turn;
   return (
     <div
-      className={cx("seat", s.turn && "turn", s.win && "win", s.out && "out", empty && "empty", open && "open")}
+      className={cx("seat", s.turn && "turn", yourTurn && "you", s.win && "win", s.out && "out", empty && "empty", open && "open")}
       style={style}
       aria-current={s.turn ? "true" : undefined}
       onClick={onToggle}
@@ -104,24 +104,31 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit }: SeatProps) {
         ) : null}
       </div>
       <div className="who" aria-hidden="true">
-        <span className="full">
-          {s.label} {s.name}
-        </span>
-        <span className="short">{s.label}</span>
-        {s.isButton ? " (D)" : null}
+        {yourTurn ? (
+          // The warn highlight takes the name's place, so the seat keeps its height and `.act` keeps the bet.
+          <>
+            YOUR TURN
+            {s.isButton ? <span className="full"> (D)</span> : null}
+          </>
+        ) : (
+          <>
+            <span className="full">
+              {s.label} {s.name}
+            </span>
+            <span className="short">{s.label}</span>
+            {s.isButton ? " (D)" : null}
+          </>
+        )}
       </div>
       <div className="meta" aria-hidden="true">
-        {empty ? "--" : `${fmt(s.stack)}  ${s.metaPct === null ? "--" : `${s.metaPct}%`}`}
+        <MetaText seat={s} width={SEAT_CHARS.wide} className="wide" />
+        <MetaText seat={s} width={SEAT_CHARS.tall} className="tall" />
       </div>
       <div className="bar" aria-hidden="true">
         <i style={{ width: `${Math.round(s.barFraction * 100)}%` }} />
       </div>
       <div className="act">
-        {yourTurn ? (
-          <span className="tag" aria-hidden="true">
-            YOUR TURN
-          </span>
-        ) : empty && onSit ? (
+        {empty && onSit ? (
           <TextButton
             onClick={(e) => {
               e.stopPropagation();
@@ -132,24 +139,35 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit }: SeatProps) {
             [SIT]
           </TextButton>
         ) : (
-          <span aria-hidden="true" className={s.net === null ? undefined : s.net < 0 ? "text-red" : "text-green"}>
-            {s.lastAction || " "}
-          </span>
+          <span aria-hidden="true">{s.lastAction || " "}</span>
         )}
       </div>
     </div>
   );
 }
 
-/** `Seat 3, Monte, dealer, 9,200 chips, call 100` (DESIGN.md §9). */
+/** The meta line at one seat width; a net result is green/red. */
+function MetaText({ seat, width, className }: { seat: SeatModel; width: number; className: string }) {
+  const { head, tail } = seatMeta(seat, width);
+  return (
+    <span className={className}>
+      {head}
+      {tail ? <span className={seat.net === null ? undefined : seat.net < 0 ? "text-red" : "text-green"}>{tail}</span> : null}
+    </span>
+  );
+}
+
+/** `Seat 3, Monte, dealer, 9,200 chips, 92 big blinds, call 100` (DESIGN.md §9). */
 export function seatSentence(s: SeatModel): string {
   if (s.kind === "empty") return `Seat ${s.seat + 1}, empty`;
   const parts = [`Seat ${s.seat + 1}`, s.isHero ? `${s.name} (you)` : s.name];
   if (s.isButton) parts.push("dealer");
   parts.push(`${fmt(s.stack)} chips`);
+  if (s.bbDepth !== null && s.net === null) parts.push(bbText(s.bbDepth).replace("BB", "big blinds"));
   if (Array.isArray(s.holeCards)) parts.push(`holding ${s.holeCards.map(cardWords).join(" and ")}`);
-  if (s.net !== null) parts.push(`net ${s.lastAction}`);
+  if (s.category) parts.push(s.category.toLowerCase());
   else if (s.lastAction) parts.push(s.lastAction.toLowerCase());
+  if (s.net !== null) parts.push(`net ${s.net < 0 ? "-" : "+"}${fmt(Math.abs(s.net))}`);
   if (s.turn) parts.push(s.isHero ? "your turn" : "to act");
   if (s.win) parts.push("winner");
   return parts.join(", ");

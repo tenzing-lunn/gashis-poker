@@ -157,7 +157,8 @@ A muted line under each figure explaining its symbols:
 This is the piece to match exactly. All practice and multiplayer tables use it. Lives in a `.screen` band.
 
 ### 4.1 Figure
-- `figure.table-fig { position: relative; aspect-ratio: 2 / 1; }` (`5 / 3` between 681–860px; see §4.7 for mobile).
+- `figure.table-fig { position: relative; aspect-ratio: 2 / 1; }` (between 681–860px also `min-height: 368px`, which the
+  seat boxes need, so at 800×600 the header through the controls fits the viewport; see §4.7 for mobile).
 - **Felt** (`.felt`): `position:absolute; inset: 15% 10%; border: 1px solid var(--ink); border-radius: 50%;`
   `box-shadow: 0 0 0 5px var(--paper), 0 0 0 6px var(--ink);` — a double-line ellipse, no fill, no green.
 - **Center** (`.center`): absolutely centered column, `gap: 4px`, `12px/1.3`. Holds the board row and `POT 1,350` under it.
@@ -190,20 +191,25 @@ the table above.
 Seat stack, top to bottom:
 1. `.hole` — two small cards, `gap: 4px; min-height: 37px; margin-bottom: 4px` (empty space reserved when no cards).
 2. `.who` — `S3 MONTE (D)`: seat number, name, `(D)` for dealer. `padding: 0 .6ch; white-space: nowrap`.
-3. `.meta` — `9,200 10%`: stack, then share %. `--` before the seat is first dealt in.
-   **Accepted deviation:** the reference shows live equity; we show the seat's share of the chips at the
-   table (stack + chips committed this hand while it is live; stack alone once the pot is awarded).
-   Equity would leak hole cards.
+3. `.meta` — `10,000  100 BB`: stack, then stack depth in big blinds (whole BBs from 10 up, one decimal below,
+   `0 BB` when all-in), from before the first deal on. At hand end, a winner and every showdown loser show their
+   net result for the hand in place of the depth: `21,750  +1,783` (`--green`) / `9,900  -100` (`--red`).
+   The line is fitted to the seat (`seatMeta`: 14 characters, 12 on the tall figure: one space, `100BB`, then
+   `12.3K`), so it never leaves the box.
+   **Accepted deviation:** the reference shows live equity there; equity would leak hole cards, and an unlabelled
+   percentage on a math trainer reads as win chance, so no percentage is shown on a seat.
 4. `.bar` — `width:10ch; height:4px; border:1px solid var(--ink); margin:2px 0` with an inner `<i>` filled `var(--ink)`
-   to exactly the `%` shown (empty under `--`), as on the reference.
-5. `.act` — last action: `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`. `min-height: 1.35em`. At hand end a
-   winner shows its net result for the hand, `+408` in `--green` (or `-1,200` in `--red` when a side pot
-   won back less than it put in); a showdown loser shows its hand name.
+   to the seat's share of the chips at the table (stack + chips committed this hand while it is live; stack
+   alone once the pot is awarded). Unlabelled: it is a picture of the stacks, not a number to read.
+5. `.act` — last action: `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`. `min-height: 1.35em`. At hand end every
+   showdown seat shows its hand (`TWO PAIR`; seat forms `TRIPS`, `QUADS`, `STR FLUSH` keep it within 12
+   characters) and an uncontested winner shows `WINS`. The full result goes on the status line (§5).
 
 States:
-- `.turn` and `.win` → `.who` inverts (ink background, paper text). That is the *only* "whose turn" signal.
+- `.turn` and `.win` → `.who` inverts (ink background, paper text). That is the *only* "whose turn" signal on the figure.
 - `.out` (folded / sitting out) → whole seat `var(--muted)`; its cards and bar border go `var(--faint)` and lose their shadow.
-- Hero seat additionally shows a `--warn` tag `YOUR TURN` on its `.act` line when it's their decision.
+- On the hero's decision their `.who` reads `YOUR TURN` on `--warn` (ink text) in place of the name, so `.act` keeps
+  showing their bet this street (`BET 1,100`) and the seat keeps its height.
 - **Accepted deviation:** folded opponents keep two card backs (muted, `.out`) until the next hand, so the
   table still shows who was dealt in.
 
@@ -232,8 +238,11 @@ Card back (`.cd.back`): `outline:1px solid var(--ink); outline-offset:-5px` (an 
 48  REPLAY                       [|<] [<] [PAUSE] [>]  SPEED 1x 4x 8x 16x
 49  HAND 000006, BLINDS 50/100                                    PREFLOP
 ```
-For live play replace `REPLAY` + transport with `LIVE` + seat count / time bank:
-`LIVE  6/8 SEATED                                     TIME 00:14`.
+For live play replace `REPLAY` + transport with `LIVE` + seat count / connection:
+`LIVE  6/8 SEATED                                     ● CONNECTED`. Solo practice reads `SOLO  6 SEATS` with
+nothing on the right. Before the first deal the hand line says what the table waits for, then the blinds:
+`PRESS DEAL TO START                                  BLINDS 50/100` (`TableHeader` `waiting`). Whose turn,
+the clock and the result are on the status line above the controls (§5), not in the header.
 
 ### 4.6 Action strip (under the table)
 A per-seat timeline across streets — the hand history as a figure.
@@ -257,29 +266,60 @@ Eight bots, every hole card face down until showdown, an `ACTION` line centered 
 region (it would announce every bot action), runs only while the tab is visible and the table is on screen, and
 starts paused under `prefers-reduced-motion` (`[PLAY]` starts it).
 
+### 4.9 Bot sheet
+What a bot is, in plain words (`components/table/bot-sheet.tsx`): an inverted name line, `STYLE` and `TO BEAT IT`
+sentences, opening widths at 6 seats plus heads-up (`UTG  11%  88+, A8s+, …`, the full range in `title`), and six
+`.tx` stats with plain labels and the acronym muted (`CHOOSES TO PUT CHIPS IN BEFORE THE FLOP (VPIP)  10%`), measured once over 6,000
+simulated hands and checked in. Inline, its lines continue the page's numbering. As a dialog (`BotSheetDialog`, a
+native `<dialog>`) it is a sheet of the band it opens from: `--paper` background, 1px `--ink` border, no shadow,
+lines numbered from 1, `[CLOSE]` on the title line, Esc and a backdrop click close it. Full width, docked to the
+bottom, under 680px.
+
 ---
 
 ## 5. Play controls (our addition, same language)
 
-Not on the source page; designed to match it. Sits as `.l` lines directly under the table header, inside `.screen`.
+Not on the source page; designed to match it. Sits as `.l` lines directly under the table figure, inside `.screen`.
 
 ```
-62  TO CALL 200   POT 1,350   POT ODDS 12.9%                   STACK 9,200
-63  [FOLD]  [CALL 200]  [RAISE TO ____]   1/2  2/3  POT  ALL-IN
+61  YOUR TURN · TO CALL 300   14 S                                 [STAND]
+62  TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY (4 TO 1)          STACK 9,200
+63  [FOLD]  [CALL 300]  [RAISE TO] 1,100  600–9,500
+64  1/2 POT  2/3 POT  POT  ALL-IN
 ```
-- `[FOLD] [CHECK] [CALL n]` are boxed buttons (§3.4); the default/safe action is the filled `.cta`:
-  **CHECK when it is free, else FOLD**. FOLD is disabled when checking is free.
+- **Status line** (`StatusBlock`, shared by solo and multiplayer, first line of the controls): the status words, then
+  the clock when there is one (`14 S`, `--amber` at 5 s or less), and an action slot at the right. The words are
+  `YOUR TURN · TO CALL 300`, `S5 TAG-2 THINKING…` (a bot on the clock), `S4 BEA TO ACT`, the idle text before a hand
+  (`PRESS DEAL TO START`), or at hand end the result: `YOU WIN 3,516 WITH TWO PAIR`,
+  `S4 STATION WINS 400 WITH A STRAIGHT · YOU LOSE 100`, `S2 LAG WINS 150 · EVERYONE ELSE FOLDED`,
+  `SPLIT POT: S2 LAG AND S4 BEA EACH WIN 375`.
+- Solo holds the result: the action slot is a filled `[NEXT HAND →]` (focused when the controls had focus; `Enter`,
+  `Space` or `N` deals). The setup row `AUTO-NEXT  [ ] DEAL THE NEXT HAND AFTER 3 S` (off by default) deals on a timer.
+- **Price line:** `TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY (4 TO 1)`. The pot already holds the bet faced, so the
+  equity needed is call / (pot + call), module 3's B / (P + 2B), and the ratio is its pot odds (P + B) : B (on
+  mobile the line ends at the percentage, and the range slot is not reserved). Nothing to call: `NOTHING TO CALL · POT 1,200`; not your turn: `POT 1,200`. `STACK` at the right.
+- `[FOLD] [CHECK] [CALL n]` are boxed buttons (§3.4). The default action takes focus and is the filled `.cta`:
+  **CHECK when it is free, else CALL** (FOLD only when neither applies). FOLD is disabled when checking is free.
+  Once a raise size is chosen or typed the filled box moves to `[RAISE TO]` / `[BET]`, so Enter visibly means raise;
+  `Esc` gives it back.
 - **Accepted deviation:** the controls sit under the table figure (not under the header), so the seats stay in view
   above them.
-- Raise input is an underlined, digits-only field in `ch` width followed by the legal range (`200–9,700`); the
-  sizing presets are `button.t` toggles. A preset fills the field and selects it, so typing replaces it.
+- Raise input is an underlined field in `ch` width that shows thousands separators (typing strips anything but
+  digits), followed by one fixed-width slot that holds the legal range (`200–9,700`) or, instead of it, the error, so an
+  error never reflows the line. The sizing presets are `button.t` toggles that say what they are a fraction of:
+  `1/2 POT  2/3 POT  POT  ALL-IN`. A preset fills the field and selects it.
 - Raise validation: the amount is never clamped. Out of range (or empty on submit) the field gets `aria-invalid`
   and a `Tag` says why — `MIN 200` or `MAX 9,700 (ALL-IN)` — and nothing is sent until the number is in range
   or ALL-IN is chosen explicitly.
-- Buttons that don't apply are `aria-disabled` (not `disabled`), so focus stays where it was after an action; when
-  the hero's next decision comes up focus returns to the default action, unless the user has moved it off the controls.
-- Keyboard: `F` fold, `C` check/call, `R` focus raise, `Enter` confirm, `Esc` back out of the field, `1–4` presets — shown
-  in the legend line. In the raise field digits type (no presets); letters never go in, and `F`/`C` still act.
+- Buttons that don't apply are `aria-disabled` (not `disabled`), so focus stays where it was after an action. When
+  the hero's next decision comes up (and on DEAL / NEXT HAND) the band from the table header through the controls is
+  scrolled into view if it is not already (when taller than the viewport, the controls go to its bottom), then
+  the default action takes focus without a second scroll, only if it is on screen and the user hasn't moved
+  focus off the controls.
+- Keyboard: `F` fold, `C` check/call, `R` focus raise, `1–4` choose a size, `Enter` confirm, `Esc` back out of the field —
+  shown in the legend line `KEYS: F FOLD  C CHECK/CALL  R RAISE  1-4 SIZE  ENTER CONFIRM  ESC BACK` (solo adds
+  `N NEXT HAND`). In the raise field `1–4` still choose a size until something is typed or deleted; then digits type.
+  Letters never go in, and `F`/`C` still act.
 - `NEW SESSION` wipes the stats, so it asks again: `[NEW SESSION →]` then `[CONFIRM — WIPES STATS →]`.
 - Coach mode adds a line above: `YOUR EQUITY EST. ____%  [SUBMIT]` and, after acting, a graded line using `--green`/`--red` for EV.
 

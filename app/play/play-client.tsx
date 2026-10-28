@@ -9,11 +9,14 @@ import {
   KeysLegend,
   PlayControls,
   PokerTable,
+  StatusBlock,
   StripLegend,
   TableHeader,
   emptyTableModel,
+  enterTable,
   fmt,
   modelFromHand,
+  onScreen,
 } from "@/components/table";
 import { botNames } from "@/components/table/names";
 import {
@@ -30,11 +33,13 @@ import { botView } from "@/lib/bots/view";
 import { createRng, type Rng } from "@/lib/poker/cards";
 
 const HERO = 0;
+const BAND_ID = "practice-table";
 const SMALL_BLIND = 50;
 const BIG_BLIND = 100;
 const STACK = 10_000;
 const SEAT_CHOICES = [2, 3, 4, 5, 6, 7, 8] as const;
-const RESULT_MS = 2500;
+/** With AUTO-NEXT on, a finished hand stays up this long before the next is dealt. */
+const AUTO_NEXT_MS = 3000;
 
 type PersonaChoice = PersonaId | "mixed";
 /** Per-seat bot choices, cycled by `[TAG ▸]`: a random persona, then each one. */
@@ -84,6 +89,12 @@ function nextHand(s: Session, seed: number): Session {
   };
 }
 
+/** Scroll the table into view and hand focus to the controls (DEAL, NEXT HAND). */
+function showTable() {
+  const band = document.getElementById(BAND_ID);
+  if (band) enterTable(band);
+}
+
 function pickPersonas(choices: PersonaChoice[], rng: Rng): (PersonaId | null)[] {
   return choices.map((c, i) => (i === HERO ? null : c === "mixed" ? PERSONA_IDS[rng.int(PERSONA_IDS.length)] : c));
 }
@@ -94,7 +105,10 @@ export default function PlayClient() {
   const [session, setSession] = useState<Session | null>(null);
   // NEW SESSION wipes the stats, so it takes a second click.
   const [confirmNew, setConfirmNew] = useState(false);
+  // Off: a finished hand stays up until NEXT HAND.
+  const [autoNext, setAutoNext] = useState(false);
   const rngRef = useRef<Rng | null>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
 
   const deal = () => {
     if (session && !confirmNew) {
@@ -117,18 +131,26 @@ export default function PlayClient() {
       ),
       stats: { hands: 0, net: 0, rebuys: 0 },
     });
+    showTable();
   };
 
-  // Bots think for 400-900 ms; a finished hand stays up for RESULT_MS, then the next one is dealt.
+  const dealNext = useCallback(() => {
+    const seed = rngRef.current!.nextU32();
+    setSession((s) => (s && s.hand.complete ? nextHand(s, seed) : s));
+    showTable();
+  }, []);
+
+  // Bots think for 400-900 ms. A finished hand stays up until NEXT HAND (or AUTO_NEXT_MS with AUTO-NEXT on).
   useEffect(() => {
     if (!session) return;
     const { hand } = session;
     const rng = rngRef.current!;
     if (hand.complete) {
+      if (!autoNext) return;
       const t = setTimeout(() => {
         const seed = rng.nextU32();
         setSession((s) => (s === session ? nextHand(s, seed) : s));
-      }, RESULT_MS);
+      }, AUTO_NEXT_MS);
       return () => clearTimeout(t);
     }
     const seat = seatToAct(hand)!;
@@ -142,7 +164,28 @@ export default function PlayClient() {
       400 + Math.random() * 500,
     );
     return () => clearTimeout(t);
-  }, [session]);
+  }, [session, autoNext]);
+
+  const complete = !!session?.hand.complete;
+  const handNo = session?.handNo ?? 0;
+  // A finished hand: NEXT HAND takes focus if the controls had it and it is on screen; N deals too.
+  useEffect(() => {
+    if (!complete) return;
+    const a = document.activeElement;
+    const btn = nextRef.current;
+    if (btn && (!a || a === document.body || btn.closest(".controls-dock")?.contains(a)) && onScreen(btn)) {
+      btn.focus({ preventScroll: true });
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || e.key.toLowerCase() !== "n") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      e.preventDefault();
+      dealNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [complete, handNo, dealNext]);
 
   const act = useCallback((a: Action) => {
     setSession((s) => {
@@ -168,16 +211,6 @@ export default function PlayClient() {
   const hand = session?.hand ?? null;
   const heroTurn = !!hand && !hand.complete && seatToAct(hand) === HERO;
   const legal = heroTurn ? legalActions(hand) : null;
-  const toAct = model.toAct;
-  const status = !session
-    ? "PRESS DEAL"
-    : hand!.complete
-      ? "NEXT HAND…"
-      : heroTurn
-        ? "YOUR TURN"
-        : toAct !== null
-          ? `${model.seats[toAct].label} ${model.seats[toAct].name} TO ACT`
-          : "";
 
   const stats = session?.stats ?? { hands: 0, net: 0, rebuys: 0 };
   const bb100 = stats.hands > 0 ? (stats.net / BIG_BLIND / stats.hands) * 100 : 0;
@@ -217,6 +250,14 @@ export default function PlayClient() {
         <span>{fmt(STACK)}, BUSTED SEATS REBUY</span>
       </div>
       <div className="l field">
+        <span>AUTO-NEXT</span>
+        <span>
+          <Choice type="checkbox" checked={autoNext} onChange={(e) => setAutoNext(e.target.checked)}>
+            DEAL THE NEXT HAND AFTER 3 S
+          </Choice>
+        </span>
+      </div>
+      <div className="l field">
         <span>S1</span>
         <span>YOU</span>
       </div>
@@ -245,13 +286,8 @@ export default function PlayClient() {
       </Line>
       <Blank />
       <Rule />
-      <Screen aria-label="Practice table">
-        <TableHeader
-          model={model}
-          title="PRACTICE TABLE"
-          mode={`LIVE  ${model.seated}/${model.capacity} SEATED`}
-          right={status}
-        />
+      <Screen id={BAND_ID} aria-label="Practice table">
+        <TableHeader model={model} title="PRACTICE TABLE" mode={`SOLO  ${model.capacity} SEATS`} waiting="PRESS DEAL TO START" />
         <PokerTable model={model} label={`Practice table, ${model.seated} seats`} />
         <PlayControls
           legal={legal}
@@ -259,8 +295,23 @@ export default function PlayClient() {
           heroBet={hand ? hand.bets[HERO] : 0}
           stack={hand ? hand.stacks[HERO] : STACK}
           onAct={act}
+          status={
+            <StatusBlock
+              model={model}
+              heroTurn={heroTurn}
+              toCall={legal?.callAmount}
+              idle="PRESS DEAL TO START"
+              action={
+                complete ? (
+                  <button ref={nextRef} type="button" className="apply cta" onClick={dealNext}>
+                    NEXT HAND →
+                  </button>
+                ) : null
+              }
+            />
+          }
         />
-        <KeysLegend />
+        <KeysLegend extra="N NEXT HAND" />
         <Line center gap>
           <span>ACTION</span>
         </Line>
