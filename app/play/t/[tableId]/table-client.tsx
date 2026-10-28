@@ -341,15 +341,19 @@ function LiveTable({
   const freeSeat = state.seats.findIndex((s) => s === null);
   // A bot playing this watcher's chips since they went away: they may take that seat back.
   const standIn = heroSeat === null && playerId ? state.seats.findIndex((s) => s?.replacesId === playerId && s.reclaimable) : -1;
+  // A bot the host put in for this watcher while they were present: it holds their chips, so no seat for them.
+  const holder = heroSeat === null && playerId ? state.seats.findIndex((s) => s?.replacesId === playerId && !s.reclaimable) : -1;
 
   // The status line's words when nobody is on the clock and no result is up.
   const idle =
     heroSeat === null
       ? standIn >= 0
         ? `A BOT HAS YOUR CHIPS (S${standIn + 1})`
-        : freeSeat >= 0
-          ? "WATCHING"
-          : "WATCHING — EVERY SEAT IS TAKEN"
+        : holder >= 0
+          ? `WATCHING — THE HOST GAVE YOUR CHIPS TO S${holder + 1}`
+          : freeSeat >= 0
+            ? "WATCHING"
+            : "WATCHING — EVERY SEAT IS TAKEN"
       : !state.started
         ? isHost
           ? "SEATED — PRESS START ABOVE WHEN FRIENDS ARE IN"
@@ -367,7 +371,7 @@ function LiveTable({
             [TAKE SEAT BACK]
           </TextButton>
         )
-      ) : freeSeat >= 0 ? (
+      ) : freeSeat >= 0 && holder < 0 ? (
         <TextButton onClick={() => actions.sit(freeSeat)} aria-label={`Sit in seat ${freeSeat + 1}, the first free seat`}>
           [SIT]
         </TextButton>
@@ -438,7 +442,7 @@ function LiveTable({
         <PokerTable
           model={model}
           label={`Table ${tableId}, ${model.seated} of ${model.capacity} seats taken`}
-          onSit={heroSeat === null ? actions.sit : undefined}
+          onSit={heroSeat === null && standIn < 0 && holder < 0 ? actions.sit : undefined}
         />
         {controls ? (
           <>

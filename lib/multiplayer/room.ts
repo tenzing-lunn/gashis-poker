@@ -637,6 +637,9 @@ export class TableRoom {
       if (standIn.seat === seat && this.reclaim(player, seat)) return this.tryDeal();
       return this.error(connId, "bad_seat", `Your chips are in S${standIn.seat! + 1}: sit there to take them back`);
     }
+    // A bot the host put in while this player was present plays their chips: no second stack.
+    const holder = this.botHolding(player);
+    if (holder) return this.error(connId, "bad_seat", `The host gave your chips to the bot in S${holder.seat! + 1}`);
     if (this.seats[seat] !== null) return this.error(connId, "seat_taken", "That seat is taken");
     this.seatPlayer(player, seat);
     this.tryDeal();
@@ -732,6 +735,12 @@ export class TableRoom {
   /** The seated bot playing `human`'s chips that they may take back, if any. */
   private reclaimableBotFor(human: Player): Player | undefined {
     for (const b of this.players.values()) if (b.kind === "bot" && b.replaces === human.id && b.reclaimable && b.seat !== null) return b;
+    return undefined;
+  }
+
+  /** Any seated bot playing `human`'s chips, reclaimable or not. */
+  private botHolding(human: Player): Player | undefined {
+    for (const b of this.players.values()) if (b.kind === "bot" && b.replaces === human.id && b.seat !== null) return b;
     return undefined;
   }
 

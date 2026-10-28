@@ -1064,12 +1064,17 @@ describe("TableRoom host tools: leave, bot in, remove, end", () => {
     h.send("a", { type: "replaceWithBot", seat: 1, persona: "tag" });
     expect(h.state("b").seats[1]).toMatchObject({ kind: "bot", stack: 10_000, replaces: "Bob" });
     h.send("b", { type: "sit", seat: 1 });
-    expect(h.lastOf("b", "error")?.code).toBe("seat_taken");
+    expect(h.lastOf("b", "error")).toMatchObject({ code: "bad_seat", message: expect.stringContaining("bot in S2") });
     h.close("b");
     h.connect("b2");
     h.send("b2", { type: "join", name: "Bob", token });
     expect(h.state("b2").seats[1]).toMatchObject({ kind: "bot" });
-    // He can sit elsewhere with a fresh buy-in.
+    // The bot holds his chips, so he can't buy in fresh elsewhere: one stack per player.
+    h.send("b2", { type: "sit", seat: 2 });
+    expect(h.lastOf("b2", "error")).toMatchObject({ code: "bad_seat", message: expect.stringContaining("S2") });
+    expect(h.state("b2").seats[2]).toBeNull();
+    // Once the host removes the bot, its chips are his again and he can sit with them.
+    h.send("a", { type: "removeBot", seat: 1 });
     h.send("b2", { type: "sit", seat: 2 });
     expect(h.state("b2").seats[2]).toMatchObject({ name: "Bob", stack: 10_000 });
   });
@@ -1154,7 +1159,7 @@ describe("TableRoom host tools: leave, bot in, remove, end", () => {
     h.send("b2", { type: "join", name: "Bob", token });
     expect(h.lastOf("b2", "welcome")!.you.seat).toBeNull();
     h.send("b2", { type: "sit", seat: 1 });
-    expect(h.lastOf("b2", "error")?.code).toBe("seat_taken");
+    expect(h.lastOf("b2", "error")).toMatchObject({ code: "bad_seat", message: expect.stringContaining("bot in S2") });
     expect(h.state("a").seats[1]).toMatchObject({ kind: "bot" });
   });
 
@@ -1164,7 +1169,7 @@ describe("TableRoom host tools: leave, bot in, remove, end", () => {
     h.send("a", { type: "addBot", seat: 1, persona: "nit" });
     expect(h.state("a").seats[1]!.reclaimable).toBeUndefined();
     h.send("b", { type: "sit", seat: 1 });
-    expect(h.lastOf("b", "error")?.code).toBe("seat_taken");
+    expect(h.lastOf("b", "error")).toMatchObject({ code: "bad_seat", message: expect.stringContaining("bot in S2") });
   });
 
   it("refuses a fresh buy-in elsewhere while a bot holds the player's chips for them", () => {
