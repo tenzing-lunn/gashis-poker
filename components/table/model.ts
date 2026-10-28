@@ -65,6 +65,8 @@ export interface SeatModel {
   /** Folded, sitting out, or an empty seat. */
   out: boolean;
   isHero: boolean;
+  /** The player is disconnected (multiplayer; solo never sets it): `○` after the name, `AWAY` on an empty `.act`. */
+  away: boolean;
 }
 
 export type StripLetter = "b" | "X" | "C" | "B" | "R" | "A" | "F" | "W";
@@ -128,6 +130,11 @@ export interface HandResult {
   heroNet: number | null;
   /** One line in CAPS. */
   text: string;
+  /**
+   * The same in the narrow form the mobile status line uses (seat labels, seat hand names):
+   * `YOU WIN 3,516 · TWO PAIR`, `S4 WINS 400 · STRAIGHT · YOU -100` (the hero's net), `S2 WINS 150 · OTHERS FOLDED`.
+   */
+  short: string;
 }
 
 export interface TableModel {
@@ -161,6 +168,8 @@ export interface TableModel {
 export interface SeatSource {
   name: string;
   kind: "human" | "bot";
+  /** Disconnected (multiplayer). Default false. */
+  away?: boolean;
 }
 
 /** One step of the hand in time order. Seats are table seats. */
@@ -282,6 +291,21 @@ const SEAT_CATEGORY: Record<string, string> = {
 };
 /** A showdown hand short enough for the seat's `.act` line (12 characters at most). */
 export const seatCategory = (category: string): string => (SEAT_CATEGORY[category] ?? category).slice(0, SEAT_CHARS.tall);
+
+/**
+ * The `.act` line fitted to `width` characters: `RAISE TO 10,000` reads `RAISE 10,000` in the 14ch seat, then the
+ * amount goes compact (`ALL-IN 12.3K`), then the verb to its strip letter (`R 123K`). The seat's screen-reader
+ * sentence keeps the full text.
+ */
+export function seatAct(text: string, width: number): string {
+  if (text.length <= width) return text;
+  const m = /^(.+) ([\d,]+)$/.exec(text);
+  if (!m) return text.slice(0, width);
+  const verb = m[1] === "RAISE TO" ? "RAISE" : m[1];
+  const n = compact(Number(m[2].replace(/,/g, "")));
+  const options = [`${verb} ${m[2]}`, `${verb} ${n}`, `${verb[0]} ${m[2]}`, `${verb[0]} ${n}`];
+  return options.find((t) => t.length <= width) ?? options[3].slice(0, width);
+}
 
 const CATEGORY_PHRASE: Record<string, string> = {
   PAIR: "A PAIR",
@@ -436,6 +460,7 @@ export function buildModel(input: TableInput): TableModel {
         win: false,
         out: true,
         isHero: false,
+        away: false,
       };
     }
     const folded = input.folded[i];
@@ -470,6 +495,7 @@ export function buildModel(input: TableInput): TableModel {
       win: input.complete && won.has(i),
       out: folded || (!input.inHand[i] && input.handNo > 0),
       isHero: input.heroSeat === i,
+      away: !!src.away,
     };
   });
 
@@ -557,24 +583,44 @@ function buildResult(
   const byMinSeat = [...parts.values()].sort((a, b) => Math.min(...a.keys()) - Math.min(...b.keys()));
 
   const split = byMinSeat.some((p) => p.size > 1);
-  const lines = byMinSeat.map((p) => {
+  // The narrow form (mobile): seat labels, the seat's hand name, `S2, S4 WIN 375 EACH`.
+  const tag = (w: ResultWinner) => (w.isHero ? "YOU" : w.label);
+  const seatHand = (c: string | null) => (c ? ` · ${seatCategory(c)}` : "");
+  const lines: string[] = [];
+  const short: string[] = [];
+  for (const p of byMinSeat) {
     const ws = [...p].sort((a, b) => a[0] - b[0]).map(([seat, amount]) => ({ ...winners.find((w) => w.seat === seat)!, amount }));
-    if (ws.length === 1) return `${who(ws[0])} ${ws[0].isHero ? "WIN" : "WINS"} ${fmt(ws[0].amount)}${withHand(ws[0].category)}`;
+    if (ws.length === 1) {
+      const won = `${ws[0].isHero ? "WIN" : "WINS"} ${fmt(ws[0].amount)}`;
+      lines.push(`${who(ws[0])} ${won}${withHand(ws[0].category)}`);
+      short.push(`${tag(ws[0])} ${won}${seatHand(ws[0].category)}`);
+      continue;
+    }
     const names = ws.map(who);
     const list = `${names.slice(0, -1).join(", ")} AND ${names[names.length - 1]}`;
-    const hand = ws.every((w) => w.category === ws[0].category) ? withHand(ws[0].category) : "";
-    return ws.every((w) => w.amount === ws[0].amount)
-      ? `SPLIT POT: ${list} EACH WIN ${fmt(ws[0].amount)}${hand}`
-      : `SPLIT POT: ${list} SHARE ${fmt(ws.reduce((t, w) => t + w.amount, 0))}${hand}`;
-  });
-  if (!input.showdown) lines.push("EVERYONE ELSE FOLDED");
-  else if (hero !== null && heroNet !== null && heroNet < 0) {
+    const same = ws.every((w) => w.category === ws[0].category);
+    const hand = same ? withHand(ws[0].category) : "";
+    const tags = ws.map(tag).join(", ");
+    if (ws.every((w) => w.amount === ws[0].amount)) {
+      lines.push(`SPLIT POT: ${list} EACH WIN ${fmt(ws[0].amount)}${hand}`);
+      short.push(`${tags} WIN ${fmt(ws[0].amount)} EACH${same ? seatHand(ws[0].category) : ""}`);
+    } else {
+      const total = fmt(ws.reduce((t, w) => t + w.amount, 0));
+      lines.push(`SPLIT POT: ${list} SHARE ${total}${hand}`);
+      short.push(`${tags} SHARE ${total}${same ? seatHand(ws[0].category) : ""}`);
+    }
+  }
+  if (!input.showdown) {
+    lines.push("EVERYONE ELSE FOLDED");
+    short.push("OTHERS FOLDED");
+  } else if (hero !== null && heroNet !== null && heroNet < 0) {
     // A hero who won a side pot can still be down on the hand.
     if (won.has(hero)) lines.push(`YOU NET ${signed(heroNet)}`);
     else if (seats[hero]?.category) lines.push(`YOU LOSE ${fmt(-heroNet)}`);
+    if (won.has(hero) || seats[hero]?.category) short.push(`YOU ${signed(heroNet)}`);
   }
 
-  return { winners, split, showdown: input.showdown, heroNet, text: lines.join(" · ") };
+  return { winners, split, showdown: input.showdown, heroNet, text: lines.join(" · "), short: short.join(" · ") };
 }
 
 const LABEL_OF: Record<Street, StripLabelText> = { preflop: "PRE", flop: "FLOP", turn: "TURN", river: "RIVER" };

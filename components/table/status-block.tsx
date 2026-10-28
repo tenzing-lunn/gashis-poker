@@ -36,19 +36,31 @@ export function statusText(model: TableModel, heroTurn: boolean, toCall = 0): st
 
 /**
  * The one status line directly above the play controls (DESIGN.md §5): status words, the clock, an action
- * slot at the right. Solo and multiplayer mount the same line, so it is always in the same place.
+ * slot at the right. Solo and multiplayer mount the same line, so it is always in the same place. On mobile
+ * the result takes its narrow form (`YOU WIN 3,516 · TWO PAIR`) on one line, and the action moves to a
+ * second line when it does not fit beside it.
  */
 export function StatusBlock({ model, heroTurn, toCall, seconds, idle, action }: StatusBlockProps) {
   const mine = heroTurn ?? (model.heroSeat !== null && model.toAct === model.heroSeat && !model.complete);
   const text = statusText(model, mine, toCall);
+  const short = model.complete && model.result && model.result.short !== text ? model.result.short : null;
   const clock = seconds === undefined || seconds === null ? null : Math.max(0, Math.ceil(seconds));
   return (
     <Line className="status">
       <span className="cols">
-        <span>{text ?? idle}</span>
+        {short ? (
+          <span className="words">
+            <span className="full">{text}</span>
+            <span className="short" title={text ?? undefined}>
+              {short}
+            </span>
+          </span>
+        ) : (
+          <span className="words">{text ?? idle}</span>
+        )}
         {clock !== null ? <span className={clock <= 5 ? "text-amber" : undefined}>{clock} S</span> : null}
       </span>
-      {action ? <span>{action}</span> : null}
+      {action ? <span className="side">{action}</span> : null}
     </Line>
   );
 }

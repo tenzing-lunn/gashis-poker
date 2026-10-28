@@ -142,6 +142,9 @@ Used for schedules, stats, leaderboards (label column + fixed value column).
 ### 3.5 Form controls (ASCII)
 - Rows are a grid `minmax(0, 24ch) 1fr`: CAPS label left, input right.
 - Inputs: no box — bottom border only (`1px solid var(--ink)`), transparent background, inherit font.
+  `margin-bottom: -1px`: the underline hangs into the next line's top half-leading, so a line holding an input is
+  27px like any other (a textarea, which grows with its content, n × 27px). A select ignores `line-height`, so it
+  gets the same box: `height: calc(var(--lh) * 1em + 1px)`.
 - Radio: `( )` / `(X)`; checkbox: `[ ]` / `[X]` — drawn with `::before` content on a `.box` span over a visually hidden native input.
 - Error / attention tag: `background: var(--warn); color: var(--ink); padding: 0 .5ch`.
 - Bar inputs (sliders, allocation): dotted baseline (`border-bottom: 1px dotted var(--muted)`) with an ink fill.
@@ -195,7 +198,9 @@ Seat stack, top to bottom:
    first deal). `BTN` replaces the old `(D)`. A flex row, `column-gap: 1ch; padding: 0 .5ch; max-width: 100%;
    white-space: nowrap`: the name is the only part that gives way (`.name { min-width: 0; overflow: hidden;
    text-overflow: ellipsis }`), so `S8 ` + a 16-character nickname + ` BTN` stays inside the 14ch (12ch) seat as
-   `S8 ABCDEF… BTN`. The full name is in the seat's screen-reader sentence and its `title`; on mobile a tapped-open
+   `S8 ABCDEF… BTN`. A `-N` suffix is never cut: the part before it gives way (`S3 STAT…-2 HJ`), so two bots of one
+   style never read the same. A disconnected player (`SeatSource.away`, multiplayer) gets `○` after the name
+   (`S1 TENZING ○ BTN`, the ring of §6, 1ch in the suit glyph faces). The full name is in the seat's screen-reader sentence and its `title`; on mobile a tapped-open
    seat shows it whole, on paper, past the seat edge if it must. With `onSeatInfo` a bot's `S3 MICRO` is a text
    button (`About S3 MICRO`, same text, §3.4 hover outline in `currentColor`) that opens its bot sheet (§4.9); on
    mobile its 24px target is an invisible extension, so the seat keeps its height.
@@ -212,6 +217,10 @@ Seat stack, top to bottom:
 5. `.act` — last action: `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`. `min-height: 1.35em`. At hand end every
    showdown seat shows its hand (`TWO PAIR`; seat forms `TRIPS`, `QUADS`, `STR FLUSH` keep it within 12
    characters) and an uncontested winner shows `WINS`. The full result goes on the status line (§5).
+   Fitted to the seat like `.meta` (`seatAct`, 14 / 12 characters): `RAISE TO` drops its `TO`
+   (`RAISE 10,000`), then the amount goes compact (`ALL-IN 10.0K`), then the verb to its strip letter (`R 1.2M`);
+   the screen-reader sentence keeps the full text. A disconnected seat with nothing else to show reads `AWAY`
+   (and its sentence says `away`).
 
 States:
 - `.turn` and `.win` → `.who` inverts (ink background, paper text). That is the *only* "whose turn" signal on the figure.
@@ -279,6 +288,27 @@ Table figure `aspect-ratio: 3 / 4` (`3 / 5` at ≤ 400px) with seats on a tall r
 (suit `9.5px`), board cards `28×40px` (suit `14px`), center `10px`, felt `inset: 12% 16%`, strip names `3ch`.
 Text buttons on the table, its header and the controls are at least 24px tall on mobile.
 
+The docked controls (sticky at the bottom, `padding-bottom: env(safe-area-inset-bottom)`) are 13px text on 27px
+lines (`--lh: calc(27 / 13)`), one row per line, never overlapping:
+```
+25  YOUR TURN (BB) · TO CALL 800                    status (a result + NEXT HAND may take 2 rows)
+26  TO CALL 800 → NEED 37%            STACK 9,900   price, one line
+27  [FOLD]  [CALL 800]                              row 1
+    [RAISE TO] 1,500  1,500–10,000                  row 2
+    1/2 POT  2/3 POT  POT  ALL-IN                   row 3
+```
+Boxes and toggles in the dock are 25px tall with 1px clear above and below (`.apply { line-height: 23px;
+margin-block: 1px }`, `button.t { line-height: 25px; margin-block: 1px }`), so every target is at least 24px and
+neighbouring rows stay 2px apart; the raise field's underline sits inside its row. The status line takes the
+result's narrow form (`HandResult.short`: `YOU WIN 3,516 · TWO PAIR`, `S4 WINS 400 · STRAIGHT · YOU -100`,
+`S2 WINS 150 · OTHERS FOLDED`, seat labels for names) on one line (ellipsis past 39 characters, the full text in
+its `title`), and `[NEXT HAND →]` moves to a second row, at the right, when it does not fit beside it. The price
+line drops `INTO` and `EQUITY (4 TO 1)` and rounds to whole percents from 10% (`TO CALL 300 → NEED 20%`;
+nothing to call: `NOTHING TO CALL`, the pot being on the table just above). The dock covers the figure only while
+the user scrolls up: on the hero's turn, and when a hand ends, `revealTable` scrolls to where the dock sits in the
+flow, so it is under the hero's seat, not over it. At 375×812 the band from the table header through the dock
+fits the viewport.
+
 ### 4.8 Home attract table
 Eight bots, every hole card face down until showdown, an `ACTION` line centered above the strip. It has no live
 region (it would announce every bot action), runs only while the tab is visible and the table is on screen, and
@@ -321,7 +351,8 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   the call is all-in for less, the pot is only what the call contests (`contestedPot`: each seat's chips this hand
   capped at the hero's total after calling): 900 to call against a 5,000 bet into 200 reads
   `TO CALL 900 INTO 1,100 → NEED 45.0%` (`1.2 TO 1`), not `INTO 5,300` (on
-  mobile the line ends at the percentage, and the range slot is not reserved). Nothing to call: `NOTHING TO CALL · POT 1,200`; not your turn: `POT 1,200`. `STACK` at the right.
+  mobile `TO CALL 900 → NEED 45%` on one line, and the range slot is not reserved; §4.7). Nothing to call:
+  `NOTHING TO CALL · POT 1,200`; not your turn: `POT 1,200`. `STACK` at the right.
 - `[FOLD] [CHECK] [CALL n]` are boxed buttons (§3.4). The default action takes focus and is the filled `.cta`:
   **CHECK when it is free, else CALL** (FOLD only when neither applies). FOLD is disabled when checking is free.
   Once a raise size is chosen or typed the filled box moves to `[RAISE TO]` / `[BET]`, so Enter visibly means raise;
@@ -332,7 +363,8 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   digits); while the user edits it the separators drop out, so the caret and Backspace move over digits, and they
   come back on blur or when a preset fills it. It is followed by one fixed-width slot that holds the legal range (`200–9,700`) or, instead of it, the error, so an
   error never reflows the line. The sizing presets are `button.t` toggles that say what they are a fraction of:
-  `1/2 POT  2/3 POT  POT  ALL-IN`. A preset fills the field and selects it.
+  `1/2 POT  2/3 POT  POT  ALL-IN`. A clicked preset fills the field and selects it (the next digit typed replaces
+  it); one chosen with `1–4` fills it and focuses `[RAISE TO]` / `[BET]` (below).
 - Raise validation: the amount is never clamped. Out of range (or empty on submit) the field gets `aria-invalid`
   and a `Tag` says why — `MIN 200` or `MAX 9,700 (ALL-IN)` — and nothing is sent until the number is in range
   or ALL-IN is chosen explicitly.
@@ -341,11 +373,13 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   scrolled into view if it is not already (when taller than the viewport, the controls go to its bottom), then
   the default action takes focus without a second scroll, only if it is on screen and the user hasn't moved
   focus off the controls.
-- Keyboard: `F` fold, `C` check/call, `1–4` choose a size (the field shows it, selected, and the filled box moves
-  to `[RAISE TO]` / `[BET]`), `R` focus the field to type an amount, `Enter` confirm, `Esc` back out of the field —
-  shown in the legend line `KEYS: F FOLD  C CHECK/CALL  1-4 SIZE  R TYPE AMOUNT  ENTER CONFIRM  ESC BACK` (solo adds
-  `N NEXT HAND`). `1–4` pick a size only outside the raise field; in it digits always type, so a size picked
-  with `1–4` is replaced by the first digit typed. Letters never go in, and `F`/`C` still act.
+- Keyboard: `F` fold, `C` check/call, `1–4` choose a size (the field shows it and focus goes to the filled
+  `[RAISE TO]` / `[BET]`, so another `1–4` switches the size and `Enter` raises), `R` focus the field to type an
+  amount, `Enter` confirm, `Esc` back out (the safe default is filled and focused again) — shown in the legend line
+  `KEYS: F FOLD  C CHECK/CALL  1-4 SIZE  R TYPE  ENTER OK  ESC BACK` (solo adds `N NEXT HAND`; one line from 800px
+  up, below that it breaks between keys, never inside one). `1–4` pick a size only outside the raise field; in
+  it digits always type. Letters never go in, and `F`/`C` still act. The raise draft resets with every new
+  decision (`PlayControls` `decisionKey`; solo passes hand number and action count).
 - `NEW SESSION` wipes the stats, so it asks again: `[NEW SESSION →]` then `[CONFIRM — WIPES STATS →]`.
 - Solo setup (`/play`): each bot row is `S2 BOT  [STATION ▸]  [ABOUT]  LIMPS AND CALLS WITH ALMOST ANYTHING, …` — the
   picker cycles the seats' short names at a fixed `12ch`, so `[ABOUT]` and the note never move under the cursor;
@@ -370,6 +404,8 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
 - **Seat taken by a human** shows the player's handle in `.who`; bots keep their `S# NAME` form; an empty seat is a
   dashed `.cd.slot`-style box with `[SIT]`.
 - **Connection state** on the header line, right side: `● CONNECTED` / `○ RECONNECTING…` (ink dot / ring, no color).
+  A disconnected player's seat shows the same ring after the name and `AWAY` on an empty `.act` (§4.2), from
+  `SeatSource.away`.
 - **Message trace / chat** (optional) styled like the source's dealer trace: timestamped rows `+0.074  S2 CHECK`,
   muted timestamps in a `--mt-g` gutter.
 

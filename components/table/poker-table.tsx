@@ -4,7 +4,7 @@ import { useState, type CSSProperties } from "react";
 import { cx } from "@/components/doc/cx";
 import { TextButton } from "@/components/doc";
 import { Card } from "./card";
-import { SEAT_CHARS, bbText, cardWords, fmt, seatMeta, seatPoints, type SeatModel, type TableModel } from "./model";
+import { SEAT_CHARS, bbText, cardWords, fmt, seatAct, seatMeta, seatPoints, type SeatModel, type TableModel } from "./model";
 
 type PokerTableProps = {
   model: TableModel;
@@ -88,12 +88,15 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit, onInfo }: SeatPro
   const empty = s.kind === "empty";
   const yourTurn = s.isHero && s.turn;
   const position = s.position ?? (s.isButton ? "BTN" : null);
-  // `S3 MICRO-2`: the name shrinks to an ellipsis so `S8 ` + name + ` BTN` stays inside the seat.
+  // `S3 MICRO-2`: the name shrinks to an ellipsis so `S8 ` + name + ` BTN` stays inside the seat; a `-2` suffix
+  // stays whole (`STAT…-2`), so two bots of one style never look the same.
+  const [base, suffix] = nameParts(s.name);
   const id = (
     <>
       <span>{s.label}</span>
       <span className="name full" title={s.name}>
-        {s.name}
+        <span className="base">{base}</span>
+        {suffix ? <span className="sfx">{suffix}</span> : null}
       </span>
     </>
   );
@@ -144,6 +147,11 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit, onInfo }: SeatPro
                 {id}
               </span>
             )}
+            {s.away ? (
+              <span className="away" aria-hidden="true">
+                ○
+              </span>
+            ) : null}
             {position ? (
               <span className="pos" aria-hidden="true">
                 {position}
@@ -171,7 +179,7 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit, onInfo }: SeatPro
             [SIT]
           </TextButton>
         ) : (
-          <span aria-hidden="true">{s.lastAction || " "}</span>
+          <ActText text={s.lastAction || (s.away ? "AWAY" : "")} />
         )}
       </div>
     </div>
@@ -185,6 +193,26 @@ function MetaText({ seat, width, className }: { seat: SeatModel; width: number; 
     <span className={className}>
       {head}
       {tail ? <span className={seat.net === null ? undefined : seat.net < 0 ? "text-red" : "text-green"}>{tail}</span> : null}
+    </span>
+  );
+}
+
+/** `STATION-2` → `["STATION", "-2"]`: the part of a name that may be cut, and a `-N` suffix that may not. */
+export function nameParts(name: string): [string, string] {
+  const m = /^(.+?)(-\d+)?$/.exec(name);
+  return m ? [m[1], m[2] ?? ""] : [name, ""];
+}
+
+/** The `.act` line at both seat widths (`RAISE TO 10,000` is `RAISE 10,000` in the seat). */
+function ActText({ text }: { text: string }) {
+  if (!text) return <span aria-hidden="true"> </span>;
+  const wide = seatAct(text, SEAT_CHARS.wide);
+  const tall = seatAct(text, SEAT_CHARS.tall);
+  if (wide === tall) return <span aria-hidden="true">{wide}</span>;
+  return (
+    <span aria-hidden="true">
+      <span className="wide">{wide}</span>
+      <span className="tall">{tall}</span>
     </span>
   );
 }
@@ -214,5 +242,6 @@ export function seatSentence(s: SeatModel): string {
   if (s.net !== null) parts.push(`net ${s.net < 0 ? "-" : "+"}${fmt(Math.abs(s.net))}`);
   if (s.turn) parts.push(s.isHero ? "your turn" : "to act");
   if (s.win) parts.push("winner");
+  if (s.away) parts.push("away");
   return parts.join(", ");
 }

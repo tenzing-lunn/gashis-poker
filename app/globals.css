@@ -330,6 +330,13 @@ input.u {
   padding: 0;
   min-width: 0;
   width: 100%;
+  /* the underline hangs into the next line's top half-leading, so the line stays 27px (a textarea n × 27px) */
+  margin-bottom: -1px;
+}
+
+/* a select ignores line-height: same line box and hanging underline as an input */
+.field select {
+  height: calc(var(--lh) * 1em + 1px);
 }
 
 /* range textareas grow with their content instead of scrolling inside two lines */
@@ -660,8 +667,10 @@ input.u:focus-visible {
   gap: 3px;
 }
 
-/* The webfont has no suit glyphs: name monospace faces that do, ahead of next/font's wide fallback. */
-.table-fig .cd i {
+/* The webfont has no suit glyphs (nor the away ring ○): name monospace faces that do, ahead of next/font's wide
+   fallback. */
+.table-fig .cd i,
+.table-fig .seat .who .away {
   font-family: ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;
 }
 
@@ -687,7 +696,8 @@ input.u:focus-visible {
   min-height: 37px;
 }
 
-/* `S3 MICRO-2 CO`: label, name, position. The name gives way (ellipsis) so the line never leaves the seat. */
+/* `S3 MICRO-2 CO`: label, name, position. The name gives way (ellipsis) so the line never leaves the seat; a
+   `-2` suffix stays whole (`STAT…-2`). A disconnected player gets `○` after the name. */
 .table-fig .seat .who {
   display: flex;
   max-width: 100%;
@@ -703,11 +713,19 @@ input.u:focus-visible {
 }
 
 .table-fig .seat .who .name {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.table-fig .seat .who .name .base {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.table-fig .seat .who .name .sfx,
+.table-fig .seat .who .away,
 .table-fig .seat .who .pos {
   flex: none;
 }
@@ -727,8 +745,9 @@ input.u:focus-visible {
   white-space: pre;
 }
 
-/* the meta line is fitted per seat width (seatMeta): 14ch here, 12ch on the tall figure */
-.table-fig .seat .meta .tall {
+/* the meta and act lines are fitted per seat width (seatMeta, seatAct): 14ch here, 12ch on the tall figure */
+.table-fig .seat .meta .tall,
+.table-fig .seat .act .tall {
   display: none;
 }
 
@@ -900,6 +919,22 @@ button.t.lc {
 }
 
 /* §5 Play controls; the status line above them (status-block.tsx) */
+/* the narrow forms (`YOU WIN 3,516 · TWO PAIR`, `TO CALL 300 → NEED 38%`) are for mobile */
+.l.status .short,
+.controls-dock .short {
+  display: none;
+}
+
+/* an action that wraps under the status words still sits at the right */
+.l.status .side {
+  margin-left: auto;
+}
+
+/* the keys legend breaks between keys, never inside one */
+.legend.keys .key {
+  white-space: nowrap;
+}
+
 .l.status .cols,
 .controls-dock .cols,
 .controls-dock .presets {
@@ -992,17 +1027,13 @@ button.t.lc {
     min-height: 28px;
   }
 
-  /* the docked controls keep to the measure: no reserved slot, no EQUITY (4 TO 1) tail */
   .table-fig .seat .meta .wide,
-  .controls-dock .long {
+  .table-fig .seat .act .wide {
     display: none;
   }
 
-  .controls-dock .raise .slot {
-    width: auto;
-  }
-
-  .table-fig .seat .meta .tall {
+  .table-fig .seat .meta .tall,
+  .table-fig .seat .act .tall {
     display: inline;
   }
 
@@ -1049,6 +1080,10 @@ button.t.lc {
     display: inline;
   }
 
+  .table-fig .seat:not(.open) .who .name {
+    display: none;
+  }
+
   .table-fig .seat.open .short {
     display: none;
   }
@@ -1075,7 +1110,6 @@ button.t.lc {
   }
 
   /* 24px minimum targets (WCAG 2.5.8) without growing the line */
-  .controls-dock button.t,
   .table-head button.t,
   .table-fig button.t {
     min-height: 24px;
@@ -1095,13 +1129,77 @@ button.t.lc {
     inset: -6px -0.5ch;
   }
 
+  /* The dock: 13px text on 27px lines, one row each: status (a result and NEXT HAND may take two), price,
+     FOLD CALL, RAISE TO + field + range, presets. Boxes and toggles are 25px tall with 1px clear above and below,
+     so rows never touch and every target is at least 24px. Sticky at the bottom; revealTable scrolls to where it
+     sits in the flow, so on the hero's turn it is under the hero's seat, not over it. */
   .controls-dock {
+    --lh: calc(27 / 13);
     font-size: 13px;
+    line-height: var(--lh);
     position: sticky;
     bottom: 0;
     z-index: 2;
     background: var(--paper);
     box-shadow: 0 -1px 0 var(--faint);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .controls-dock .apply {
+    line-height: 23px;
+    margin-block: 1px;
+  }
+
+  .controls-dock button.t {
+    line-height: 25px;
+    margin-block: 1px;
+  }
+
+  /* the raise field's underline stays inside its row, clear of the presets under it */
+  .controls-dock .raise input.u {
+    line-height: 25px;
+    margin-block: 1px 0;
+  }
+
+  .controls-dock .controls > .cols,
+  .controls-dock .raise {
+    flex: 1 1 100%;
+  }
+
+  .controls-dock .raise .slot {
+    width: auto;
+  }
+
+  /* status and price: one line each (the status action may wrap to a second); the narrow forms fit 375px */
+  .l.status .full,
+  .controls-dock .full {
+    display: none;
+  }
+
+  .l.status .short,
+  .controls-dock .short {
+    display: inline;
+  }
+
+  .l.status .cols {
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .controls-dock .price {
+    flex-wrap: nowrap;
+  }
+
+  .l.status .words,
+  .controls-dock .price > :first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .controls-dock .price > :last-child {
+    flex: none;
   }
 }
 

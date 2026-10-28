@@ -1,6 +1,17 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type Ref } from "react";
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { Legend, Line, Tag, TextButton } from "@/components/doc";
 import { cx } from "@/components/doc/cx";
 import type { Action } from "@/lib/engine/engine";
@@ -37,6 +48,12 @@ type PlayControlsProps = {
   onAct: (action: Action) => void;
   /** A line drawn first in the dock, above the price line: the `StatusBlock`. */
   status?: ReactNode;
+  /**
+   * Changes with every decision (solo: hand number and action count), so the raise draft resets and the default
+   * takes focus even when two decisions in a row have the same price. Without it the price, the pot, the hero's
+   * bet and stack tell decisions apart.
+   */
+  decisionKey?: string | number;
 };
 
 const PRESETS = [
@@ -83,13 +100,18 @@ export function contestedPot(committed: readonly number[], hero: number, callAmo
  * faced, so the equity needed is call / (pot + call), module 3's B / (P + 2B); `ratio` is the pot odds
  * (P + B) : B as `4 TO 1`. Null when there is nothing to call.
  */
-export function priceLine(callAmount: number, pot: number): { short: string; text: string; need: number; ratio: string } | null {
+export function priceLine(
+  callAmount: number,
+  pot: number,
+): { short: string; text: string; need: number; ratio: string; brief: string } | null {
   if (callAmount <= 0) return null;
   const need = (100 * callAmount) / (pot + callAmount);
   const x = pot / callAmount;
   const ratio = `${Number.isInteger(x) ? x : x.toFixed(1)} TO 1`;
   const short = `TO CALL ${fmt(callAmount)} INTO ${fmt(pot)} → NEED ${need.toFixed(1)}%`;
-  return { short, text: `${short} EQUITY`, need, ratio };
+  // Mobile: one line with STACK at 375px. The pot is on the table just above; whole percents from 10% up.
+  const brief = `TO CALL ${fmt(callAmount)} → NEED ${need < 10 ? need.toFixed(1) : Math.round(need)}%`;
+  return { short, text: `${short} EQUITY`, need, ratio, brief };
 }
 
 /**
@@ -104,14 +126,17 @@ type Draft = { decision: string; value: string; tried: boolean; select: number; 
  * field (in it, digits type). Buttons that do not apply are `aria-disabled` (not `disabled`) so focus stays
  * put after an action. The filled default is CHECK when free, else CALL; it moves to RAISE once a size is chosen.
  */
-export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, status }: PlayControlsProps) {
+export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, status, decisionKey }: PlayControlsProps) {
   const ids = useId();
   const dockRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const defaultRef = useRef<HTMLButtonElement>(null);
+  const raiseRef = useRef<HTMLButtonElement>(null);
   // The raise draft resets to the min raise whenever a new decision comes up.
-  const decision = legal ? `${legal.toCall}:${legal.minRaiseTo}:${legal.maxRaiseTo}:${pot}` : "none";
+  const decision = legal
+    ? `${decisionKey ?? ""}:${legal.toCall}:${legal.minRaiseTo}:${legal.maxRaiseTo}:${pot}:${heroBet}:${stack}`
+    : "none";
   const [stored, setStored] = useState<Draft>({ decision, value: "", tried: false, select: 0, armed: false, typed: false });
   const current = (d: Draft): Draft =>
     d.decision === decision
@@ -135,10 +160,15 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
   // An out-of-range number is flagged as soon as it is typed; an empty field once a raise is tried.
   const error = check?.error && (draft.tried || draft.value !== "") ? check.error : null;
 
-  /** Set the field to a preset and select it, so the next digit typed replaces it. */
-  const choosePreset = (frac: number) => {
+  /**
+   * Set the field to a preset. Clicked: the field is selected, so the next digit typed replaces it. By key (1–4):
+   * focus goes to the filled RAISE TO / BET instead, so another 1–4 switches the size and Enter raises.
+   */
+  const choosePreset = (frac: number, byKey = false) => {
     if (!legal?.canRaise) return;
-    update({ value: String(presetRaiseTo(legal, pot, heroBet, frac)), tried: false, select: draft.select + 1, armed: true, typed: false });
+    const value = String(presetRaiseTo(legal, pot, heroBet, frac));
+    update({ value, tried: false, select: byKey ? draft.select : draft.select + 1, armed: true, typed: false });
+    if (byKey) raiseRef.current?.focus();
   };
   const selectTick = draft.select;
   useEffect(() => {
@@ -158,14 +188,21 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
     raise();
   };
 
-  /** F / C / R / 1–4. Returns true when the key was used. */
+  /** Esc: the safe default is filled and focused again. */
+  const backOut = () => {
+    update({ armed: false });
+    (defaultRef.current ?? formRef.current)?.focus();
+  };
+
+  /** F / C / R / 1–4, and Esc after a size was chosen by key. Returns true when the key was used. */
   const keyAction = (k: string): boolean => {
     if (!legal) return false;
     if (k === "f" && legal.canFold) onAct({ type: "fold" });
     else if (k === "c" && legal.canCheck) onAct({ type: "check" });
     else if (k === "c" && legal.canCall) onAct({ type: "call" });
     else if (k === "r" && legal.canRaise) update({ select: draft.select + 1 });
-    else if (k >= "1" && k <= "4" && k.length === 1 && legal.canRaise) choosePreset(PRESETS[Number(k) - 1].frac);
+    else if (k >= "1" && k <= "4" && k.length === 1 && legal.canRaise) choosePreset(PRESETS[Number(k) - 1].frac, true);
+    else if (k === "escape" && draft.armed) backOut();
     else return false;
     return true;
   };
@@ -214,20 +251,22 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
   return (
     <div className="controls-dock" ref={dockRef}>
       {status}
-      <Line>
+      <Line className="price">
         <span>
           {!legal ? (
             `POT ${fmt(pot)}`
           ) : price ? (
             <>
-              {price.short}
-              <span className="long">
-                {" "}
-                EQUITY ({price.ratio})
+              <span className="full">
+                {price.short} EQUITY ({price.ratio})
               </span>
+              <span className="short">{price.brief}</span>
             </>
           ) : (
-            `NOTHING TO CALL · POT ${fmt(pot)}`
+            <>
+              <span className="full">NOTHING TO CALL · POT {fmt(pot)}</span>
+              <span className="short">NOTHING TO CALL</span>
+            </>
           )}
         </span>
         <span>STACK {fmt(stack)}</span>
@@ -257,7 +296,7 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
             </Act>
           )}
           <span className="raise">
-            <Act filled={filled === "raise"} on={canRaise} submit>
+            <Act filled={filled === "raise"} on={canRaise} submit btnRef={raiseRef}>
               {verb}
             </Act>
             <input
@@ -293,10 +332,8 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
               onKeyDown={(e) => {
                 if (e.metaKey || e.ctrlKey || e.altKey) return;
                 if (e.key === "Escape") {
-                  // Back out: the safe default is filled and focused again.
                   e.preventDefault();
-                  update({ armed: false });
-                  (defaultRef.current ?? formRef.current)?.focus();
+                  backOut();
                 } else if (/^[a-z]$/i.test(e.key)) {
                   // Letters never go in the field: F and C still fold / check-call from here.
                   e.preventDefault();
@@ -363,12 +400,22 @@ function Act({ children, on, filled, submit, btnRef, onClick }: ActProps) {
   );
 }
 
-/** Keyboard help under the controls; `extra` is appended (`N NEXT HAND` in solo). */
+const KEYS = ["KEYS: F FOLD", "C CHECK/CALL", "1-4 SIZE", "R TYPE", "ENTER OK", "ESC BACK"];
+
+/**
+ * Keyboard help under the controls; `extra` is appended (`N NEXT HAND` in solo). One line from 800px up; below
+ * that it breaks between keys, never inside one.
+ */
 export function KeysLegend({ extra }: { extra?: string } = {}) {
   return (
     <Legend className="pre keys">
       <span>
-        KEYS: F FOLD  C CHECK/CALL  1-4 SIZE  R TYPE AMOUNT  ENTER CONFIRM  ESC BACK{extra ? `  ${extra}` : ""}
+        {(extra ? [...KEYS, extra] : KEYS).map((k, i) => (
+          <Fragment key={k}>
+            {i > 0 ? "  " : ""}
+            <span className="key">{k}</span>
+          </Fragment>
+        ))}
       </span>
     </Legend>
   );

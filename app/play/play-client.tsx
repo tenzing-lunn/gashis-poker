@@ -19,6 +19,7 @@ import {
   fmt,
   modelFromHand,
   onScreen,
+  revealTable,
 } from "@/components/table";
 import { botNames } from "@/components/table/names";
 import { BOT_COPY, MIXED_COPY } from "@/components/table/bot-profiles";
@@ -195,13 +196,15 @@ export default function PlayClient() {
 
   const complete = !!session?.hand.complete;
   const handNo = session?.handNo ?? 0;
-  // A finished hand: NEXT HAND takes focus if the controls had it and it is on screen; N deals too.
+  // A finished hand: if the controls had focus, the band is brought into view (on mobile the result can add a
+  // line to the docked controls) and NEXT HAND takes focus if it is on screen; N deals too.
   useEffect(() => {
     if (!complete) return;
     const a = document.activeElement;
     const btn = nextRef.current;
-    if (btn && (!a || a === document.body || btn.closest(".controls-dock")?.contains(a)) && onScreen(btn)) {
-      btn.focus({ preventScroll: true });
+    if (btn && (!a || a === document.body || btn.closest(".controls-dock")?.contains(a))) {
+      revealTable(btn);
+      if (onScreen(btn)) btn.focus({ preventScroll: true });
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || e.key.toLowerCase() !== "n") return;
@@ -347,6 +350,7 @@ export default function PlayClient() {
           heroBet={hand ? hand.bets[HERO] : 0}
           stack={hand ? hand.stacks[HERO] : STACK}
           onAct={act}
+          decisionKey={hand ? `${handNo}:${hand.events.length}` : undefined}
           status={
             <StatusBlock
               model={model}
