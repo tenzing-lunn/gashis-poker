@@ -1,4 +1,5 @@
-// Answer checking: lenient parsing, absolute tolerance for numbers, equality for call/fold.
+// Answer checking: lenient parsing, absolute tolerance for numbers, equality for call/fold, and naming
+// the mistake when a wrong answer matches one of the question's known wrong formulas.
 
 import type { Answer, CheckResult, Question, Unit } from "./types";
 import { round } from "./util";
@@ -33,8 +34,21 @@ export function check(question: Question, input: string): CheckResult {
   const given = parseInput(input, question.unit);
   if (given === null) return { correct: false, expected, given: null };
   if (typeof question.answer === "string" || typeof given === "string") {
-    return { correct: given === question.answer, expected, given };
+    return withMistake({ correct: given === question.answer, expected, given }, question);
   }
   const error = given - question.answer;
-  return { correct: Math.abs(error) <= question.tolerance + EPS, expected, given, error };
+  const correct = Math.abs(error) <= question.tolerance + EPS;
+  return withMistake({ correct, expected, given, error }, question);
+}
+
+/** Adds the first matching known mistake to a wrong result. */
+function withMistake(result: CheckResult, question: Question): CheckResult {
+  if (result.correct || result.given === null) return result;
+  const given = result.given;
+  const hit = question.mistakes.find((m) =>
+    typeof m.value === "number" && typeof given === "number"
+      ? Math.abs(given - m.value) <= m.tolerance + EPS
+      : m.value === given,
+  );
+  return hit ? { ...result, mistake: hit.message } : result;
 }
