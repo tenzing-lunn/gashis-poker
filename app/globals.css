@@ -457,7 +457,9 @@ input.u:focus-visible {
   outline-offset: 2px;
 }
 
+/* the inverted box stays inside the measure, like every other .inv */
 .site-nav a[aria-current="page"] {
+  margin: 0;
   background: var(--ink);
   color: var(--paper);
 }
@@ -982,6 +984,8 @@ button.t.lc {
 }
 
 /* aria-disabled, not disabled: the control keeps focus after an action */
+.apply[aria-disabled="true"],
+button.t[aria-disabled="true"],
 .controls-dock .apply[aria-disabled="true"],
 .controls-dock button.t[aria-disabled="true"] {
   color: var(--muted);
