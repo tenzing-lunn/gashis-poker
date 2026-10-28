@@ -292,13 +292,16 @@ describe("hand log", () => {
     };
     play(t, 1);
     const texts = rows.map((r) => r.text);
-    expect(texts[0]).toMatch(/^HAND 000001 {2}BUTTON S\d$/);
-    expect(texts[1]).toMatch(/^S\d SB 50$/);
-    expect(texts[2]).toMatch(/^S\d BB 100$/);
+    // Players are named as on the table, not by seat number.
+    const WHO = "(ANA|BEN|TAG|STATION)";
+    expect(texts[0]).toMatch(new RegExp(`^HAND 000001 {2}BUTTON ${WHO}$`));
+    expect(texts[1]).toMatch(new RegExp(`^${WHO} SB 50$`));
+    expect(texts[2]).toMatch(new RegExp(`^${WHO} BB 100$`));
+    expect(texts.some((x) => /\bS\d\b/.test(x))).toBe(false);
     expect(texts.some((x) => / WINS [\d,]+$/.test(x))).toBe(true);
     // Every action of hand 1 appears exactly once.
     const h1 = t.conns.get("a")!.states.filter((s) => s.hand?.handNo === 1).at(-1)!.hand!;
-    expect(texts.filter((x) => /^S\d (FOLD|CHECK|CALL|BET|RAISE|ALL-IN)/.test(x))).toHaveLength(h1.actions.length);
+    expect(texts.filter((x) => new RegExp(`^${WHO} (FOLD|CHECK|CALL|BET|RAISE|ALL-IN)`).test(x))).toHaveLength(h1.actions.length);
     const flop = texts.findIndex((x) => x.startsWith("FLOP "));
     if (h1.board.length >= 3) expect(flop).toBeGreaterThan(2);
     expect(rows[0].t).toBe(0);
@@ -337,8 +340,11 @@ describe("waitingText", () => {
     t.join("a", "Ana");
     t.join("b", "Ben");
     t.send("a", { type: "sit", seat: 0 });
-    expect(waitingText(t.state, true)).toBe("HOST: PRESS START");
+    expect(waitingText(t.state, true)).toBe("WAITING FOR A SECOND PLAYER");
     expect(waitingText(t.state, false)).toBe("WAITING FOR THE HOST");
+    t.send("b", { type: "sit", seat: 1 });
+    expect(waitingText(t.state, true)).toBe("PRESS START ABOVE");
+    t.send("b", { type: "stand" });
     t.send("a", { type: "start" });
     expect(t.state.started).toBe(true);
     expect(t.state.hand).toBeNull();

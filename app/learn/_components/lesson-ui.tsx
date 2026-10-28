@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BoxButton, Line, Tag } from "@/components/doc";
+import { DRILL_LABELS, type DrillType } from "@/lib/drills/meta";
 import { parseCards, RANK_CHARS, rankOf, suitOf } from "@/lib/poker/cards";
 
 // Shared building blocks for lessons. Every lesson can use these without importing them
@@ -74,13 +75,26 @@ export function Example({ title = "Worked example", children }: { title?: string
   );
 }
 
-/** Points the reader at the matching drill. Drills live at /drill (built separately). */
-export function Practice({ drill, children }: { drill: string; children?: ReactNode }) {
+// The drill names the lessons use, mapped to drill ids so the link opens that drill.
+const PRACTICE_DRILLS: Record<string, DrillType> = {
+  "Count combos in a range after card removal": "comboCount",
+  "Pot odds → required equity": "potOdds",
+  "EV of a call (given equity, pot, bet)": "callEv",
+  "Count outs on a board": "countOuts",
+  "Outs → equity": "outsToEquity",
+  "Hand vs range equity estimate": "equityEstimate",
+  "Hand vs hand / hand vs range equity estimate": "equityEstimate",
+  "MDF and bluff-break-even % for a given bet size": "mdf",
+};
+
+/** Points the reader at the matching drill, by `type` or by the lesson's `drill` name; /drill when unknown. */
+export function Practice({ drill, type, children }: { drill: string; type?: DrillType; children?: ReactNode }) {
+  const id = type ?? PRACTICE_DRILLS[drill];
   return (
     <aside className="gap">
       <Line as="p">
-        <span className="uppercase">Practice: {drill}</span>
-        <BoxButton href="/drill">Go to drills →</BoxButton>
+        <span className="uppercase">Practice: {id ? DRILL_LABELS[id] : drill}</span>
+        <BoxButton href={id ? `/drill?type=${id}` : "/drill"}>{id ? "Drill it →" : "Go to drills →"}</BoxButton>
       </Line>
       {children && (
         <Line as="div">

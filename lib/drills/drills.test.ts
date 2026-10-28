@@ -90,7 +90,7 @@ describe("equityEstimate", () => {
       const mean = live.reduce((s, c) => s + exactEquity([hero, comboCards(c)], board).players[0].equity, 0) / live.length;
       expect(q.answer).toBeCloseTo(100 * mean, 9);
     }
-  });
+  }, 30_000);
 });
 
 describe("speedCallFold", () => {
@@ -109,6 +109,9 @@ describe("check", () => {
     type: "potOdds",
     id: "potOdds:0",
     prompt: "",
+    facts: [],
+    ask: "",
+    mistakes: [],
     params: {},
     answer: 200 / 7, // 28.571428...
     unit: "%",

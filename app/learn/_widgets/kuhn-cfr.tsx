@@ -15,6 +15,7 @@ import {
   gameValue,
   runIterations,
   type CfrState,
+  type CfrVariant,
 } from "./kuhn-cfr-math";
 
 const MAX_ITERATIONS = 100_000;
@@ -54,11 +55,12 @@ const pct = (v: number) => `${(100 * v).toFixed(1)}%`;
 const NUM = "pr-[2ch] text-right whitespace-nowrap";
 
 // Charts: x is log10(iterations) from 0 (1 iteration) to 5 (100,000).
-const CW = 300, CH = 150, CL = 44, CR = 16, CT = 10, CB = 28;
+const CW = 300, CH = 150, CL = 52, CR = 16, CT = 10, CB = 28;
 const cx = (t: number) => CL + (Math.log10(Math.max(t, 1)) / 5) * (CW - CL - CR);
 
 function Chart({
   points,
+  compare,
   y,
   yTicks,
   yLabel,
@@ -66,6 +68,8 @@ function Chart({
   target,
 }: {
   points: Point[];
+  /** The other algorithm's last run, drawn dashed. */
+  compare?: Point[];
   y: (p: Point) => number;
   yTicks: { v: number; label: string }[];
   yLabel: (v: number) => number;
@@ -74,7 +78,7 @@ function Chart({
 }) {
   const lo = Math.min(...yTicks.map((k) => k.v)), hi = Math.max(...yTicks.map((k) => k.v));
   const cy = (v: number) => CT + (1 - (Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * (CH - CT - CB);
-  const d = points.map((p, i) => `${i ? "L" : "M"}${cx(p.t).toFixed(1)},${cy(yLabel(y(p))).toFixed(1)}`).join(" ");
+  const path = (pts: Point[]) => pts.map((p, i) => `${i ? "L" : "M"}${cx(p.t).toFixed(1)},${cy(yLabel(y(p))).toFixed(1)}`).join(" ");
   return (
     <figure className="min-w-0 flex-1">
       <figcaption className="text-[10px] uppercase text-muted">{title}</figcaption>
@@ -98,7 +102,8 @@ function Chart({
         {target !== undefined && (
           <line x1={CL} x2={CW - CR} y1={cy(target)} y2={cy(target)} strokeDasharray="4 3" className="stroke-muted" />
         )}
-        <path d={d} fill="none" strokeWidth={2} className="stroke-ink" />
+        {compare && <path d={path(compare)} fill="none" strokeWidth={1.5} strokeDasharray="6 3" className="stroke-muted" />}
+        <path d={path(points)} fill="none" strokeWidth={2} className="stroke-ink" />
       </svg>
     </figure>
   );
@@ -113,7 +118,9 @@ interface Run {
   checkpoint: number;
 }
 
-const newRun = (): Run => ({ state: createCfrState(), history: [], checkpoint: 1 });
+const newRun = (variant: CfrVariant): Run => ({ state: createCfrState(variant), history: [], checkpoint: 1 });
+
+const VARIANT_LABEL: Record<CfrVariant, string> = { cfr: "CFR", "cfr+": "CFR+" };
 
 /** Runs up to n more iterations (stopping early after budgetMs), adding a chart point at each checkpoint. */
 function advance(run: Run, n: number, budgetMs: number): void {
@@ -135,8 +142,11 @@ export function KuhnCfr() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [running, setRunning] = useState(false);
   const [snap, setSnap] = useState<Snapshot>(() => snapshot(createCfrState(), []));
+  const [variant, setVariant] = useState<CfrVariant>("cfr");
+  // Each algorithm's last run, kept when you switch away from it, so the other one can be compared.
+  const [lastRuns, setLastRuns] = useState<Partial<Record<CfrVariant, Point[]>>>({});
 
-  const getRun = () => (runRef.current ??= newRun());
+  const getRun = () => (runRef.current ??= newRun(variant));
 
   const stop = () => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
@@ -173,9 +183,22 @@ export function KuhnCfr() {
 
   const reset = () => {
     stop();
-    runRef.current = newRun();
+    runRef.current = newRun(variant);
     setSnap(snapshot(runRef.current.state, []));
   };
+
+  const switchTo = (v: CfrVariant) => {
+    if (v === variant) return;
+    stop();
+    const history = runRef.current?.history ?? [];
+    if (history.length) setLastRuns((r) => ({ ...r, [variant]: history }));
+    setVariant(v);
+    runRef.current = newRun(v);
+    setSnap(snapshot(runRef.current.state, []));
+  };
+
+  const other: CfrVariant = variant === "cfr" ? "cfr+" : "cfr";
+  const compare = lastRuns[other];
 
   useEffect(
     () => () => {
@@ -190,7 +213,7 @@ export function KuhnCfr() {
   return (
     <WidgetFrame
       title="Kuhn poker solved by CFR"
-      footer="Plain CFR: each iteration plays the current regret-matching strategy through all 6 deals and updates the regrets. The average strategy is what converges. Game value and exploitability are computed exactly for the average strategy. Exploitability is the average of what a best response gains against each player (found by trying every pure strategy: each player has 6 decisions with 2 choices each, so 2 × 2 × 2 × 2 × 2 × 2 = 64 ways to always pick one action at each decision)."
+      footer="Plain CFR: each iteration plays the current regret-matching strategy through all 6 deals and updates the regrets. CFR+ changes three things: the players update in turn, any negative total regret is reset to 0 (so an action that was bad early can come back quickly), and later iterations count more in the average. In both, the average strategy is what converges. Game value and exploitability are computed exactly for the average strategy. Exploitability is the average of what a best response gains against each player (found by trying every pure strategy: each player has 6 decisions with 2 choices each, so 2 × 2 × 2 × 2 × 2 × 2 = 64 ways to always pick one action at each decision)."
     >
       <Line className="justify-start!">
         {running ? (
@@ -199,7 +222,7 @@ export function KuhnCfr() {
           </BoxButton>
         ) : (
           <BoxButton filled onClick={start} disabled={snap.iterations >= MAX_ITERATIONS}>
-            {snap.iterations === 0 ? "Run CFR" : "Continue"}
+            {snap.iterations === 0 ? `Run ${VARIANT_LABEL[variant]}` : "Continue"}
           </BoxButton>
         )}
         <span>
@@ -210,6 +233,16 @@ export function KuhnCfr() {
             [+100]
           </TextButton>
           <TextButton onClick={reset}>[Reset]</TextButton>
+        </span>
+      </Line>
+      <Line>
+        <span className="uppercase">Advanced: algorithm</span>
+        <span>
+          {(["cfr", "cfr+"] as const).map((v) => (
+            <TextButton key={v} pressed={variant === v} onClick={() => switchTo(v)}>
+              [{VARIANT_LABEL[v]}]
+            </TextButton>
+          ))}
         </span>
       </Line>
 
@@ -231,6 +264,7 @@ export function KuhnCfr() {
         <Chart
           title="Game value of the average strategy"
           points={snap.history}
+          compare={compare}
           y={(p) => p.value}
           yLabel={(v) => v}
           target={KUHN_VALUE}
@@ -247,17 +281,27 @@ export function KuhnCfr() {
         <Chart
           title="Exploitability (log scale: each gridline down is 10× smaller)"
           points={snap.history}
+          compare={compare}
           y={(p) => p.expl}
-          yLabel={(v) => Math.log10(Math.max(v, 1e-4))}
+          yLabel={(v) => Math.log10(Math.max(v, 1e-6))}
           yTicks={[
             { v: 0, label: "1" },
             { v: -1, label: "0.1" },
             { v: -2, label: "0.01" },
             { v: -3, label: "0.001" },
             { v: -4, label: "0.0001" },
+            { v: -5, label: "0.00001" },
+            { v: -6, label: "0.000001" },
           ]}
         />
       </div>
+      {compare && (
+        <Legend>
+          <span>
+            Solid: this {VARIANT_LABEL[variant]} run. Dashed: your last {VARIANT_LABEL[other]} run, {compare[compare.length - 1].t.toLocaleString("en-US")} iterations.
+          </span>
+        </Legend>
+      )}
 
       <Scroll>
         <table className="w-full border-collapse tabular-nums">
@@ -320,7 +364,7 @@ export function KuhnCfr() {
           &ldquo;Average&rdquo; and &ldquo;Current&rdquo; give the probability of the action named (bet or call); the rest of the time the player
           checks or folds. The equilibrium column plugs the solver&apos;s own J-betting frequency in as β. Regrets are divided by the number of
           iterations. The positive ones shrink toward 0 as CFR learns; an action the equilibrium never takes keeps a negative average
-          regret, because it really was worse.
+          regret, because it really was worse. CFR+ resets negative totals to 0, so there they stay at 0 instead.
         </span>
       </Legend>
     </WidgetFrame>

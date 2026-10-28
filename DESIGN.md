@@ -426,12 +426,12 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
 
 | Route | Bands |
 |---|---|
-| `/` | paper: title line, short description, nav as numbered `.l` rows (`LEARN →`, `DRILL →`, `PLAY →`, `LAB →`, `REVIEW →`) · screen: a self-playing bot table (attract mode) |
+| `/` | paper: title line, short description, a filled `START LEARNING →` next to a boxed `PLAY →`, then rooms as numbered `.l` rows (`LEARN →`, `DRILL →`, `PLAY WITH FRIENDS →`, `REVIEW (SOON)` muted until it ships) · screen: a self-playing bot table (attract mode) |
 | `/play` | paper: setup form (seats, blinds, bots) · screen: table + controls + action strip |
 | `/play/[tableId]` (multiplayer) | screen: table · paper: seat list, invite line, hand log |
-| `/drill`, `/lab`, `/learn` | paper document with any interactive figure in a screen band |
+| `/drill`, `/learn`, `/learn/tools` | paper document with any interactive figure in a screen band |
 
-Navigation is a single header `.l`: `GASHI'S POKER                    LEARN  DRILL  PLAY  LAB  REVIEW`, current page inverted.
+Navigation is a single header `.l`: `GASHI'S POKER                    LEARN  DRILL  PLAY  REVIEW`, current page inverted. A room that isn't built yet is muted text, never a link (`REVIEW (SOON)`). The old Lab's solvers live in the lessons that teach them; `/lab` redirects to `/learn/tools`.
 
 ---
 

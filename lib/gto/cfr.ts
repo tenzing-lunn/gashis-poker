@@ -70,7 +70,7 @@ export function createCfrSolver(game: Game, options: { variant?: CfrVariant } = 
     if (owner[s] !== p) {
       // No pruning on the opponent's zero-probability actions: the average strategy is weighted by the
       // player's OWN reach, so p's info sets below them still need their strategy sums. Skipping them
-      // freezes the average at info sets the opponent has stopped reaching (seen in the AKQ game at
+      // freezes the average at info sets the opponent has stopped reaching (seen in an earlier, six-deal AKQ game at
       // P = B, where X's call-with-A froze at 50% and stayed exploitable).
       for (let i = 0; i < n; i++) {
         const q = current[off + i];

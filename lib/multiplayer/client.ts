@@ -66,6 +66,8 @@ export interface TableClient {
 export interface ConnectOptions {
   name: string;
   token?: string | null;
+  /** Take the lowest free seat on joining as a new player (a returning player keeps what they had). */
+  sit?: boolean;
   /** Default 5000. */
   pingIntervalMs?: number;
   /** For tests or non-browser runtimes. */
@@ -89,7 +91,24 @@ export class CreateTableError extends Error {
   }
 }
 
-/** Asks the server for a new table and returns its id. Throws a CreateTableError. */
+/**
+ * Whether a table exists, without opening a socket: a plain GET of its socket URL answers 403 for a
+ * refused origin and 404 for no such table (both readable cross-origin; see table-server), and anything
+ * else (426, expected a WebSocket upgrade) means it is there.
+ */
+export async function probeTable(
+  baseUrl: string,
+  tableId: string,
+): Promise<"open" | "origin_refused" | "no_such_table" | "unreachable"> {
+  try {
+    const res = await fetch(new URL(`/tables/${encodeURIComponent(tableId)}/ws`, baseUrl), { cache: "no-store" });
+    return res.status === 403 ? "origin_refused" : res.status === 404 ? "no_such_table" : "open";
+  } catch {
+    return "unreachable";
+  }
+}
+
+/** Asks the server for a new table and returns its code. Throws a CreateTableError. */
 export async function createTable(baseUrl: string, seats = 6): Promise<string> {
   let res: Response;
   try {
@@ -106,7 +125,6 @@ export async function createTable(baseUrl: string, seats = 6): Promise<string> {
 export function connectTable(baseUrl: string, tableId: string, options: ConnectOptions): TableClient {
   const WS = options.WebSocketImpl ?? WebSocket;
   const url = tableSocketUrl(baseUrl, tableId);
-  const httpUrl = new URL(`/tables/${encodeURIComponent(tableId)}/ws`, baseUrl);
   const pingEvery = options.pingIntervalMs ?? 5000;
   const listeners = new Set<(e: TableClientEvent) => void>();
   const pending = new Map<number, number>();
@@ -157,15 +175,6 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
     stop();
     emit({ type: "rejected", code, message });
   };
-  /**
-   * A socket that never opened: offline, or refused. The same URL as a plain GET tells which: 403 is the
-   * origin check, 404 a table that does not exist (both readable cross-origin; see table-server).
-   */
-  const probe = (): Promise<"origin_refused" | "no_such_table" | null> =>
-    fetch(httpUrl, { cache: "no-store" }).then(
-      (res) => (res.status === 403 ? "origin_refused" : res.status === 404 ? "no_such_table" : null),
-      () => null,
-    );
   const ping = (): boolean => {
     const id = ++pingId;
     if (!raw({ type: "ping", id })) return false;
@@ -226,7 +235,9 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
       failedOpens = 0;
       joining = true;
       setStatus("open");
-      socket.send(JSON.stringify(token ? { type: "join", name: options.name, token } : { type: "join", name: options.name }));
+      const join: Extract<ClientMessage, { type: "join" }> = token ? { type: "join", name: options.name, token } : { type: "join", name: options.name };
+      if (options.sit) join.sit = true;
+      socket.send(JSON.stringify(join));
       pingTimer = setInterval(ping, pingEvery);
     };
     socket.onmessage = (ev) => onMessage(ev.data);
@@ -247,7 +258,8 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
       };
       if (opened) return retry();
       failedOpens += 1;
-      void probe().then((refusal) => {
+      // A socket that never opened: offline, or refused. The probe tells which.
+      void probeTable(baseUrl, tableId).then((refusal) => {
         if (closedByUser) return;
         if (refusal === "origin_refused") reject(refusal, "The table server does not accept connections from this site");
         else if (refusal === "no_such_table") reject(refusal, "There is no table at this link");

@@ -7,30 +7,10 @@ import { genCallEv, genMdf, genOutsToEquity, genPotOdds, genSpeedCallFold } from
 import { genCountOuts } from "./outs";
 import type { Difficulty, DrillType, Question } from "./types";
 
-export type { Answer, CheckResult, Difficulty, DrillType, Question, Unit } from "./types";
+export type { Answer, CheckResult, Difficulty, DrillType, Fact, Mistake, Question, Unit } from "./types";
 export { check, formatAnswer, parseInput } from "./check";
-
-export const DRILL_TYPES: readonly DrillType[] = [
-  "countOuts",
-  "outsToEquity",
-  "potOdds",
-  "mdf",
-  "comboCount",
-  "callEv",
-  "equityEstimate",
-  "speedCallFold",
-];
-
-export const DRILL_LABELS: Record<DrillType, string> = {
-  countOuts: "Count outs",
-  outsToEquity: "Outs → equity",
-  potOdds: "Pot odds",
-  mdf: "MDF & bluff break-even",
-  comboCount: "Combos after card removal",
-  callEv: "EV of a call",
-  equityEstimate: "Equity estimate",
-  speedCallFold: "Speed call / fold",
-};
+export { ROUND_MS, summarize, type RoundAnswer, type RoundSummary } from "./round";
+export { DIFFICULTY_LABELS, DRILL_INFO, DRILL_LABELS, DRILL_TYPES, START_HERE, parseDrillType } from "./meta";
 
 const GENERATORS: Record<DrillType, (rng: Rng, difficulty: Difficulty) => Omit<Question, "type" | "id">> = {
   countOuts: genCountOuts,

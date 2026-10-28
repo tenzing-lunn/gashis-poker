@@ -1,6 +1,8 @@
 // Where the table server is, and what the browser remembers between visits (all best-effort:
 // storage can be blocked, so every access is wrapped).
 
+import { isTableCode, normalizeTableCode } from "@/lib/multiplayer/code";
+
 /** Base URL of the table server (table-server/). Set NEXT_PUBLIC_TABLE_SERVER_URL for a deploy. */
 export const TABLE_SERVER_URL = process.env.NEXT_PUBLIC_TABLE_SERVER_URL || "http://localhost:8787";
 
@@ -30,13 +32,45 @@ export const saveNickname = (name: string): void => set(NICKNAME_KEY, name);
 export const loadToken = (tableId: string): string | null => get(tokenKey(tableId));
 export const saveToken = (tableId: string, token: string): void => set(tokenKey(tableId), token);
 
-/** A table id (64 hex characters) from a pasted link or a bare id; null when there is none. */
+/**
+ * The table code (uppercase) from what someone typed or pasted: the code in any case (spaces or a hyphen
+ * inside are fine, `abc-def`), or a table link containing `/play/t/<code>`. Null when there is none.
+ */
 export function parseTableId(text: string): string | null {
-  const m = /(?:^|[^0-9a-f])([0-9a-f]{64})(?:$|[^0-9a-f])/i.exec(text.trim());
-  return m ? m[1].toLowerCase() : null;
+  const t = text.trim();
+  const link = /\/play\/t\/([a-z]+)(?:$|[/?#])/i.exec(t);
+  if (link) return normalizeTableCode(link[1]);
+  return /^[a-z\s-]+$/i.test(t) ? normalizeTableCode(t.replace(/[\s-]+/g, "")) : null;
 }
 
-export const isTableId = (s: string): boolean => /^[0-9a-f]{64}$/.test(s);
+/** A route's table code: strict, uppercase (lib/multiplayer/code.ts). */
+export const isTableId = isTableCode;
 
-/** `TABLE 7F3A`: the first four characters of the id, for titles. */
-export const shortTableId = (tableId: string): string => tableId.slice(0, 4).toUpperCase();
+const TABLES_KEY = "gp.tables";
+/** Most tables remembered in `gp.tables`. */
+export const RECENT_TABLES = 5;
+
+/** A table this browser joined, and when it last got a welcome there (epoch ms). */
+export interface RecentTable {
+  code: string;
+  at: number;
+}
+
+/** The tables this browser joined, most recent first (bad entries are skipped). */
+export function loadRecentTables(): RecentTable[] {
+  try {
+    const list: unknown = JSON.parse(get(TABLES_KEY) ?? "[]");
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((t): t is RecentTable => !!t && isTableCode(t.code) && Number.isFinite(t.at))
+      .slice(0, RECENT_TABLES);
+  } catch {
+    return [];
+  }
+}
+
+/** Moves `code` to the front of the recent tables, seen at `at`, keeping RECENT_TABLES. */
+export function saveRecentTable(code: string, at: number): void {
+  const rest = loadRecentTables().filter((t) => t.code !== code);
+  set(TABLES_KEY, JSON.stringify([{ code, at }, ...rest].slice(0, RECENT_TABLES)));
+}

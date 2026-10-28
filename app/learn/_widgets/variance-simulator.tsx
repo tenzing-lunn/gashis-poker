@@ -12,6 +12,7 @@ const WORK = 2_000_000; // normal draws per recompute (keeps it fast in the brow
 const num = (s: string) => Number(s.replace(/[,\s]/g, ""));
 const int = (x: number) => Math.round(x).toLocaleString("en-US");
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+const downswing = (bb: number) => `${int(bb)} bb · ${(bb / 100).toFixed(1)} buy-ins`;
 
 /** Win rate, SD, hands and bankroll → seeded simulated results, the 95% band and the share of losing runs. */
 export function VarianceSimulator() {
@@ -71,7 +72,7 @@ export function VarianceSimulator() {
   return (
     <WidgetFrame
       title="Variance simulator"
-      footer={`Normal approximation: each 100 hands is an independent normal draw with mean = win rate and SD = SD. ${int(runs)} runs, ${DRAWN} drawn. Seed ${seed}: the seed fixes the random sequence, so the same inputs always give the same runs; “New random runs” changes the seed to show a different set. The shaded band is the expected result ± 1.96 SD of the total. The risk-of-ruin formula assumes play never stops; the simulation stops at ${int(n)} hands, so on average its ruin share is lower (any one set of runs can land above it by chance).`}
+      footer={`Normal approximation: each 100 hands is an independent normal draw with mean = win rate and SD = SD. ${int(runs)} runs, ${DRAWN} drawn. Seed ${seed}: the seed fixes the random sequence, so the same inputs always give the same runs; “New random runs” changes the seed to show a different set. The shaded band is the expected result ± 1.96 SD of the total. A downswing is the largest fall from a high point to a later low within one run, over all ${int(runs)} runs, checked every 100 hands. The risk-of-ruin formula assumes play never stops; the simulation stops at ${int(n)} hands, so on average its ruin share is lower (any one set of runs can land above it by chance).`}
     >
       <Inputs {...{ winRate, setWinRate, sd, setSd, hands, setHands, bankroll, setBankroll }} />
       <Line>
@@ -112,6 +113,16 @@ export function VarianceSimulator() {
         <Stat label="Runs finishing below 0" value={`${pct(sim.belowZero)} (formula ${pct(predictedBelow)})`} />
         {br > 0 && <Stat label={`Runs that lost ${int(br)} bb at some point`} value={pct(sim.ruined)} />}
         {br > 0 && <Stat label="Risk of ruin, no time limit (formula)" value={pct(riskOfRuin(w, s, br))} />}
+      </dl>
+
+      <Line className="uppercase">
+        <span>Deepest downswing in each run</span>
+        <span className="text-muted">bb · 100bb buy-ins</span>
+      </Line>
+      <dl>
+        <Stat label="Typical run (median)" value={downswing(sim.drawdown.median)} />
+        <Stat label="1 run in 20 is worse than" value={downswing(sim.drawdown.p95)} />
+        <Stat label={`Worst of ${int(runs)} runs`} value={downswing(sim.drawdown.max)} />
       </dl>
     </WidgetFrame>
   );
