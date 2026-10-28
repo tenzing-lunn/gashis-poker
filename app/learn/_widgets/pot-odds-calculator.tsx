@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Field, Line, Tag } from "@/components/doc";
+import { Field, Line, Tag, TextButton } from "@/components/doc";
 import { Row, WidgetFrame } from "../_components/widget-frame";
-import { callEV, impliedOddsNeeded, potOddsRatio, requiredEquity } from "./pot-odds-math";
+import { callEV, impliedOddsNeeded, outsEquity, potOddsRatio, requiredEquity, unseenFor } from "./pot-odds-math";
 
 const W = 520, H = 220, PAD_L = 48, PAD_R = 12, PAD_T = 12, PAD_B = 36;
 
@@ -12,8 +12,16 @@ const num = (x: number, d = 2) => (Math.abs(x) < 0.005 ? "0" : x.toFixed(d).repl
 export function PotOddsCalculator() {
   const [pot, setPot] = useState(10);
   const [bet, setBet] = useState(5);
-  const [eqPct, setEqPct] = useState(19.5652); // 9 outs / 46 unseen ≈ 19.5652%, the lesson's example
+  // Equity comes from the outs (module 2) until you type one yourself; then the typed value drives.
+  const [outs, setOuts] = useState(9); // the lesson's example: 9 outs, one card to come, 46 unseen
+  const [toCome, setToCome] = useState<1 | 2>(1);
+  const [fromOuts, setFromOuts] = useState(true);
+  const [typedPct, setTypedPct] = useState(NaN);
+  const driveFromOuts = () => setFromOuts(true);
 
+  const unseen = unseenFor(toCome);
+  const outsValid = Number.isInteger(outs) && outs >= 0 && outs <= unseen;
+  const eqPct = fromOuts ? (outsValid ? 100 * outsEquity(outs, toCome) : NaN) : typedPct;
   const valid = pot >= 0 && bet > 0 && eqPct >= 0 && eqPct <= 100;
   const e = eqPct / 100;
   const req = requiredEquity(pot, bet);
@@ -30,10 +38,59 @@ export function PotOddsCalculator() {
     <WidgetFrame title="Pot odds and the EV of a call" footer="Assumes no more betting after your call: you either win the pot at showdown or lose your call.">
       <NumField label="Pot before the bet (bb)" value={pot} onChange={setPot} />
       <NumField label="Bet you face (bb)" value={bet} onChange={setBet} />
-      <NumField label="Your equity (%)" value={eqPct} onChange={setEqPct} step={0.1} />
+      <NumField
+        label="Your outs"
+        value={outs}
+        onChange={(v) => {
+          setOuts(v);
+          driveFromOuts();
+        }}
+      />
+      <div className="l field" role="group" aria-label="Cards to come">
+        <span>Cards to come</span>
+        <span>
+          {([1, 2] as const).map((n) => (
+            <TextButton
+              key={n}
+              pressed={toCome === n}
+              onClick={() => {
+                setToCome(n);
+                driveFromOuts();
+              }}
+            >
+              [{n === 1 ? "1: turn, 46 unseen" : "2: flop, 47 unseen"}]
+            </TextButton>
+          ))}
+        </span>
+      </div>
+      <NumField
+        label="Your equity (%)"
+        value={fromOuts && Number.isFinite(eqPct) ? Number(eqPct.toFixed(2)) : eqPct}
+        onChange={(v) => {
+          setTypedPct(v);
+          setFromOuts(false);
+        }}
+        step={0.1}
+      />
+      <Line>
+        {!fromOuts ? (
+          <span>
+            <span className="text-muted">Equity typed directly; the outs are ignored.</span> <TextButton onClick={driveFromOuts}>[use outs]</TextButton>
+          </span>
+        ) : outsValid ? (
+          <span className="text-muted">
+            Equity set by the outs:{" "}
+            {toCome === 1 ? `${num(outs)} / ${unseen}` : `1 − (${unseen} − ${num(outs)})/${unseen} × (${unseen - 1} − ${num(outs)})/${unseen - 1}`}. Type an equity to override it.
+          </span>
+        ) : null}
+      </Line>
       {!valid ? (
         <Line>
-          <Tag>Use a pot of 0 or more, a bet above 0 and an equity from 0 to 100%.</Tag>
+          <Tag>
+            {fromOuts && !outsValid
+              ? `Use a whole number of outs from 0 to ${unseen}.`
+              : "Use a pot of 0 or more, a bet above 0 and an equity from 0 to 100%."}
+          </Tag>
         </Line>
       ) : (
         <>
@@ -63,7 +120,7 @@ export function PotOddsCalculator() {
               {Math.abs(e - req) < 1e-9 ? "Break-even: calling and folding are worth the same." : e > req ? "Call: you have more equity than the call needs." : "Fold, unless you expect to win more later (implied odds)."}
             </Row>
             {implied !== null && (
-              <Row label="Implied odds needed">
+              <Row label="Implied odds needed (next section)">
                 <span className="text-muted">
                   {num(bet)} × {num(1 - e, 3)} / {num(e, 3)} − {num(pot + bet)}
                 </span>{" "}

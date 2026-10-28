@@ -1,4 +1,4 @@
-# lib/gto: game theory for the Lab
+# lib/gto: game theory for the lesson widgets and the river solver
 
 Pure TypeScript with no DOM and no dependencies beyond `lib/poker`, so it runs unchanged in a Web Worker. Everything is deterministic: the solvers use no randomness and the variance simulator takes a seed.
 
@@ -18,7 +18,7 @@ Pure TypeScript with no DOM and no dependencies beyond `lib/poker`, so it runs u
 ## Conventions
 
 - **Units.** Kuhn and AKQ payoffs are in chips; push/fold and variance are in big blinds.
-- **Players.** Players are 0 and 1, and tree payoffs are to player 0 (zero-sum). In Kuhn, player 0 acts first. In AKQ, player 0 is X (the checker) and player 1 is Y (the bettor).
+- **Players.** Players are 0 and 1, and tree payoffs are to player 0 (zero-sum). In Kuhn, player 0 acts first. In AKQ, player 0 is the bettor and player 1 the caller.
 - **Profiles.** A profile is one `Float64Array` with a probability per action for every info set, starting at `InfoSet.offset`. `profileToMap` / `profileFromMap` convert to and from `{ infoSetKey: number[] }`.
 - **Exploitability.** NashConv = the sum over both players of (best-response value − value under the profile). In a zero-sum game the values cancel, so NashConv = BR₀ + BR₁. **Exploitability = NashConv / 2**, which is OpenSpiel's convention. Both are computed exactly by best response on the tree, with no sampling. Best responses are chosen per info set, because the responder can't see the opponent's cards, and the deepest info sets are resolved first.
 - **Hand classes.** Class index *i* is the position in `HAND_CLASSES` from `lib/poker`: row-major over the standard 13x13 grid with ranks A..2 from the top-left, so 0 = AA, 1 = AKs, 13 = AKo, 14 = KK and 168 = 22. Pairs sit on the diagonal, suited hands above it and offsuit hands below it. `classGrid(freq)` reshapes a 169-vector into that grid.
@@ -29,7 +29,7 @@ Pure TypeScript with no DOM and no dependencies beyond `lib/poker`, so it runs u
 
 - `"cfr"`: vanilla CFR (Zinkevich et al. 2007) with simultaneous updates, regret matching and a uniform average.
 - `"cfr+"` (the default): CFR+ (Tammelin 2014) with alternating updates, regret-matching+ and an average weighted linearly by iteration. On Kuhn poker it reproduces OpenSpiel's `CFRPlusSolver` to the last digit: same value and exploitability after 2,000 iterations.
-- **No pruning on the opponent's zero-probability actions.** The average strategy is weighted by the player's own reach, so info sets the opponent has stopped reaching still need their strategy sums. An earlier version pruned those branches. In the AKQ game at P = B, X's calling frequency with an ace then froze at 50% and the result stayed exploitable.
+- **No pruning on the opponent's zero-probability actions.** The average strategy is weighted by the player's own reach, so info sets the opponent has stopped reaching still need their strategy sums. An earlier version pruned those branches. In an earlier, six-deal version of the AKQ game (both players dealt a random card) at P = B, the checker's calling frequency with an ace then froze at 50% and the result stayed exploitable.
 
 ## Kuhn poker
 
@@ -39,26 +39,24 @@ The rules are OpenSpiel's `kuhn_poker`: ante 1, J < Q < K, player 0 passes or be
 
 ## AKQ game
 
-Each player holds one card of A > K > Q. Each player is treated as having put P/2 into the pot, so the payoffs are zero-sum. Y's "pot share" (Chen & Ankenman's convention, with the pot treated as dead money) is P/2 + Y's value.
+The game module 5 teaches. The caller always holds the K; the bettor holds the A or the Q, each with probability ½. Only the bettor can bet: it checks (showdown for the pot P) or bets B. Facing a bet, the caller's K folds or calls. EVs count the pot as dead money, so the bettor's EV plus the caller's EV is P. The tree's payoffs are zero-sum, so each player is treated as owning P/2 of the pot: an EV is the zero-sum value plus P/2.
 
-`akqClosedForm(P, B)` derives the equilibrium. For **P > B** it is unique:
+`akqClosedForm(P, B)` gives the equilibrium, which is unique for all P, B > 0:
 
-| Quantity | Formula | B = 1 |
+| Quantity | Formula | P = B = 10 |
 |---|---|---|
-| Y bluffs Q | β = B / (P + B) | 1 / (P + 1) |
-| X calls with K | c = (P − B) / (P + B) | (P − 1) / (P + 1) |
-| X's total call vs the bluffer (A always, K at c) | (1 + c)/2 = P / (P + B) = MDF | P / (P + 1) |
-| Bluffs as a share of Y's bets | β / (1 + β) = B / (P + 2B) | 1 / (P + 2) |
-| Value to Y per deal | B (P − B) / (6 (P + B)) | (P − 1) / (6 (P + 1)) |
+| The bettor bets the A | always | 100% |
+| The bettor bluffs the Q | b = B / (P + B) | 50% |
+| The caller's K calls | c = P / (P + B) | 50% |
+| Bluffs as a share of bets | s = b / (1 + b) = B / (P + 2B) | ⅓ |
+| Bettor's EV | (P + cB) / 2 | 7.5 |
+| Caller's EV | P − bettor's EV | 2.5 |
 
-For **B ≥ P**, a bluff loses B to the ace and wins at most P from the king, so K never calls and the value is 0. At P = B any bluffing frequency in [0, 1/2] is an equilibrium, and Y's ace is indifferent between betting and checking.
+`akqBettorEv`, `akqBluffEv` and `akqCallEv` give the EVs for any b and c (the indifference lines in the lesson's widget). `akqSummary` reads the same numbers off any profile. The A's check/bet choice stays in the tree, so CFR+ has to learn that it always bets.
 
-**What this means for RESEARCH.md's row** ("bluff Q at 1/(P+1); call K at P/(P+1); pot-sized bet → both 50%"):
-- "Bluff Q at 1/(P+1)" holds exactly.
-- "Call K at P/(P+1)" needs rewording. P/(P+1) is X's **total** calling frequency against the bluff (the ace always calls, the king at (P−1)/(P+1)). The king's own frequency is (P−1)/(P+1).
-- "Pot-sized bet → both 50%" is half right. With a pot-sized bet, X's total call is 50% but the king **never** calls. Y's 50% bluff frequency is only the top of the equilibrium interval [0, 50%], because Y's bluff is break-even whenever K folds.
+This is the simple variant. In Chen & Ankenman's version (*The Mathematics of Poker*) both players get a random card, the caller's A also calls, and the K calls less: (P − B) / (P + B).
 
-CFR+ agrees with the closed form to better than 1e-3 in every frequency, and to 1e-4 in value, at (P, B) = (2,1), (1,0.5), (3,1), (10,1), (1.5,1) and (4,3) after 5,000 iterations.
+CFR+ agrees with the closed form to better than 1e-3 in every frequency, and to 1e-4 × P in EV, after 5,000 iterations at (P, B) = (2,1), (1,1), (1,2), (10,10), (10,6), (3,1), (1,0.5), (4,3) and (1,5).
 
 ## Heads-up push/fold
 
@@ -192,12 +190,12 @@ Node 22 on an 8-core Mac, 0.1% of the pot as the target:
 
 | Spot | Combos | Decision nodes | Iterations | Time |
 |---|---|---|---|---|
-| Lab preset "Dry king-high" (33/75%, 1 raise, all-in) | 108 × 97 | 16 | 170 | 30 ms |
-| Lab preset "Flush completes" (50/100%, 1 raise, all-in) | 191 × 182 | 16 | 200 | 67 ms |
-| Lab preset "Polarized vs bluff-catcher" | 6 × 19 | 3 | 40 | < 1 ms |
+| Preset "Dry king-high" (33/75%, 1 raise, all-in) | 108 × 97 | 16 | 170 | 30 ms |
+| Preset "Flush completes" (50/100%, 1 raise, all-in) | 191 × 182 | 16 | 200 | 67 ms |
+| Preset "Polarized vs bluff-catcher" | 6 × 19 | 3 | 40 | < 1 ms |
 | Every hand, 50/100%, 1 raise, all-in | 1,081 × 1,081 | 16 | 320 | 0.63 s |
 
-One iteration of the 1,081 × 1,081 spot with 33/75% bets, raises of 50% and 100%, two raises and all-in (36 decision nodes) costs about 4 ms, and an exact exploitability report about 13 ms; it reaches 0.01% of the pot in 1,298 iterations. In the Lab's browser worker the same run took 5.9 s.
+One iteration of the 1,081 × 1,081 spot with 33/75% bets, raises of 50% and 100%, two raises and all-in (36 decision nodes) costs about 4 ms, and an exact exploitability report about 13 ms; it reaches 0.01% of the pot in 1,298 iterations. In the browser worker behind /learn/tools the same run took 5.9 s.
 
 ## Running
 

@@ -1,4 +1,4 @@
-// Kuhn poker and a small vanilla CFR solver for it. Pure functions plus one mutable solver state.
+// Kuhn poker and a small CFR solver for it (vanilla CFR or CFR+). Pure functions plus one mutable solver state.
 //
 // The game: a deck of three cards J < Q < K. Each player antes 1 and gets one card; the third card
 // is unseen. Player 1 checks or bets 1. After a check, player 2 checks (showdown for the pot of 2)
@@ -90,9 +90,17 @@ export function exploitability(s: Strategy): number {
 export const KUHN_VALUE = -1 / 18;
 
 // ---------------------------------------------------------------------------
-// CFR (counterfactual regret minimization), vanilla, enumerating all 6 deals each iteration.
+// CFR (counterfactual regret minimization), enumerating all 6 deals each iteration.
+//
+// - "cfr":  vanilla CFR. Both players update at once, regret matching, plain average.
+// - "cfr+": CFR+ (Tammelin 2014). The players update in turn (player 2 already sees player 1's new
+//           strategy), cumulative regrets are clipped at 0 after each update (regret-matching+), and
+//           the average weights iteration t by t, so the early, poor iterations count for little.
+
+export type CfrVariant = "cfr" | "cfr+";
 
 export interface CfrState {
+  variant: CfrVariant;
   iterations: number;
   /** Cumulative regret for [pass, bet] at each information set. */
   regret: Float64Array;
@@ -100,8 +108,8 @@ export interface CfrState {
   strategySum: Float64Array;
 }
 
-export function createCfrState(): CfrState {
-  return { iterations: 0, regret: new Float64Array(24), strategySum: new Float64Array(24) };
+export function createCfrState(variant: CfrVariant = "cfr"): CfrState {
+  return { variant, iterations: 0, regret: new Float64Array(24), strategySum: new Float64Array(24) };
 }
 
 /** Regret matching: play each action in proportion to its positive cumulative regret (uniform if none). */
@@ -124,8 +132,20 @@ export function averageStrategy(state: CfrState): Strategy {
 /**
  * Returns the value of history h for player 1, and adds regrets. r1 and r2 are the probabilities
  * that player 1 and player 2 play to reach h (chance is the same for every deal, so it is left out).
+ * Only `updating`'s information sets are updated (null: both players'), and this iteration's strategy
+ * enters the average with `weight`.
  */
-function cfr(state: CfrState, cur: Float64Array, h: string, c1: number, c2: number, r1: number, r2: number): number {
+function cfr(
+  state: CfrState,
+  cur: Float64Array,
+  h: string,
+  c1: number,
+  c2: number,
+  r1: number,
+  r2: number,
+  updating: 1 | 2 | null = null,
+  weight = 1,
+): number {
   const t = terminalPayoff(h, c1, c2);
   if (t !== null) return t;
   const g = groupOf[h];
@@ -135,9 +155,10 @@ function cfr(state: CfrState, cur: Float64Array, h: string, c1: number, c2: numb
   const reachSelf = player === 1 ? r1 : r2;
   const reachOpp = player === 1 ? r2 : r1;
 
-  const vPass = player === 1 ? cfr(state, cur, h + "p", c1, c2, r1 * pPass, r2) : cfr(state, cur, h + "p", c1, c2, r1, r2 * pPass);
-  const vBet = player === 1 ? cfr(state, cur, h + "b", c1, c2, r1 * pBet, r2) : cfr(state, cur, h + "b", c1, c2, r1, r2 * pBet);
+  const vPass = player === 1 ? cfr(state, cur, h + "p", c1, c2, r1 * pPass, r2, updating, weight) : cfr(state, cur, h + "p", c1, c2, r1, r2 * pPass, updating, weight);
+  const vBet = player === 1 ? cfr(state, cur, h + "b", c1, c2, r1 * pBet, r2, updating, weight) : cfr(state, cur, h + "b", c1, c2, r1, r2 * pBet, updating, weight);
   const v = pPass * vPass + pBet * vBet;
+  if (updating !== null && updating !== player) return v;
 
   // Values above are for player 1; flip the sign for player 2.
   const sign = player === 1 ? 1 : -1;
@@ -145,24 +166,40 @@ function cfr(state: CfrState, cur: Float64Array, h: string, c1: number, c2: numb
   // weighted by how likely the opponent's play was to bring us here.
   state.regret[2 * i] += reachOpp * sign * (vPass - v);
   state.regret[2 * i + 1] += reachOpp * sign * (vBet - v);
-  state.strategySum[2 * i] += reachSelf * pPass;
-  state.strategySum[2 * i + 1] += reachSelf * pBet;
+  state.strategySum[2 * i] += weight * reachSelf * pPass;
+  state.strategySum[2 * i + 1] += weight * reachSelf * pBet;
   return v;
 }
 
+/** Fills `cur` with the regret-matching strategy at every information set. */
+function fillCurrent(state: CfrState, cur: Float64Array): void {
+  for (let i = 0; i < INFO_SET_COUNT; i++) {
+    const [a, b] = currentStrategyAt(state, i);
+    cur[2 * i] = a;
+    cur[2 * i + 1] = b;
+  }
+}
+
 /**
- * Runs n CFR iterations in place. Each iteration fixes the current (regret-matching) strategy,
+ * Runs n iterations in place. Each iteration fixes the current (regret-matching) strategy,
  * plays it through every deal, then the regrets it added decide the next iteration's strategy.
+ * CFR+ does that once per player, player 1 first, and clips that player's regrets at 0 afterwards.
  */
 export function runIterations(state: CfrState, n: number): void {
   const cur = new Float64Array(24);
   for (let k = 0; k < n; k++) {
-    for (let i = 0; i < INFO_SET_COUNT; i++) {
-      const [a, b] = currentStrategyAt(state, i);
-      cur[2 * i] = a;
-      cur[2 * i + 1] = b;
+    if (state.variant === "cfr") {
+      fillCurrent(state, cur);
+      for (const [c1, c2] of DEALS) cfr(state, cur, "", c1, c2, 1, 1);
+    } else {
+      const t = state.iterations + 1;
+      for (const player of [1, 2] as const) {
+        fillCurrent(state, cur);
+        for (const [c1, c2] of DEALS) cfr(state, cur, "", c1, c2, 1, 1, player, t);
+        // Player 1's information sets are 0..5, player 2's are 6..11.
+        for (let j = player === 1 ? 0 : 12; j < (player === 1 ? 12 : 24); j++) if (state.regret[j] < 0) state.regret[j] = 0;
+      }
     }
-    for (const [c1, c2] of DEALS) cfr(state, cur, "", c1, c2, 1, 1);
     state.iterations++;
   }
 }

@@ -6,7 +6,7 @@ import type { JobFor, ResponseFor, SolverJobKind, SolverResponse } from "@/lib/g
 let nextId = 1;
 
 /**
- * One solver worker per caller (each Lab panel has its own, so a long Kuhn run never delays a push/fold
+ * One solver worker per caller (each solver widget has its own, so a long Kuhn run never delays a push/fold
  * solve). The worker is created on the first run and terminated on unmount or stop().
  *
  * run() posts a job and routes that job's responses to `onMessage`; responses from any earlier job are

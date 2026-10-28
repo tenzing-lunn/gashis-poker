@@ -97,6 +97,8 @@ For w = 3 bb/100 and σ = 90: 1.96 × 90 / 3 = 58.8, and 58.8² = 3,457.44, so N
 
 Try 10,000 hands, then 100,000, then 1,000,000 with the same win rate. Watch the band around the green line widen while the line itself pulls away from zero faster.
 
+The downswing lines answer a different question: not where you end up, but how far you fall on the way. For each run the simulator finds the largest drop from a high point to a later low. Read the median as a normal bad stretch and "1 run in 20" as a bad one you should still expect to live through. A downswing of several buy-ins says little, by itself, about your win rate: every run here has exactly the win rate you typed in.
+
 ## Risk of ruin
 
 Your **bankroll** is the money you set aside for poker. A **buy-in** here is one 100bb stack. **Risk of ruin** (**RoR**) is the probability of eventually losing the entire bankroll if you keep playing the same stakes and never move down. Under the normal approximation:
@@ -155,7 +157,7 @@ N/100 = 400 and √400 = 20. The SD of the observed win rate is 100 / 20 = 5 bb/
 2 × 4 × 2,500 / 100² = 20,000 / 10,000 = 2, and exp(−2) ≈ 0.135, so ≈ 13.5%.
 </Check>
 
-<Practice drill="EV of a call (given equity, pot, bet)">All-in EV is this calculation, done after the hand.</Practice>
+<Practice type="callEv" drill="EV of a call (given equity, pot, bet)">All-in EV is this calculation, done after the hand.</Practice>
 
 ## Key points
 

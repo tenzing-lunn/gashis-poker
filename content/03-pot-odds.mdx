@@ -81,7 +81,7 @@ The pot is 10bb on the turn. Your opponent bets 5bb. You have a flush draw and b
 
 </Example>
 
-The calculator below starts on this spot. Change the bet and watch the break-even line move. The chart plots EV against equity. It is a straight line from −B at 0% equity to +(P + B) at 100%, and it crosses zero exactly at B / (P + 2B).
+The calculator below starts on this spot. Change the bet and watch the break-even line move. Change the outs, or switch to two cards to come, and the equity follows module 2's formulas; type an equity yourself to override them. The chart plots EV against equity. It is a straight line from −B at 0% equity to +(P + B) at 100%, and it crosses zero exactly at B / (P + 2B).
 
 <PotOddsCalculator />
 
@@ -124,21 +124,21 @@ The dirty-outs spot from module 2 shows the cost. Against a set, 2 of your 9 flu
 
 ## Check yourself
 
-<Check question="The pot is 60bb and your opponent bets 40bb. What equity do you need to call? One decimal." answer={28.6} tolerance={0.05} unit="%">
+<Check question="The pot is 60bb and your opponent bets 40bb. What equity do you need to call? One decimal." answer={28.6} tolerance={0.05} unit="%" hint="Did you divide by P + B? Your own call goes into the final pot too, so the pot you play for is P + 2B.">
   40 / (60 + 2 × 40) = 40 / 140 ≈ 0.2857, about 28.6%. As pot odds you call 40 to win 100, which is 2.5 to 1, and 1 / 3.5 ≈ 28.6%.
 </Check>
 
-<Check question="The pot is 20bb, the bet is 10bb, and your equity is 30%. What is the EV of calling, in bb?" answer={2} tolerance={0.01} unit="bb">
+<Check question="The pot is 20bb, the bet is 10bb, and your equity is 30%. What is the EV of calling, in bb?" answer={2} tolerance={0.01} unit="bb" hint="When you win you collect the pot and the bet, P + B; when you lose you lose your call, B.">
   EV = 0.30 × (20 + 10) − 0.70 × 10 = 9 − 7 = +2bb. The required equity is 10 / 40 = 25%, and you have more, so the call earns money.
 </Check>
 
-<Check question="The pot is 20bb and your opponent bets 10bb on the turn. You have 9 outs (e = 9/46). How many extra bb must you win on the river when you hit for the call to break even? One decimal." answer={11.1} tolerance={0.05} unit="bb">
+<Check question="The pot is 20bb and your opponent bets 10bb on the turn. You have 9 outs (e = 9/46). How many extra bb must you win on the river when you hit for the call to break even? One decimal." answer={11.1} tolerance={0.05} unit="bb" hint="Set the EV with the extra winnings X to 0: e × (P + B + X) = (1 − e) × B, then solve for X.">
   B = 10 and the pot after the bet is P + B = 30. X = 10 × (37/46) / (9/46) − 30 = 370/9 − 30 ≈ 41.11 − 30 ≈ 11.1bb.
 </Check>
 
-<Practice drill="Pot odds → required equity">Turn a pot and a bet into the equity you need, fast.</Practice>
+<Practice type="potOdds" drill="Pot odds → required equity">Turn a pot and a bet into the equity you need, fast.</Practice>
 
-<Practice drill="EV of a call (given equity, pot, bet)">Compute the EV of calling in bb.</Practice>
+<Practice type="callEv" drill="EV of a call (given equity, pot, bet)">Compute the EV of calling in bb.</Practice>
 
 ## Key points
 

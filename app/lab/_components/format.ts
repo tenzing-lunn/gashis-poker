@@ -1,4 +1,4 @@
-// Number formatting for the Lab. Fixed "en-US" so server and client render identical text (no hydration drift).
+// Number formatting for the lesson widgets and the /learn/tools river solver. Fixed "en-US" so server and client render identical text (no hydration drift).
 
 const cache = new Map<number, Intl.NumberFormat>();
 function nf(digits: number): Intl.NumberFormat {

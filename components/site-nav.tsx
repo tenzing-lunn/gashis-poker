@@ -7,8 +7,6 @@ const ROOMS = [
   { href: "/learn", label: "LEARN" },
   { href: "/drill", label: "DRILL" },
   { href: "/play", label: "PLAY" },
-  { href: "/lab", label: "LAB" },
-  { href: "/review", label: "REVIEW" },
 ] as const;
 
 function isCurrent(pathname: string | null, href: string): boolean {
@@ -31,6 +29,11 @@ export function NavLine({ pathname }: { pathname: string | null }) {
             {room.label}
           </Link>
         ))}
+        {/* Review is not built yet: shown as coming, with no link. */}
+        <span className="text-muted" aria-disabled="true">
+          REVIEW <span aria-hidden="true">(SOON)</span>
+          <span className="sr-only">, coming soon</span>
+        </span>
       </span>
     </nav>
   );

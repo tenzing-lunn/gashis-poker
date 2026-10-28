@@ -21,6 +21,8 @@ export interface VarianceResult {
   finals: Float64Array;
   belowZero: number; // share of runs that finish below 0
   ruined: number; // share of runs whose running total ever reaches -bankroll
+  /** Largest peak-to-trough fall (bb) of each run's running total, over all runs, checked every 100 hands. */
+  drawdown: { median: number; p95: number; max: number };
 }
 
 /** Standard normal draw (Box-Muller). */
@@ -39,14 +41,17 @@ export function simulate(input: VarianceInput, drawn = 20, points = 120): Varian
 
   const rng = createRng(input.seed);
   const finals = new Float64Array(input.runs);
+  const drops = new Float64Array(input.runs);
   const paths: number[][] = [];
   let below = 0, ruined = 0;
   for (let r = 0; r < input.runs; r++) {
     const keep = r < drawn;
     const path: number[] = keep ? [0] : [];
-    let total = 0, broke = false, next = 1;
+    let total = 0, peak = 0, drop = 0, broke = false, next = 1;
     for (let k = 1; k <= blocks; k++) {
       total += input.winRate + input.sd * normal(rng);
+      if (total > peak) peak = total;
+      else if (peak - total > drop) drop = peak - total;
       if (input.bankroll > 0 && total <= -input.bankroll) broke = true;
       if (keep && k === sampleAt[next]) {
         path.push(total);
@@ -54,11 +59,15 @@ export function simulate(input: VarianceInput, drawn = 20, points = 120): Varian
       }
     }
     finals[r] = total;
+    drops[r] = drop;
     if (total < 0) below++;
     if (broke) ruined++;
     if (keep) paths.push(path);
   }
-  return { blocks, paths, sampleAt, finals, belowZero: below / input.runs, ruined: ruined / input.runs };
+  drops.sort();
+  const at = (q: number) => drops[Math.min(input.runs - 1, Math.floor(q * input.runs))];
+  const drawdown = { median: at(0.5), p95: at(0.95), max: drops[input.runs - 1] };
+  return { blocks, paths, sampleAt, finals, belowZero: below / input.runs, ruined: ruined / input.runs, drawdown };
 }
 
 /** Standard normal cumulative distribution (Abramowitz-Stegun 7.1.26 erf, error below 1.5e-7). */

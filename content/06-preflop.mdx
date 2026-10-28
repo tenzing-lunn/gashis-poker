@@ -1,5 +1,6 @@
 import { OpeningRanges } from "@/app/learn/_widgets/opening-ranges";
 import { PushFoldEv } from "@/app/learn/_widgets/push-fold-ev";
+import { PushFoldNash } from "@/app/learn/_widgets/push-fold-nash";
 
 # Preflop
 
@@ -74,7 +75,9 @@ The calculator below runs this computation for any hand, stack and calling range
 
 <PushFoldEv />
 
-**What this leaves out.** Here the BB's calling range is fixed. A thinking opponent calls wider when you shove wide and tighter when you shove tight. The game-theory answer from module 5, where the SB's shoving range and the BB's calling range are each a best response to the other, is the **push/fold equilibrium**. It is solved in the [Lab](/lab), where both ranges are computed against each other.
+**What this leaves out.** Here the BB's calling range is fixed. A thinking opponent calls wider when you shove wide and tighter when you shove tight. The game-theory answer from module 5, where the SB's shoving range and the BB's calling range are each a best response to the other, is the **push/fold equilibrium**. The solver below computes it for any stack from 1 to 30bb: it adjusts both ranges against each other until neither player can gain by changing, then shows each range as a 13 × 13 grid. Watch both ranges tighten as the stack grows.
+
+<PushFoldNash />
 
 ## 6-max opening ranges by position
 
@@ -117,7 +120,7 @@ Use the viewer to see each range as a 13 × 13 grid. Click cells to add or remov
   When called: 0.40 × 20 − 9.5 = −1.5bb. EV = 0.6 × 1.5 + 0.4 × (−1.5) = 0.9 − 0.6 = +0.3bb, so shoving beats folding.
 </Check>
 
-<Practice drill="Count combos in a range after card removal">The fold probability f in the shove formula starts with counting the hands that call.</Practice>
+<Practice type="comboCount" drill="Count combos in a range after card removal">The fold probability f in the shove formula starts with counting the hands that call.</Practice>
 
 ## Key points
 
@@ -125,5 +128,5 @@ Use the viewer to see each range as a 13 × 13 grid. Click cells to add or remov
 - Heads-up push/fold, measured with folding = 0: EV(shove) = f × 1.5 + (1 − f)(e × 2S − (S − 0.5)).
 - f = 1 − (calling combos left) / 1,225, with card removal. Holding cards the caller needs (like an ace against a range full of A-x, an ace with any second card) raises f.
 - With a fixed calling range, EV is a straight line in S. K7o against `22+, A2+, K9+, QT+, JT` is about +0.45bb at 10bb and −0.31bb at 20bb, breaking even near 15.9bb.
-- The push/fold equilibrium, where both ranges respond to each other, is solved in the Lab.
+- The push/fold equilibrium, where each range is a best response to the other (module 5), is solved by the widget in this lesson for any stack from 1 to 30bb.
 - Opening ranges widen as fewer players are left to act and as position improves: UTG 17.3%, HJ 20.1%, CO 27.0%, BTN 42.1%, SB 39.4% in this course's starting ranges.
