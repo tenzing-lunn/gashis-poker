@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Blank, BoxButton, Choice, Line, Sheet, Tag } from "@/components/doc";
 import { fmt } from "@/components/table/model";
 import {
@@ -14,7 +14,7 @@ import {
 } from "@/components/multiplayer/storage";
 import { createTable, CreateTableError, probeTable } from "@/lib/multiplayer/client";
 import { sanitizeName } from "@/lib/multiplayer/protocol";
-import { DEFAULT_ROOM_CONFIG } from "@/lib/multiplayer/room";
+import { DEFAULT_ROOM_CONFIG } from "@/lib/multiplayer/config";
 
 const SEAT_CHOICES = [2, 3, 4, 5, 6, 7, 8] as const;
 const noSubscribe = () => () => {};
@@ -76,24 +76,44 @@ export default function FriendsClient() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /** The action that stopped to ask for a nickname: Enter in the nickname field carries on with it. */
+  const pending = useRef<"join" | "create" | null>(null);
+
+  // Next keeps this page alive (hidden) after navigating to the table; coming Back must not find JOIN
+  // or CREATE still waiting on a request that already succeeded.
+  useLayoutEffect(
+    () => () => {
+      setChecking(false);
+      setBusy(false);
+      pending.current = null;
+    },
+    [],
+  );
+
   /** The cleaned nickname, saved; or null with the error shown and the field focused. */
-  const takeName = (): string | null => {
+  const takeName = (action: "join" | "create"): string | null => {
     const name = sanitizeName(nickname);
     if (!name) {
       setNameError(nickname.trim() ? "NICKNAME MUST BE 1–16 CHARACTERS" : "TYPE A NICKNAME FIRST");
+      pending.current = action;
       nickRef.current?.focus();
       return null;
     }
+    pending.current = null;
     saveNickname(name);
     return name;
   };
 
-  const join = async (e: FormEvent) => {
-    e.preventDefault();
+  const join = async (e?: FormEvent) => {
+    e?.preventDefault();
     if (checking) return;
     const id = parseTableId(code);
-    if (!id) return setCodeError("A CODE IS 6 LETTERS, E.G. KXRTVM");
-    if (!takeName()) return;
+    if (!id) {
+      // Six characters that are not all code letters: say which letters a code uses.
+      const typed = code.replace(/[\s-]/g, "");
+      return setCodeError(/^[a-z0-9]{6}$/i.test(typed) ? "CODES USE LETTERS ONLY, NO I, L OR O" : "A CODE IS 6 LETTERS, E.G. KXRTVM");
+    }
+    if (!takeName("join")) return;
     setChecking(true);
     setCodeError(null);
     const found = await probeTable(TABLE_SERVER_URL, id);
@@ -108,9 +128,9 @@ export default function FriendsClient() {
     );
   };
 
-  const create = async (e: FormEvent) => {
-    e.preventDefault();
-    if (busy || !takeName()) return;
+  const create = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (busy || !takeName("create")) return;
     setBusy(true);
     setCreateError(null);
     try {
@@ -144,23 +164,33 @@ export default function FriendsClient() {
         </span>
       </Line>
       <Blank />
-      <label className="l field">
-        <span>NICKNAME</span>
-        <input
-          ref={nickRef}
-          value={nickname}
-          maxLength={16}
-          autoComplete="nickname"
-          placeholder="1–16 CHARACTERS"
-          aria-invalid={nameError ? true : undefined}
-          aria-describedby={nameError ? "nick-err" : undefined}
-          onChange={(e) => {
-            setTyped(e.target.value);
-            setNameError(null);
-          }}
-        />
-      </label>
-      <ErrorLine id="nick-err">{nameError}</ErrorLine>
+      <form
+        noValidate
+        aria-label="Nickname"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (pending.current === "join") void join();
+          else if (pending.current === "create") void create();
+        }}
+      >
+        <label className="l field">
+          <span>NICKNAME</span>
+          <input
+            ref={nickRef}
+            value={nickname}
+            maxLength={16}
+            autoComplete="nickname"
+            placeholder="1–16 CHARACTERS"
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? "nick-err" : undefined}
+            onChange={(e) => {
+              setTyped(e.target.value);
+              setNameError(null);
+            }}
+          />
+        </label>
+        <ErrorLine id="nick-err">{nameError}</ErrorLine>
+      </form>
       <form onSubmit={join} noValidate aria-label="Join a table with its code">
         <div className="l field">
           <label htmlFor="table-code">JOIN WITH CODE</label>

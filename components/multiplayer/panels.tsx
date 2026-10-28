@@ -125,6 +125,8 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     // Refused (no permission, not focused): try the old way.
   }
+  // Selecting the textarea moves focus; give it back afterwards so keyboard users stay where they were.
+  const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const el = document.createElement("textarea");
   el.value = text;
   el.setAttribute("readonly", "");
@@ -139,6 +141,7 @@ export async function copyText(text: string): Promise<boolean> {
     ok = false;
   }
   el.remove();
+  focused?.focus({ preventScroll: true });
   return ok;
 }
 
@@ -210,12 +213,13 @@ export function TableBar({
           </Line>
           {isHost ? (
             <Line>
-              <span>
+              <span id="start-why">
                 {seated}/{state.config.seats} SEATED — {ready ? "READY WHEN EVERYONE IS IN" : "WAITING FOR A FRIEND, OR ADD A BOT BELOW"}
               </span>
               <BoxButton
                 filled={ready}
                 aria-disabled={ready ? undefined : true}
+                aria-describedby="start-why"
                 className={DISABLED_LOOK}
                 onClick={ready ? onStart : undefined}
               >

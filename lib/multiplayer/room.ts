@@ -27,6 +27,7 @@ import {
   type HandState,
 } from "../engine/engine";
 import { PERSONAS, type PersonaId } from "../bots/personas";
+import { DEFAULT_ROOM_CONFIG, type RoomConfig } from "./config";
 import { chooseAction } from "../bots/policy";
 import { botView } from "../bots/view";
 import { createRng, formatCard, FULL_DECK, type Card } from "../poker/cards";
@@ -43,7 +44,6 @@ import {
   type SeatInfo,
   type ServerMessage,
   type ServerMessageBody,
-  type TableConfigPublic,
   type TableState,
 } from "./protocol";
 
@@ -59,34 +59,7 @@ export interface RoomDeps {
   random(): number;
 }
 
-export interface RoomConfig extends TableConfigPublic {
-  /** Pause after a hand ends, ms. */
-  betweenHandsMs: number;
-  botDelayMinMs: number;
-  botDelayMaxMs: number;
-  /** Consecutive timeouts before a player is marked sitting out. */
-  maxTimeouts: number;
-  /** Messages allowed per connection per `rateWindowMs`. */
-  rateLimit: number;
-  rateWindowMs: number;
-  /** A table with no connection for this long closes, ms. */
-  idleMs: number;
-}
-
-export const DEFAULT_ROOM_CONFIG: RoomConfig = {
-  seats: 6,
-  smallBlind: 50,
-  bigBlind: 100,
-  startingStack: 10_000,
-  turnMs: 20_000,
-  betweenHandsMs: 3_000,
-  botDelayMinMs: 300,
-  botDelayMaxMs: 900,
-  maxTimeouts: 2,
-  rateLimit: 20,
-  rateWindowMs: 1_000,
-  idleMs: 2 * 60 * 60_000,
-};
+export { DEFAULT_ROOM_CONFIG, type RoomConfig } from "./config";
 
 export const MIN_TABLE_SEATS = 2;
 export const MAX_TABLE_SEATS = 8;
