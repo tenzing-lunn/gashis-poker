@@ -892,6 +892,40 @@ button.t.lc {
   column-gap: 2ch;
 }
 
+/* /drill picker: a 28ch label column fits `(X) MDF & BLUFF BREAK-EVEN`. A drill row is one label, so a click
+   anywhere on it picks that drill; rows and levels take the §3.4 hover outline, the picked name is inverted. */
+.pick .field {
+  grid-template-columns: minmax(0, 28ch) minmax(0, 1fr);
+}
+
+.pick-row {
+  flex: 1 1 auto;
+  cursor: pointer;
+}
+
+.pick-row:hover,
+.pick .opts .opt:hover {
+  outline: 1px solid var(--ink);
+  outline-offset: -1px;
+}
+
+.pick-row .name {
+  white-space: nowrap;
+  padding: 0 0.5ch;
+  margin-left: -0.5ch;
+}
+
+.pick-row :checked ~ .name {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+@media (max-width: 679px) {
+  .pick .field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* /play setup: a bot row is `[STATION ▸]  [ABOUT]  its style`. The picker has a fixed width, so [ABOUT] and the
    note never move under the cursor as the name cycles; the note wraps within the value column (each line 27px),
    or under the controls when the column is narrow. */

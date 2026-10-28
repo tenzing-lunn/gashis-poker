@@ -17,7 +17,7 @@ export default function DrillPage() {
         <span className="inv">DRILLS</span>
       </Line>
       <Line as="p" className="uppercase">
-        <span>Pick a drill. Each round is 120 seconds. Answer, press Enter.</span>
+        <span>Pick a drill and a level, then start. 120 seconds to answer as many as you can.</span>
       </Line>
       <Blank />
       {/* ?type= is read on the client (useSearchParams), so the static shell prerenders the default picker. */}

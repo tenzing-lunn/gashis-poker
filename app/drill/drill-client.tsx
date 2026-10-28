@@ -224,6 +224,7 @@ export function Drill({ requested }: { requested: DrillType | null }) {
         difficulty={round?.difficulty ?? difficulty}
         active={round?.type ?? null}
         startRef={startRef}
+        onSelect={(t) => window.history.replaceState(null, "", `?type=${t}`)}
         onStart={(t) => startRound(t)}
         onDifficulty={setDifficulty}
         onChange={() => {
