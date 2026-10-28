@@ -7,7 +7,7 @@ import { connectTable, type ConnectionStatus, type RejectCode, type TableClient 
 import type { TableState } from "@/lib/multiplayer/protocol";
 import { emptyLog, updateLog, type HandLog } from "./log";
 import type { HoleMsg } from "./model";
-import { loadToken, saveToken, TABLE_SERVER_URL } from "./storage";
+import { loadToken, saveRecentTable, saveToken, TABLE_SERVER_URL } from "./storage";
 
 export interface TableView {
   status: ConnectionStatus;
@@ -79,6 +79,7 @@ export function useTable(
         const msg = e.msg;
         if (msg.type === "welcome") {
           saveToken(tableId, msg.you.token);
+          saveRecentTable(tableId, Date.now());
           setView((v) => ({ ...v, playerId: msg.you.playerId }));
         } else if (msg.type === "hole") {
           setView((v) => {

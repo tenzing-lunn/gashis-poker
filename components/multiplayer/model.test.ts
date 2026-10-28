@@ -337,8 +337,11 @@ describe("waitingText", () => {
     t.join("a", "Ana");
     t.join("b", "Ben");
     t.send("a", { type: "sit", seat: 0 });
-    expect(waitingText(t.state, true)).toBe("HOST: PRESS START");
+    expect(waitingText(t.state, true)).toBe("WAITING FOR A SECOND PLAYER");
     expect(waitingText(t.state, false)).toBe("WAITING FOR THE HOST");
+    t.send("b", { type: "sit", seat: 1 });
+    expect(waitingText(t.state, true)).toBe("PRESS START ABOVE");
+    t.send("b", { type: "stand" });
     t.send("a", { type: "start" });
     expect(t.state.started).toBe(true);
     expect(t.state.hand).toBeNull();

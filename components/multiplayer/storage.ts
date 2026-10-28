@@ -45,3 +45,32 @@ export function parseTableId(text: string): string | null {
 
 /** A route's table code: strict, uppercase (lib/multiplayer/code.ts). */
 export const isTableId = isTableCode;
+
+const TABLES_KEY = "gp.tables";
+/** Most tables remembered in `gp.tables`. */
+export const RECENT_TABLES = 5;
+
+/** A table this browser joined, and when it last got a welcome there (epoch ms). */
+export interface RecentTable {
+  code: string;
+  at: number;
+}
+
+/** The tables this browser joined, most recent first (bad entries are skipped). */
+export function loadRecentTables(): RecentTable[] {
+  try {
+    const list: unknown = JSON.parse(get(TABLES_KEY) ?? "[]");
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((t): t is RecentTable => !!t && isTableCode(t.code) && Number.isFinite(t.at))
+      .slice(0, RECENT_TABLES);
+  } catch {
+    return [];
+  }
+}
+
+/** Moves `code` to the front of the recent tables, seen at `at`, keeping RECENT_TABLES. */
+export function saveRecentTable(code: string, at: number): void {
+  const rest = loadRecentTables().filter((t) => t.code !== code);
+  set(TABLES_KEY, JSON.stringify([{ code, at }, ...rest].slice(0, RECENT_TABLES)));
+}

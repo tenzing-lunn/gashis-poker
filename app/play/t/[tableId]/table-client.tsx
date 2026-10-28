@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { Blank, BoxButton, Line, Rule, Screen, Sheet, Tag, TextButton } from "@/components/doc";
 import { ActionStrip, KeysLegend, PlayControls, PokerTable, StripLegend } from "@/components/table";
 import { clockText, heroChips, heroLegal, heroSeatOf, modelFromState, secondsLeft, waitingText } from "@/components/multiplayer/model";
-import { HandLogLines, HostPanel, InviteLine, LiveHeader, SeatList } from "@/components/multiplayer/panels";
+import { HandLogLines, HostPanel, LiveHeader, SeatList, TableBar } from "@/components/multiplayer/panels";
 import { loadNickname, saveNickname } from "@/components/multiplayer/storage";
 import { useTable } from "@/components/multiplayer/use-table";
 import type { RejectCode } from "@/lib/multiplayer/client";
@@ -77,7 +78,7 @@ export default function TableClient({ tableId }: { tableId: string }) {
         {title}
         <Blank />
         <Line as="p">
-          <span>PICK A NICKNAME TO JOIN THIS TABLE. OTHERS AT THE TABLE SEE IT ON YOUR SEAT.</span>
+          <span>PICK A NICKNAME. YOU SIT IN THE FIRST FREE SEAT.</span>
         </Line>
         <Blank />
         <NicknameForm initial={chosen ?? stored ?? ""} error={refused?.message ?? null} onJoin={join} />
@@ -133,7 +134,11 @@ function TableGone({ title, missing, onRetry }: { title: ReactNode; missing: boo
           <BoxButton href="/play/friends" filled>
             NEW TABLE →
           </BoxButton>
-          <TextButton onClick={onRetry}>[RETRY]</TextButton>
+          {missing ? (
+            <Link href="/play/friends">JOIN ANOTHER CODE →</Link>
+          ) : (
+            <TextButton onClick={onRetry}>[RETRY]</TextButton>
+          )}
         </span>
       </Line>
       <Blank />
@@ -171,7 +176,7 @@ function NicknameForm({ initial, error, onJoin }: { initial: string; error: stri
             }}
           />
           <BoxButton filled type="submit" className="shrink-0">
-            JOIN →
+            JOIN TABLE →
           </BoxButton>
         </span>
       </div>
@@ -189,6 +194,7 @@ function NicknameForm({ initial, error, onJoin }: { initial: string; error: stri
   );
 }
 
+const SCREEN_ID = "live-table";
 const pageUrl = () => window.location.href.split(/[?#]/)[0];
 
 function LiveTable({
@@ -237,6 +243,16 @@ function LiveTable({
   const error = showError ? view.error : null;
   const notSent = useRecent(view.notSentAt, 4000) && !online;
 
+  // The first time a hand reaches this seated player, bring the controls on screen once: on a short
+  // window the action buttons can sit just under the fold, with the clock already running.
+  const dealtIn = !!me && !!state?.started && !!state.hand;
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (!dealtIn || scrolled.current) return;
+    scrolled.current = true;
+    document.getElementById(SCREEN_ID)?.querySelector(".controls-dock")?.scrollIntoView({ block: "nearest" });
+  }, [dealtIn]);
+
   // Only the connection state is a live region; the round trip changes every ping and stays plain text.
   const conn = (
     <span className="whitespace-pre-wrap">
@@ -275,8 +291,8 @@ function LiveTable({
     ? "CONTROLS PAUSED UNTIL RECONNECTED"
     : !state.started
     ? isHost
-      ? "SIT DOWN, ADD BOTS, THEN PRESS START BELOW"
-      : "WAITING FOR THE HOST TO START"
+      ? "SEATED — PRESS START ABOVE WHEN FRIENDS ARE IN"
+      : "SEATED — WAITING FOR THE HOST TO START"
     : !hand
       ? "WAITING FOR TWO PLAYERS"
       : hand.complete
@@ -284,22 +300,20 @@ function LiveTable({
         : legal
           ? "YOUR TURN"
           : toAct !== null
-            ? `${model.seats[toAct].label} ${model.seats[toAct].name} TO ACT`
+            ? `${model.seats[toAct].name} TO ACT`
             : "";
   const names = model.seats.map((s) => s.name);
-  const freeSeat = state.seats.some((s) => s === null);
+  const freeSeat = state.seats.findIndex((s) => s === null);
+  const playing = state.started && !!hand;
 
   return (
     <Sheet className="flex-1">
       <Blank />
       {title}
       <Blank />
-      <Line as="p">
-        <span>EVERYONE HERE SEES THE SAME TABLE. YOU SEE YOUR OWN CARDS, AND OTHERS ONLY AT SHOWDOWN.</span>
-      </Line>
-      <Blank />
+      <TableBar code={tableId} url={inviteUrl} state={state} isHost={isHost} onStart={actions.start} />
       <Rule />
-      <Screen aria-label="Table with friends">
+      <Screen id={SCREEN_ID} aria-label="Table with friends">
         <LiveHeader
           model={model}
           title={`TABLE ${tableId}`}
@@ -313,7 +327,12 @@ function LiveTable({
           onSit={heroSeat === null ? actions.sit : undefined}
         />
         <Line>
-          <span>{heroSeat === null ? (freeSeat ? "WATCHING — PICK AN EMPTY SEAT TO [SIT]" : "WATCHING — EVERY SEAT IS TAKEN") : status}</span>
+          <span>{heroSeat === null ? (freeSeat >= 0 ? "WATCHING" : "WATCHING — EVERY SEAT IS TAKEN") : status}</span>
+          {heroSeat === null && freeSeat >= 0 ? (
+            <TextButton onClick={() => actions.sit(freeSeat)} aria-label={`Sit in seat ${freeSeat + 1}, the first free seat`}>
+              [SIT]
+            </TextButton>
+          ) : null}
           {me ? (
             <span className="whitespace-pre-wrap">
               {me.leaving ? (
@@ -336,8 +355,8 @@ function LiveTable({
             </span>
           ) : null}
         </Line>
-        {/* Watchers have nothing to act with: no controls until they sit. */}
-        {me ? <PlayControls legal={legal} pot={model.pot} heroBet={chips.bet} stack={chips.stack} onAct={actions.act} /> : null}
+        {/* Watchers have nothing to act with, and nobody before the first deal: no dead controls. */}
+        {me && playing ? <PlayControls legal={legal} pot={model.pot} heroBet={chips.bet} stack={chips.stack} onAct={actions.act} /> : null}
         {notSent ? (
           <Line>
             <Tag role="alert">NOT CONNECTED — NOT SENT</Tag>
@@ -347,7 +366,7 @@ function LiveTable({
             <Tag role="alert">{error.message.toUpperCase()}</Tag>
           </Line>
         ) : null}
-        {me ? <KeysLegend /> : null}
+        {me && playing ? <KeysLegend /> : null}
         <Line center gap>
           <span>ACTION</span>
         </Line>
@@ -361,8 +380,6 @@ function LiveTable({
           <Blank />
         </>
       ) : null}
-      <InviteLine url={inviteUrl} />
-      <Blank />
       <SeatList state={state} names={names} heroSeat={heroSeat} />
       <Blank />
       <HandLogLines log={view.log} />
