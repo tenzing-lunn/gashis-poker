@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Blank, BoxButton, Choice, Line, Rule, Screen, Sheet, Tx } from "@/components/doc";
-import { CycleButton, personaText } from "@/components/multiplayer/panels";
+import { Blank, BoxButton, Choice, Legend, Line, Rule, Screen, Sheet, TextButton, Tx } from "@/components/doc";
+import { CycleButton } from "@/components/multiplayer/panels";
 import {
   ActionStrip,
+  BotSheetDialog,
   KeysLegend,
   PlayControls,
   PokerTable,
@@ -20,6 +21,7 @@ import {
   onScreen,
 } from "@/components/table";
 import { botNames } from "@/components/table/names";
+import { BOT_COPY, MIXED_COPY } from "@/components/table/bot-profiles";
 import {
   applyAction,
   createHand,
@@ -45,6 +47,11 @@ const AUTO_NEXT_MS = 3000;
 type PersonaChoice = PersonaId | "mixed";
 /** Per-seat bot choices, cycled by `[TAG ▸]`: a random persona, then each one. */
 const PERSONA_CHOICES: readonly PersonaChoice[] = ["mixed", ...PERSONA_IDS];
+/** `[STATION ▸]`: the short names the seats use. */
+const choiceText = (c: PersonaChoice): string => (c === "mixed" ? MIXED_COPY.short : BOT_COPY[c].short);
+/** The muted note after a bot's picker: its style in one sentence. */
+const choiceNote = (c: PersonaChoice): string =>
+  c === "mixed" ? "A RANDOM STYLE, SHOWN AT THE TABLE" : BOT_COPY[c].style.toUpperCase();
 
 interface Stats {
   hands: number;
@@ -52,7 +59,23 @@ interface Stats {
   rebuys: number;
 }
 
+/** What the setup rows said when the session started. */
+interface Setup {
+  seats: number;
+  choices: PersonaChoice[];
+}
+
+const sameSetup = (a: Setup, b: Setup): boolean => a.seats === b.seats && a.choices.every((c, i) => c === b.choices[i]);
+
+/** The bot sheet on show, and the band it opened from (it takes that band's palette). */
+interface SheetOpen {
+  persona: PersonaChoice;
+  name?: string;
+  from: "setup" | "table";
+}
+
 interface Session {
+  setup: Setup;
   /** Persona per seat; null for the hero. */
   personas: (PersonaId | null)[];
   names: string[];
@@ -108,8 +131,10 @@ export default function PlayClient() {
   const [confirmNew, setConfirmNew] = useState(false);
   // Off: a finished hand stays up until NEXT HAND.
   const [autoNext, setAutoNext] = useState(false);
+  const [sheet, setSheet] = useState<SheetOpen | null>(null);
   const rngRef = useRef<Rng | null>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
+  const setup: Setup = { seats, choices: choices.slice(0, seats) };
 
   const deal = () => {
     if (session && !confirmNew) {
@@ -122,6 +147,7 @@ export default function PlayClient() {
     const personas = pickPersonas(choices.slice(0, seats), rng);
     const button = rng.int(seats);
     setSession({
+      setup,
       personas,
       names: botNames(personas),
       button,
@@ -181,6 +207,7 @@ export default function PlayClient() {
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || e.key.toLowerCase() !== "n") return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (t?.closest?.("dialog")) return;
       e.preventDefault();
       dealNext();
     };
@@ -212,6 +239,15 @@ export default function PlayClient() {
   const hand = session?.hand ?? null;
   const heroTurn = !!hand && !hand.complete && seatToAct(hand) === HERO;
   const legal = heroTurn ? legalActions(hand) : null;
+
+  const seatInfo = (seat: number) => {
+    const persona = session ? session.personas[seat] : choices[seat];
+    if (persona) setSheet({ persona, name: session?.names[seat], from: "table" });
+  };
+  const sheetDialog = (
+    <BotSheetDialog persona={sheet?.persona ?? null} name={sheet?.name} onClose={() => setSheet(null)} />
+  );
+  const setupChanged = !!session && !sameSetup(session.setup, setup);
 
   const stats = session?.stats ?? { hands: 0, net: 0, rebuys: 0 };
   const bb100 = stats.hands > 0 ? (stats.net / BIG_BLIND / stats.hands) * 100 : 0;
@@ -265,22 +301,36 @@ export default function PlayClient() {
       {Array.from({ length: seats - 1 }, (_, k) => k + 1).map((i) => (
         <div key={i} className="l field">
           <span>S{i + 1} BOT</span>
-          <span>
+          <span className="bot-pick">
             <CycleButton
-              className="-ml-[0.5ch]"
+              className="pick"
               options={PERSONA_CHOICES}
               value={choices[i]}
-              text={personaText}
+              text={choiceText}
               label={`Bot for seat ${i + 1}`}
               onChange={(v) => setChoices((c) => c.map((x, j) => (j === i ? v : x)))}
             />
+            <TextButton
+              aria-label={`About ${choices[i] === "mixed" ? "mixed bots" : `the ${choiceText(choices[i])} style`}`}
+              onClick={() => setSheet({ persona: choices[i], from: "setup" })}
+            >
+              [ABOUT]
+            </TextButton>
+            <span className="note">{choiceNote(choices[i])}</span>
           </span>
         </div>
       ))}
+      <Legend className="field">
+        <span />
+        <span className="pre">[STYLE ▸] (CLICK TO CHANGE)  [ABOUT] HOW TO BEAT IT</span>
+      </Legend>
       <Line gap>
-        <BoxButton filled onClick={deal} onBlur={() => setConfirmNew(false)}>
-          {!session ? "DEAL →" : confirmNew ? "CONFIRM — WIPES STATS →" : "NEW SESSION →"}
-        </BoxButton>
+        <span className="opts">
+          <BoxButton filled onClick={deal} onBlur={() => setConfirmNew(false)}>
+            {!session ? "DEAL →" : confirmNew ? "CONFIRM — WIPES STATS →" : "NEW SESSION →"}
+          </BoxButton>
+          {setupChanged ? <span className="text-muted">SETUP CHANGED · APPLIES ON NEW SESSION</span> : null}
+        </span>
       </Line>
       <Line>
         <Link href="/play/friends">PLAY WITH FRIENDS →</Link>
@@ -289,7 +339,7 @@ export default function PlayClient() {
       <Rule />
       <Screen id={BAND_ID} aria-label="Practice table">
         <TableHeader model={model} title="PRACTICE TABLE" mode={`SOLO  ${model.capacity} SEATS`} waiting="NO HAND YET" />
-        <PokerTable model={model} label={`Practice table, ${model.seated} seats`} />
+        <PokerTable model={model} label={`Practice table, ${model.seated} seats`} onSeatInfo={seatInfo} />
         <PlayControls
           legal={legal}
           pot={model.pot}
@@ -319,16 +369,39 @@ export default function PlayClient() {
         </Line>
         <ActionStrip strip={model.strip} />
         <StripLegend />
+        {sheet?.from === "table" ? sheetDialog : null}
       </Screen>
       <Blank />
       <Line center>
         <span>SESSION</span>
       </Line>
-      <Tx label="HANDS" value={fmt(stats.hands)} />
-      <Tx label="NET CHIPS" value={<span className={tone(stats.net)}>{signed(stats.net, fmt(stats.net))}</span>} />
-      <Tx label="BB/100" value={<span className={tone(bb100)}>{signed(bb100, bb100.toFixed(1))}</span>} />
-      <Tx label="REBUYS" value={fmt(stats.rebuys)} />
+      <Tx className="num" label="HANDS PLAYED" value={fmt(stats.hands)} />
+      <Tx
+        className="num"
+        label="NET CHIPS"
+        value={<span className={tone(stats.net)}>{signed(stats.net, fmt(stats.net))}</span>}
+      />
+      <Tx
+        className="num"
+        label={
+          <>
+            BIG BLINDS WON PER 100 HANDS <span className="text-muted">(BB/100)</span>
+          </>
+        }
+        value={<span className={tone(bb100)}>{signed(bb100, bb100.toFixed(1))}</span>}
+      />
+      <Tx
+        className="num"
+        label={
+          <>
+            REBUYS <span className="text-muted">(TIMES YOU BUSTED)</span>
+          </>
+        }
+        value={fmt(stats.rebuys)}
+      />
+      <Legend>BB/100 SETTLES ONLY OVER THOUSANDS OF HANDS.</Legend>
       <Blank />
+      {sheet?.from !== "table" ? sheetDialog : null}
     </Sheet>
   );
 }

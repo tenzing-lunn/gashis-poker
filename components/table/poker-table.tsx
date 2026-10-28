@@ -14,10 +14,15 @@ type PokerTableProps = {
   onSit?: (seat: number) => void;
   /** Announce each event in a polite live region (off for the home attract table). */
   announce?: boolean;
+  /**
+   * Given: every bot seat's `S3 MICRO` becomes a text button (`About S3 MICRO`) that calls this with the seat,
+   * e.g. to open its bot sheet (`BotSheetDialog`).
+   */
+  onSeatInfo?: (seat: number) => void;
 };
 
 /** The table figure (DESIGN.md §4.1–4.4, §4.7): felt, board and pot, seats around the ellipse. */
-export function PokerTable({ model, label, onSit, announce = true }: PokerTableProps) {
+export function PokerTable({ model, label, onSit, announce = true, onSeatInfo }: PokerTableProps) {
   const [open, setOpen] = useState<number | null>(null);
   const n = model.seats.length;
   const wide = seatPoints(n, "wide");
@@ -56,6 +61,7 @@ export function PokerTable({ model, label, onSit, announce = true }: PokerTableP
             open={open === s.seat}
             onToggle={() => setOpen((o) => (o === s.seat ? null : s.seat))}
             onSit={onSit}
+            onInfo={onSeatInfo && s.kind === "bot" ? () => onSeatInfo(s.seat) : undefined}
           />
         );
       })}
@@ -75,11 +81,22 @@ type SeatProps = {
   open: boolean;
   onToggle: () => void;
   onSit?: (seat: number) => void;
+  onInfo?: () => void;
 };
 
-function Seat({ seat: s, handNo, style, open, onToggle, onSit }: SeatProps) {
+function Seat({ seat: s, handNo, style, open, onToggle, onSit, onInfo }: SeatProps) {
   const empty = s.kind === "empty";
   const yourTurn = s.isHero && s.turn;
+  const position = s.position ?? (s.isButton ? "BTN" : null);
+  // `S3 MICRO-2`: the name shrinks to an ellipsis so `S8 ` + name + ` BTN` stays inside the seat.
+  const id = (
+    <>
+      <span>{s.label}</span>
+      <span className="name full" title={s.name}>
+        {s.name}
+      </span>
+    </>
+  );
   return (
     <div
       className={cx("seat", s.turn && "turn", yourTurn && "you", s.win && "win", s.out && "out", empty && "empty", open && "open")}
@@ -103,18 +120,35 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit }: SeatProps) {
           s.holeCards.map((c, k) => <Card key={`${handNo}-${k}-${c}`} card={c} anim={s.revealed ? "flip" : "deal"} />)
         ) : null}
       </div>
-      <div className="who" aria-hidden="true">
+      <div className="who">
         {yourTurn ? (
           // The warn highlight takes the name's place, so the seat keeps its height and `.act` keeps the bet.
-          // No `(D)`: it would not fit the 14ch seat; the dealer is in the seat sentence.
-          "YOUR TURN"
+          // The position would not fit next to it: the status line says `YOUR TURN (CO)`.
+          <span aria-hidden="true">YOUR TURN</span>
         ) : (
           <>
-            <span className="full">
-              {s.label} {s.name}
-            </span>
-            <span className="short">{s.label}</span>
-            {s.isButton ? " (D)" : null}
+            {onInfo ? (
+              <button
+                type="button"
+                className="t id"
+                aria-label={`About ${s.label} ${s.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInfo();
+                }}
+              >
+                {id}
+              </button>
+            ) : (
+              <span className="id" aria-hidden="true">
+                {id}
+              </span>
+            )}
+            {position ? (
+              <span className="pos" aria-hidden="true">
+                {position}
+              </span>
+            ) : null}
           </>
         )}
       </div>
@@ -155,11 +189,23 @@ function MetaText({ seat, width, className }: { seat: SeatModel; width: number; 
   );
 }
 
-/** `Seat 3, Monte, dealer, 9,200 chips, 92 big blinds, call 100` (DESIGN.md §9). */
+const POSITION_WORDS: Record<string, string> = {
+  BTN: "on the button (dealer)",
+  SB: "small blind",
+  BB: "big blind",
+  UTG: "under the gun",
+  MP: "middle position",
+  LJ: "lojack",
+  HJ: "hijack",
+  CO: "cutoff",
+};
+
+/** `Seat 3, Monte, cutoff, 9,200 chips, 92 big blinds, call 100` (DESIGN.md §9). */
 export function seatSentence(s: SeatModel): string {
   if (s.kind === "empty") return `Seat ${s.seat + 1}, empty`;
   const parts = [`Seat ${s.seat + 1}`, s.isHero ? `${s.name} (you)` : s.name];
-  if (s.isButton) parts.push("dealer");
+  if (s.position) parts.push(POSITION_WORDS[s.position] ?? s.position);
+  else if (s.isButton) parts.push("dealer");
   parts.push(`${fmt(s.stack)} chips`);
   if (s.bbDepth !== null && s.net === null) parts.push(bbText(s.bbDepth).replace("BB", "big blinds"));
   if (Array.isArray(s.holeCards)) parts.push(`holding ${s.holeCards.map(cardWords).join(" and ")}`);

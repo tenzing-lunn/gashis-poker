@@ -181,6 +181,8 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
       const t = e.target as HTMLElement | null;
       // The raise field handles its own keys; other fields keep theirs.
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      // Nor while a dialog (a bot sheet) is open over the table: reading it must not fold.
+      if (t?.closest?.("dialog")) return;
       if (keyRef.current(e.key.toLowerCase())) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);

@@ -687,9 +687,40 @@ input.u:focus-visible {
   min-height: 37px;
 }
 
+/* `S3 MICRO-2 CO`: label, name, position. The name gives way (ellipsis) so the line never leaves the seat. */
 .table-fig .seat .who {
-  padding: 0 0.6ch;
+  display: flex;
+  max-width: 100%;
+  column-gap: 1ch;
+  padding: 0 0.5ch;
   white-space: nowrap;
+}
+
+.table-fig .seat .who .id {
+  display: flex;
+  column-gap: 1ch;
+  min-width: 0;
+}
+
+.table-fig .seat .who .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-fig .seat .who .pos {
+  flex: none;
+}
+
+/* a bot's `S3 MICRO` opens its sheet: same text, the §3.4 hover outline */
+.table-fig .seat .who button.id {
+  position: relative;
+  padding: 0;
+  text-align: left;
+}
+
+.table-fig .seat .who button.id:hover {
+  outline-color: currentColor;
 }
 
 .table-fig .seat .meta {
@@ -804,16 +835,19 @@ input.u:focus-visible {
   background: var(--faint);
 }
 
+/* labels and letters punch the line (paper behind them, like a seat on the felt): no strike-through.
+   Their `left` is clamped (stripLeft) so the first and last end flush with the line, never past it. */
 .strips .track b {
   position: absolute;
   top: 0;
   transform: translateX(-50%);
+  background: var(--paper);
+  padding: 0 0.3ch;
 }
 
 .strips .track b.w {
   background: var(--ink);
   color: var(--paper);
-  padding: 0 0.3ch;
 }
 
 .strips .track b.future {
@@ -834,6 +868,35 @@ button.t.lc {
   display: flex;
   flex-wrap: wrap;
   column-gap: 2ch;
+}
+
+/* /play setup: a bot row is `[STATION ▸]  [ABOUT]  its style`. The picker has a fixed width, so [ABOUT] and the
+   note never move under the cursor as the name cycles; the note wraps within the value column (each line 27px),
+   or under the controls when the column is narrow. */
+.bot-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 2ch;
+}
+
+.bot-pick .pick {
+  flex: none;
+  width: 12ch; /* [STATION ▸] plus the button's padding */
+  margin-left: -0.5ch;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.bot-pick .note {
+  flex: 1 1 24ch;
+  min-width: 0;
+  color: var(--muted);
+}
+
+/* numeric records (the /play SESSION stats): numbers right-aligned on their last digit */
+.tx.num > :last-child {
+  text-align: right;
 }
 
 /* §5 Play controls; the status line above them (status-block.tsx) */
@@ -990,6 +1053,19 @@ button.t.lc {
     display: none;
   }
 
+  /* tapped open: the full name, past the seat edge if it must, on the paper so the felt line doesn't cross it */
+  .table-fig .seat.open .who {
+    max-width: none;
+  }
+
+  .table-fig .seat.open:not(.turn, .win) .who {
+    background: var(--paper);
+  }
+
+  .table-fig .seat.open .who .name {
+    overflow: visible;
+  }
+
   .strips .strip .name {
     width: 3ch;
   }
@@ -1005,6 +1081,18 @@ button.t.lc {
     min-height: 24px;
     margin-block: -4px;
     vertical-align: middle;
+  }
+
+  /* the seat name button keeps the line height; its 24px target is an invisible extension */
+  .table-fig .seat .who button.id {
+    min-height: 0;
+    margin-block: 0;
+  }
+
+  .table-fig .seat .who button.id::after {
+    content: "";
+    position: absolute;
+    inset: -6px -0.5ch;
   }
 
   .controls-dock {

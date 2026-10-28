@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createHand, legalActions, seatToAct, type HandState } from "@/lib/engine/engine";
 import { PERSONA_IDS, PERSONAS } from "@/lib/bots/personas";
 import { chooseAction } from "@/lib/bots/policy";
-import { botView, publicView } from "@/lib/bots/view";
+import { botView, publicView, seatPositions } from "@/lib/bots/view";
 import { createRng, parseCards } from "@/lib/poker/cards";
 import { HAND_CATEGORIES } from "@/lib/poker/evaluator";
 import {
@@ -10,6 +10,7 @@ import {
   bbText,
   buildModel,
   categoryPhrase,
+  dealtPositions,
   emptyTableModel,
   modelFromHand,
   modelFromPublicView,
@@ -23,6 +24,8 @@ import {
 } from "./model";
 import { checkRaise, contestedPot, priceLine, type ControlsLegal } from "./play-controls";
 import { statusText } from "./status-block";
+import { seatSentence } from "./poker-table";
+import { stripLeft } from "./action-strip";
 
 const names = (n: number) => Array.from({ length: n }, (_, i) => (i === 0 ? "YOU" : `BOT${i}`));
 
@@ -587,8 +590,25 @@ describe("action strip", () => {
     // Wide track: everything has room.
     expect(shortLabels(m.strip.labels, 5000, 6.6).every((x) => !x)).toBe(true);
     // Rule: neighbours closer than half of each label plus a space.
-    expect(shortLabels([{ label: "FLOP", at: 0 }, { label: "TURN", at: 0.1 }], 100, 2)).toEqual([false, false]); // 10 >= 10
-    expect(shortLabels([{ label: "FLOP", at: 0 }, { label: "TURN", at: 0.1 }], 99, 2)).toEqual([true, true]);
+    expect(shortLabels([{ label: "FLOP", at: 0.5 }, { label: "TURN", at: 0.6 }], 100, 2)).toEqual([false, false]); // 10 >= 10
+    expect(shortLabels([{ label: "FLOP", at: 0.5 }, { label: "TURN", at: 0.6 }], 99, 2)).toEqual([true, true]);
+    // Measured where they are drawn: SHOW at the end sits half its width (plus its paper) inside the track.
+    expect(shortLabels([{ label: "RIVER", at: 0.8 }, { label: "SHOW", at: 1 }], 100, 2)).toEqual([false, false]); // 95.4 - 80 >= 10
+    expect(shortLabels([{ label: "RIVER", at: 0.85 }, { label: "SHOW", at: 1 }], 100, 2)).toEqual([true, true]); // 95.4 - 85 < 10
+  });
+
+  it("keeps every label and letter inside the line: the ends are clamped, not centered past them", () => {
+    expect(stripLeft(0.5, 4)).toBe("clamp(2.3ch, 50%, calc(100% - 2.3ch))");
+    expect(stripLeft(1, 1)).toBe("clamp(0.8ch, 100%, calc(100% - 0.8ch))"); // W ends flush with the line
+    expect(stripLeft(0, 3)).toBe("clamp(1.8ch, 0%, calc(100% - 1.8ch))");
+  });
+
+  it("gives each mark its action in words, for the tooltip", () => {
+    const m = modelFromHand(s, 0, names(3), { handNo: 1 });
+    const texts = m.strip.rows.map((r) => r.marks.map((x) => x.text));
+    expect(texts[0]).toEqual(["CALL 100", "FOLD"]);
+    expect(texts[1]).toEqual(["SB 50", "CALL 100", "BET 200", "ALL-IN 2,900"]);
+    expect(texts[2]).toEqual(["BB 100", "CHECK", "RAISE TO 600", "CALL 2,900", `WINS ${s.result!.won[2].toLocaleString("en-US")}`]);
   });
 
   it("projects future streets while the hand is live", () => {
@@ -598,5 +618,71 @@ describe("action strip", () => {
     expect(m.strip.now).toBeGreaterThan(0);
     expect(m.strip.now).toBeLessThan(1);
     expect(m.strip.labels.every((l) => l.at <= 1)).toBe(true);
+  });
+});
+
+describe("positions", () => {
+  it("labels every seat of a 6-max hand from the button: BTN SB BB UTG HJ CO", () => {
+    for (let button = 0; button < 6; button++) {
+      const st = createHand({ stacks: new Array(6).fill(10000), button }, { seed: button + 1 });
+      const m = modelFromHand(st, 0, names(6), { handNo: 1 });
+      const at = (k: number) => m.seats[(button + k) % 6].position;
+      expect([0, 1, 2, 3, 4, 5].map(at)).toEqual(["BTN", "SB", "BB", "UTG", "HJ", "CO"]);
+      expect(m.seats.map((x) => x.position)).toEqual(seatPositions(6, button));
+      expect(m.seats[button].isButton).toBe(true);
+    }
+  });
+
+  it("matches the engine's positions at every table size, and heads-up is BTN against BB", () => {
+    for (let n = 2; n <= 8; n++) {
+      const st = createHand({ stacks: new Array(n).fill(10000), button: n - 1 }, { seed: n });
+      expect(modelFromHand(st, 0, names(n), { handNo: 3 }).seats.map((x) => x.position)).toEqual(publicView(st, 0).positions);
+    }
+    const hu = createHand({ stacks: [10000, 10000], button: 1 }, { seed: 9 });
+    expect(modelFromHand(hu, 0, names(2), { handNo: 1 }).seats.map((x) => x.position)).toEqual(["BB", "BTN"]);
+  });
+
+  it("counts only the seats dealt in (multiplayer: empty and sitting-out seats are skipped)", () => {
+    const seats = [
+      { name: "ANA", kind: "human" as const },
+      null,
+      { name: "BEA", kind: "human" as const },
+      { name: "TAG", kind: "bot" as const },
+      { name: "CAL", kind: "human" as const }, // sitting out
+      null,
+    ];
+    const inHand = [true, false, true, true, false, false];
+    expect(dealtPositions({ seats, inHand, button: 2, handNo: 7 })).toEqual(["BB", null, "BTN", "SB", null, null]);
+    // Four dealt in from the button on seat 6: BTN SB BB CO, skipping the empty seat 2 and seat 5 sitting out.
+    expect(
+      dealtPositions({ seats: [...seats.slice(0, 5), { name: "DEE", kind: "human" }], inHand: [true, false, true, true, false, true], button: 5, handNo: 7 }),
+    ).toEqual(["SB", null, "BB", "CO", null, "BTN"]);
+    // A button that is not dealt in: the last dealt-in seat before it takes BTN, so SB and BB follow it.
+    expect(dealtPositions({ seats, inHand, button: 4, handNo: 7 })).toEqual(["SB", null, "BB", "BTN", null, null]);
+  });
+
+  it("is null before the first deal and for seats not dealt in", () => {
+    const m = emptyTableModel([{ name: "YOU", kind: "human" }, { name: "TAG", kind: "bot" }, null], [10000, 10000, 0], {
+      heroSeat: 0,
+      smallBlind: 50,
+      bigBlind: 100,
+    });
+    expect(m.seats.map((x) => x.position)).toEqual([null, null, null]);
+    expect(dealtPositions({ seats: [{ name: "A", kind: "human" }, null], inHand: [true, false], button: 0, handNo: 1 })).toEqual([null, null]);
+  });
+
+  it("says the position in the hero's status and in every seat's sentence", () => {
+    // 6 seats, button 2: the hero in seat 0 is HJ and acts after UTG (seat 5).
+    let st = createHand({ stacks: new Array(6).fill(10000), button: 2 }, { seed: 4 });
+    st = applyAction(st, { type: "fold" });
+    const m = modelFromHand(st, 0, names(6), { handNo: 1 });
+    expect(m.seats[0].position).toBe("HJ");
+    expect(statusText(m, true, 100)).toBe("YOUR TURN (HJ) · TO CALL 100");
+    expect(statusText(m, true, 0)).toBe("YOUR TURN (HJ)");
+    expect(seatSentence(m.seats[0])).toMatch(/^Seat 1, YOU \(you\), hijack, /);
+    expect(seatSentence(m.seats[2])).toMatch(/^Seat 3, BOT2, on the button \(dealer\), /);
+    expect(seatSentence(m.seats[4])).toMatch(/^Seat 5, BOT4, big blind, /);
+    // Positions are at most 3 characters: `S8 ` + a name + ` BTN` leaves the name at least 6 of the seat's 13ch.
+    for (let n = 2; n <= 9; n++) for (const p of seatPositions(n, 0)) expect(p.length).toBeLessThanOrEqual(3);
   });
 });

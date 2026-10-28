@@ -190,7 +190,15 @@ the table above.
 
 Seat stack, top to bottom:
 1. `.hole` — two small cards, `gap: 4px; min-height: 37px; margin-bottom: 4px` (empty space reserved when no cards).
-2. `.who` — `S3 MONTE (D)`: seat number, name, `(D)` for dealer. `padding: 0 .6ch; white-space: nowrap`.
+2. `.who` — `S3 MONTE BTN`: seat number, name, and the seat's position this hand (`BTN SB BB UTG MP LJ HJ CO`,
+   from `seatPositions` over the seats dealt in, so multiplayer skips empty and sitting-out seats; none before the
+   first deal). `BTN` replaces the old `(D)`. A flex row, `column-gap: 1ch; padding: 0 .5ch; max-width: 100%;
+   white-space: nowrap`: the name is the only part that gives way (`.name { min-width: 0; overflow: hidden;
+   text-overflow: ellipsis }`), so `S8 ` + a 16-character nickname + ` BTN` stays inside the 14ch (12ch) seat as
+   `S8 ABCDEF… BTN`. The full name is in the seat's screen-reader sentence and its `title`; on mobile a tapped-open
+   seat shows it whole, on paper, past the seat edge if it must. With `onSeatInfo` a bot's `S3 MICRO` is a text
+   button (`About S3 MICRO`, same text, §3.4 hover outline in `currentColor`) that opens its bot sheet (§4.9); on
+   mobile its 24px target is an invisible extension, so the seat keeps its height.
 3. `.meta` — `10,000  100 BB`: stack, then stack depth in big blinds (whole BBs from 10 up, one decimal below,
    `0 BB` when all-in), from before the first deal on. At hand end, a winner and every showdown loser show their
    net result for the hand in place of the depth: `21,750  +1,783` (`--green`) / `9,900  -100` (`--red`).
@@ -209,8 +217,10 @@ States:
 - `.turn` and `.win` → `.who` inverts (ink background, paper text). That is the *only* "whose turn" signal on the figure.
 - `.out` (folded / sitting out) → whole seat `var(--muted)`; its cards and bar border go `var(--faint)` and lose their shadow.
 - On the hero's decision their `.who` reads `YOUR TURN` on `--warn` (ink text) in place of the name, so `.act` keeps
-  showing their bet this street (`BET 1,100`) and the seat keeps its height. `(D)` is dropped there (it would not
-  fit the 14ch seat); the seat's screen-reader sentence still says dealer.
+  showing their bet this street (`BET 1,100`) and the seat keeps its height. The position would not fit next to it
+  (`YOUR TURN BTN` is 13 characters, more than the 12ch mobile seat), so the status line carries it:
+  `YOUR TURN (CO) · TO CALL 300`. The seat's screen-reader sentence says the position in words (`cutoff`,
+  `on the button (dealer)`).
 - **Accepted deviation:** folded opponents keep two card backs (muted, `.out`) until the next hand, so the
   table still shows who was dealt in.
 
@@ -254,7 +264,13 @@ A per-seat timeline across streets — the hand history as a figure.
 - One `.strip` per seat: `.name` (`12ch`, nowrap) + `.track` (flex:1). Inside the track a 1px ink line (`.ln`, `top:53%`)
   runs up to "now"; the remainder is a `--faint` line. Action letters (`b X C B R A F W`) sit on the line at their
   time position; `W` is inverted. Future marks are `--muted`. Folded seats' names go `--muted`.
-- Legend line beneath.
+- Street labels and letters punch the line (`background: var(--paper); padding: 0 .3ch`, as a seat punches the felt),
+  so the line never strikes through them. Their `left` is clamped to the line (`stripLeft`:
+  `clamp(half, at%, 100% - half)`), so `PRE` at the start and `SHOW` / a `W` at the end finish flush with the line's
+  ends instead of hanging past the measure; label shortening measures them where they are drawn. Each letter has
+  its action in a `title` (`RAISE TO 500`, `SB 50`, `WINS 1,200`).
+- Two legend lines beneath (`StripLegend`): how to read it, `EACH ROW IS A SEAT: ITS ACTIONS IN ORDER, UNDER THE
+  STREET THEY HAPPENED ON`, then the letters.
 
 ### 4.7 Mobile (< 680px)
 Table figure `aspect-ratio: 3 / 4` (`3 / 5` at ≤ 400px) with seats on a tall ring; names use a `.short` form
@@ -275,7 +291,8 @@ sentences, opening widths at 6 seats plus heads-up (`UTG  11%  88+, A8s+, …`, 
 simulated hands and checked in. Inline, its lines continue the page's numbering. As a dialog (`BotSheetDialog`, a
 native `<dialog>`) it is a sheet of the band it opens from: `--paper` background, 1px `--ink` border, no shadow,
 lines numbered from 1, `[CLOSE]` on the title line, Esc and a backdrop click close it. Full width, docked to the
-bottom, under 680px.
+bottom, under 680px. Opened from a bot seat's name at the table (`PokerTable` `onSeatInfo`) and from each
+setup row's `[ABOUT]` (§5).
 
 ---
 
@@ -330,6 +347,18 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   `N NEXT HAND`). `1–4` pick a size only outside the raise field; in it digits always type, so a size picked
   with `1–4` is replaced by the first digit typed. Letters never go in, and `F`/`C` still act.
 - `NEW SESSION` wipes the stats, so it asks again: `[NEW SESSION →]` then `[CONFIRM — WIPES STATS →]`.
+- Solo setup (`/play`): each bot row is `S2 BOT  [STATION ▸]  [ABOUT]  LIMPS AND CALLS WITH ALMOST ANYTHING, …` — the
+  picker cycles the seats' short names at a fixed `12ch`, so `[ABOUT]` and the note never move under the cursor;
+  `[ABOUT]` opens the bot sheet of that choice (MIXED opens the mixed sheet); the muted note is the style in one
+  sentence (MIXED: `A RANDOM STYLE, SHOWN AT THE TABLE`) and wraps within the value column, each line 27px. One
+  muted legend under the rows: `[STYLE ▸] (CLICK TO CHANGE)  [ABOUT] HOW TO BEAT IT`. While a session runs and the
+  seats or bots differ from the ones it started with, the NEW SESSION line adds a muted
+  `SETUP CHANGED · APPLIES ON NEW SESSION` (AUTO-NEXT applies at once, so it is not flagged). Bot seats at the table
+  open the same sheet, as a dialog of the screen band.
+- SESSION record in plain words, numbers right-aligned on their last digit (`.tx.num`): `HANDS PLAYED`, `NET CHIPS`,
+  `BIG BLINDS WON PER 100 HANDS (BB/100)`, `REBUYS (TIMES YOU BUSTED)` (the bracketed parts muted), then the legend
+  `BB/100 SETTLES ONLY OVER THOUSANDS OF HANDS.`
+- Table hotkeys (`F`, `C`, `1–4`, `N`) are ignored while a dialog (a bot sheet) has focus.
 - Coach mode adds a line above: `YOUR EQUITY EST. ____%  [SUBMIT]` and, after acting, a graded line using `--green`/`--red` for EV.
 
 ---
@@ -368,6 +397,6 @@ Navigation is a single header `.l`: `GASHI'S POKER                    LEARN  DRI
 
 ## 9. Accessibility
 - Contrast: ink/paper pairs are ≥ 15:1; `--muted` on paper 7:1, on screen 8:1; `--gutter` is decorative (line numbers are `aria-hidden`).
-- Seats are announced as text (`Seat 3, Monte, dealer, 9,200 chips, called 100`); the turn is also exposed with `aria-current`.
+- Seats are announced as text (`Seat 3, Monte, cutoff, 9,200 chips, called 100`); the turn is also exposed with `aria-current`.
 - `forced-colors: active`: inverted states use `Highlight`/`HighlightText`; bars and lines use `CanvasText`.
 - All motion off under `prefers-reduced-motion`.

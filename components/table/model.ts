@@ -10,7 +10,7 @@
 // model only through showdown reveals (engine `showdown` events, or `revealed` passed in).
 
 import type { ActionKind, HandEvent, HandState, Street } from "@/lib/engine/engine";
-import type { PublicView } from "@/lib/bots/view";
+import { seatPositions, type PublicView } from "@/lib/bots/view";
 import type { Card } from "@/lib/poker/cards";
 import { handCategory } from "@/lib/poker/evaluator";
 
@@ -53,6 +53,11 @@ export interface SeatModel {
   /** True when face-up cards were revealed at showdown (drawn with the flip animation). */
   revealed: boolean;
   isButton: boolean;
+  /**
+   * Position this hand (`BTN`, `SB`, `BB`, `UTG`, `HJ`, `CO`…), counted over the seats dealt in; null before the
+   * first deal and for a seat not dealt in.
+   */
+  position: string | null;
   /** On the clock. */
   turn: boolean;
   /** Won (part of) a pot. */
@@ -71,6 +76,8 @@ export interface StripMark {
   at: number;
   /** Street the mark belongs to (`showdown` for W). */
   street: TableStreet;
+  /** The action in words, for a tooltip: `RAISE TO 500`, `SB 50`, `WINS 1,200`. */
+  text?: string;
 }
 
 export interface StripRow {
@@ -400,6 +407,7 @@ export function buildModel(input: TableInput): TableModel {
   }
   const won = new Map<number, number>();
   for (const w of winners) won.set(w.seat, (won.get(w.seat) ?? 0) + w.amount);
+  const positions = dealtPositions(input);
 
   // Once the hand is over the pot is already in the winners' stacks.
   const chips = input.stacks.map((s, i) => (input.seats[i] ? s + (input.complete ? 0 : input.committed[i]) : 0));
@@ -423,6 +431,7 @@ export function buildModel(input: TableInput): TableModel {
         holeCards: null,
         revealed: false,
         isButton: false,
+        position: null,
         turn: false,
         win: false,
         out: true,
@@ -456,6 +465,7 @@ export function buildModel(input: TableInput): TableModel {
       holeCards: input.holeCards[i],
       revealed: input.revealed[i],
       isButton: input.button === i,
+      position: positions[i],
       turn: !input.complete && input.toAct === i,
       win: input.complete && won.has(i),
       out: folded || (!input.inHand[i] && input.handNo > 0),
@@ -482,6 +492,25 @@ export function buildModel(input: TableInput): TableModel {
     lastEvent: describe(timeline[timeline.length - 1], seats),
     result: input.complete && winners.length > 0 ? buildResult(input, seats, won, winners) : null,
   };
+}
+
+/**
+ * Each seat's position this hand: `seatPositions` over the seats dealt in, in table order from the button
+ * (multiplayer skips empty and sitting-out seats). Null before the first deal and for seats not dealt in.
+ */
+export function dealtPositions(input: Pick<TableInput, "seats" | "inHand" | "button" | "handNo">): (string | null)[] {
+  const n = input.seats.length;
+  const out = new Array<string | null>(n).fill(null);
+  if (input.handNo <= 0 || input.button === null) return out;
+  const dealt = (i: number) => !!input.seats[i] && input.inHand[i];
+  // From the button (or, should it not be dealt in, the last dealt-in seat before it) clockwise.
+  let from = input.button;
+  for (let k = 0; k < n && !dealt(from); k++) from = (from - 1 + n) % n;
+  const order: number[] = [];
+  for (let k = 0; k < n; k++) if (dealt((from + k) % n)) order.push((from + k) % n);
+  if (order.length < 2 || order.length > 9) return out; // seatPositions names 2-9 seats
+  seatPositions(order.length, 0).forEach((p, k) => (out[order[k]] = p));
+  return out;
 }
 
 /**
@@ -562,7 +591,7 @@ const NEXT_STREETS: Record<Street, Street[]> = {
  * a projection of the ticks still to come, whose street labels are drawn muted.
  */
 function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
-  type Tick = { j: number; seat: number; letter: StripLetter; street: TableStreet };
+  type Tick = { j: number; seat: number; letter: StripLetter; street: TableStreet; text: string };
   const marks: Tick[] = [];
   const labels: { label: StripLabelText; j: number }[] = [];
   let j = 0;
@@ -577,20 +606,22 @@ function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
   };
   for (const e of input.timeline) {
     if (e.kind === "blind") {
-      marks.push({ j: ++j, seat: e.seat, letter: "b", street: "preflop" });
+      marks.push({ j: ++j, seat: e.seat, letter: "b", street: "preflop", text: `${e.blind === "small" ? "SB" : "BB"} ${fmt(e.amount)}` });
       continue;
     }
     placePre();
     if (e.kind === "action") {
       street = e.street;
-      marks.push({ j: ++j, seat: e.seat, letter: letterFor(e)!, street });
+      marks.push({ j: ++j, seat: e.seat, letter: letterFor(e)!, street, text: actionText(e) });
       if (e.action === "fold") foldAt.set(e.seat, j);
     } else if (e.kind === "deal") {
       street = e.street;
       labels.push({ label: LABEL_OF[e.street], j: ++j });
     } else {
       labels.push({ label: "SHOW", j: ++j });
-      for (const w of e.winners) if (!marks.some((m) => m.j === j && m.seat === w.seat)) marks.push({ j, seat: w.seat, letter: "W", street: "showdown" });
+      const amounts = new Map<number, number>();
+      for (const w of e.winners) amounts.set(w.seat, (amounts.get(w.seat) ?? 0) + w.amount);
+      for (const [seat, amount] of amounts) marks.push({ j, seat, letter: "W", street: "showdown", text: `WINS ${fmt(amount)}` });
     }
   }
   placePre();
@@ -618,7 +649,7 @@ function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
       label: s.label,
       name: s.name,
       out: s.out,
-      marks: marks.filter((m) => m.seat === s.seat).map((m) => ({ letter: m.letter, at: at(m.j), street: m.street })),
+      marks: marks.filter((m) => m.seat === s.seat).map((m) => ({ letter: m.letter, at: at(m.j), street: m.street, text: m.text })),
       lineTo: foldAt.has(s.seat) ? at(foldAt.get(s.seat)!) : now,
     }));
   return {
@@ -634,12 +665,17 @@ function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
 /**
  * Street labels drawn as their initial (`F T R S`): both neighbours of a gap narrower than half of each
  * label plus a space, as on the reference (an all-in runout puts FLOP TURN RIVER SHOW one tick apart).
- * `trackPx` is the width the `at` fractions span, `chPx` one character.
+ * `trackPx` is the width the `at` fractions span, `chPx` one character. A label is measured where it is
+ * drawn: kept inside the track (`stripLeft`), so `SHOW` at the very end sits half its width further in.
  */
 export function shortLabels(labels: readonly { label: string; at: number }[], trackPx: number, chPx: number): boolean[] {
   const short = labels.map(() => false);
+  const center = (l: { label: string; at: number }) => {
+    const half = (l.label.length / 2 + 0.3) * chPx;
+    return Math.min(Math.max(l.at * trackPx, half), trackPx - half);
+  };
   for (let t = 1; t < labels.length; t++) {
-    const room = (labels[t].at - labels[t - 1].at) * trackPx;
+    const room = center(labels[t]) - center(labels[t - 1]);
     if (room < ((labels[t].label.length + labels[t - 1].label.length) / 2 + 1) * chPx) short[t] = short[t - 1] = true;
   }
   return short;

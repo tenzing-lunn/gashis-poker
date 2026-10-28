@@ -6,7 +6,7 @@ export type StatusBlockProps = {
   model: TableModel;
   /** The viewer's decision is up. Default: the model's seat to act is its hero seat. */
   heroTurn?: boolean;
-  /** Chips the hero pays to call; `YOUR TURN · TO CALL 300` when above 0. */
+  /** Chips the hero pays to call; `YOUR TURN (CO) · TO CALL 300` when above 0. */
   toCall?: number;
   /** Seconds left for the seat to act (`14 S`, amber at 5 or less); omit or null for no clock. */
   seconds?: number | null;
@@ -16,10 +16,17 @@ export type StatusBlockProps = {
   action?: ReactNode;
 };
 
-/** What the status line says: the result, whose turn it is, or `idle`. */
+/**
+ * What the status line says: the result, whose turn it is, or `idle`. The hero's position goes with
+ * `YOUR TURN (CO)`, since the seat's `YOUR TURN` tag has no room for it.
+ */
 export function statusText(model: TableModel, heroTurn: boolean, toCall = 0): string | null {
   if (model.complete && model.result) return model.result.text;
-  if (heroTurn) return toCall > 0 ? `YOUR TURN · TO CALL ${fmt(toCall)}` : "YOUR TURN";
+  if (heroTurn) {
+    const pos = model.heroSeat === null ? null : model.seats[model.heroSeat]?.position;
+    const turn = pos ? `YOUR TURN (${pos})` : "YOUR TURN";
+    return toCall > 0 ? `${turn} · TO CALL ${fmt(toCall)}` : turn;
+  }
   if (model.toAct !== null && !model.complete) {
     const s = model.seats[model.toAct];
     return `${s.label} ${s.name} ${s.kind === "bot" ? "THINKING…" : "TO ACT"}`;
