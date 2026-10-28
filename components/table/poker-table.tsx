@@ -106,10 +106,8 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit }: SeatProps) {
       <div className="who" aria-hidden="true">
         {yourTurn ? (
           // The warn highlight takes the name's place, so the seat keeps its height and `.act` keeps the bet.
-          <>
-            YOUR TURN
-            {s.isButton ? <span className="full"> (D)</span> : null}
-          </>
+          // No `(D)`: it would not fit the 14ch seat; the dealer is in the seat sentence.
+          "YOUR TURN"
         ) : (
           <>
             <span className="full">

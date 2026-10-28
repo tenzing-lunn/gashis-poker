@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type Ref } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type Ref } from "react";
 import { Legend, Line, Tag, TextButton } from "@/components/doc";
 import { cx } from "@/components/doc/cx";
 import type { Action } from "@/lib/engine/engine";
@@ -25,6 +25,11 @@ type PlayControlsProps = {
   legal: ControlsLegal | null;
   /** Everything in the middle, outstanding bets included (the awarded pot once the hand is over). */
   pot: number;
+  /**
+   * The pot a call plays for, the call included (`contestedPot`): less than `pot` + call when the call is
+   * all-in for less. Default `pot` + call.
+   */
+  contestedPot?: number;
   /** The hero's bet on this street. */
   heroBet: number;
   /** The hero's chips behind. */
@@ -64,6 +69,16 @@ export function checkRaise(value: string, legal: ControlsLegal): { to: number | 
 }
 
 /**
+ * The chips a call plays for, the call included: each seat's chips this hand capped at what the hero will
+ * have in after calling, `Σ min(committed[j], committed[hero] + call)`. Equal to pot + call unless the call
+ * is all-in for less than the bet; then the part of the bet the hero cannot match is left out.
+ */
+export function contestedPot(committed: readonly number[], hero: number, callAmount: number): number {
+  const cap = committed[hero] + callAmount;
+  return committed.reduce((t, c, j) => t + (j === hero ? cap : Math.min(c, cap)), 0);
+}
+
+/**
  * The price of a call in words: `TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY`. `pot` already holds the bet
  * faced, so the equity needed is call / (pot + call), module 3's B / (P + 2B); `ratio` is the pot odds
  * (P + B) : B as `4 TO 1`. Null when there is nothing to call.
@@ -78,17 +93,18 @@ export function priceLine(callAmount: number, pot: number): { short: string; tex
 }
 
 /**
- * The raise field's value: `armed` once a size is chosen or typed (the filled default moves to RAISE);
- * `typed` once the user edited it (1–4 then type digits instead of choosing a size).
+ * The raise field's value (digits only): `armed` once a size is chosen or typed (the filled default moves to
+ * RAISE); `typed` while the user edits it, when it is shown without separators so the caret and Backspace
+ * work on digits.
  */
 type Draft = { decision: string; value: string; tried: boolean; select: number; armed: boolean; typed: boolean };
 
 /**
- * The play lines under the table (DESIGN.md §5). Keys: F, C, R, Enter, Escape, 1–4. Buttons that do not
- * apply are `aria-disabled` (not `disabled`) so focus stays put after an action. The filled default is
- * CHECK when free, else CALL; it moves to RAISE once a size is chosen.
+ * The play lines under the table (DESIGN.md §5). Keys: F, C, R, Enter, Escape, and 1–4 outside the raise
+ * field (in it, digits type). Buttons that do not apply are `aria-disabled` (not `disabled`) so focus stays
+ * put after an action. The filled default is CHECK when free, else CALL; it moves to RAISE once a size is chosen.
  */
-export function PlayControls({ legal, pot, heroBet, stack, onAct, status }: PlayControlsProps) {
+export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, status }: PlayControlsProps) {
   const ids = useId();
   const dockRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -97,20 +113,24 @@ export function PlayControls({ legal, pot, heroBet, stack, onAct, status }: Play
   // The raise draft resets to the min raise whenever a new decision comes up.
   const decision = legal ? `${legal.toCall}:${legal.minRaiseTo}:${legal.maxRaiseTo}:${pot}` : "none";
   const [stored, setStored] = useState<Draft>({ decision, value: "", tried: false, select: 0, armed: false, typed: false });
-  const draft: Draft =
-    stored.decision === decision
-      ? stored
-      : {
-          decision,
-          value: legal?.canRaise ? String(legal.minRaiseTo) : "",
-          tried: false,
-          select: stored.select,
-          armed: false,
-          typed: false,
-        };
-  const update = (d: Partial<Draft>) => setStored({ ...draft, ...d });
+  const current = (d: Draft): Draft =>
+    d.decision === decision
+      ? d
+      : { decision, value: legal?.canRaise ? String(legal.minRaiseTo) : "", tried: false, select: d.select, armed: false, typed: false };
+  const draft = current(stored);
+  // Functional, so two updates in one event (Esc, then the blur it causes) both land.
+  const update = (d: Partial<Draft>) => setStored((s) => ({ ...current(s), ...d }));
+  // Where the caret goes after an edit, in digits from the start (the field is redrawn without separators).
+  const caretRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const at = caretRef.current;
+    caretRef.current = null;
+    if (at !== null && inputRef.current === document.activeElement) inputRef.current?.setSelectionRange(at, at);
+  });
 
   const canRaise = !!legal?.canRaise;
+  // Separators except while the user is typing (then the caret and Backspace move over digits only).
+  const shown = draft.typed || draft.value === "" ? draft.value : fmt(Number(draft.value));
   const check = legal && canRaise ? checkRaise(draft.value, legal) : null;
   // An out-of-range number is flagged as soon as it is typed; an empty field once a raise is tried.
   const error = check?.error && (draft.tried || draft.value !== "") ? check.error : null;
@@ -178,7 +198,8 @@ export function PlayControls({ legal, pot, heroBet, stack, onAct, status }: Play
     if (btn && onScreen(btn)) btn.focus({ preventScroll: true });
   }, [decision]);
 
-  const price = legal ? priceLine(legal.callAmount, pot) : null;
+  // The price counts only the chips the call plays for (an all-in call for less leaves part of the bet out).
+  const price = legal ? priceLine(legal.callAmount, contestedPot === undefined ? pot : contestedPot - legal.callAmount) : null;
   const selected = (frac: number) => !!check?.to && check.to === presetRaiseTo(legal!, pot, heroBet, frac);
   const verb = legal?.isBet ? "BET" : "RAISE TO";
   // The safe default takes focus; the filled box is the default until a raise size is chosen.
@@ -248,12 +269,25 @@ export function PlayControls({ legal, pot, heroBet, stack, onAct, status }: Play
               aria-invalid={error ? true : undefined}
               aria-disabled={!canRaise || undefined}
               readOnly={!canRaise}
-              value={draft.value === "" ? "" : fmt(Number(draft.value))}
+              value={shown}
               placeholder="____"
               onFocus={() => {
                 if (canRaise && !draft.armed) update({ armed: true });
               }}
-              onChange={(e) => update({ value: e.target.value.replace(/[^0-9]/g, ""), tried: false, armed: true, typed: true })}
+              onBlur={() => update({ typed: false })}
+              onChange={(e) => {
+                const raw = e.target.value;
+                let value = raw.replace(/[^0-9]/g, "");
+                let at = raw.slice(0, e.target.selectionStart ?? raw.length).replace(/[^0-9]/g, "").length;
+                // Backspace / Delete on a separator removes the digit next to it.
+                const del = (e.nativeEvent as InputEvent).inputType;
+                if (value === draft.value && raw.length < shown.length) {
+                  if (del === "deleteContentBackward" && at > 0) value = value.slice(0, --at) + value.slice(at + 1);
+                  else if (del === "deleteContentForward") value = value.slice(0, at) + value.slice(at + 1);
+                }
+                caretRef.current = at;
+                update({ value, tried: false, armed: true, typed: true });
+              }}
               onKeyDown={(e) => {
                 if (e.metaKey || e.ctrlKey || e.altKey) return;
                 if (e.key === "Escape") {
@@ -261,10 +295,6 @@ export function PlayControls({ legal, pot, heroBet, stack, onAct, status }: Play
                   e.preventDefault();
                   update({ armed: false });
                   (defaultRef.current ?? formRef.current)?.focus();
-                } else if (!draft.typed && e.key >= "1" && e.key <= "4" && e.key.length === 1) {
-                  // Until something is typed, 1–4 pick a size here too.
-                  e.preventDefault();
-                  choosePreset(PRESETS[Number(e.key) - 1].frac);
                 } else if (/^[a-z]$/i.test(e.key)) {
                   // Letters never go in the field: F and C still fold / check-call from here.
                   e.preventDefault();
@@ -336,7 +366,7 @@ export function KeysLegend({ extra }: { extra?: string } = {}) {
   return (
     <Legend className="pre keys">
       <span>
-        KEYS: F FOLD  C CHECK/CALL  R RAISE  1-4 SIZE  ENTER CONFIRM  ESC BACK{extra ? `  ${extra}` : ""}
+        KEYS: F FOLD  C CHECK/CALL  1-4 SIZE  R TYPE AMOUNT  ENTER CONFIRM  ESC BACK{extra ? `  ${extra}` : ""}
       </span>
     </Legend>
   );

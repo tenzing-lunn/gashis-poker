@@ -10,7 +10,7 @@ type TableHeaderProps = {
   mode: ReactNode;
   /** Right of the mode line: time bank, transport, connection state. */
   right?: ReactNode;
-  /** Before the first deal, the hand line reads this and the blinds (`PRESS DEAL TO START  BLINDS 50/100`). */
+  /** Before the first deal, the hand line reads this and the blinds (`NO HAND YET  BLINDS 50/100`). */
   waiting?: ReactNode;
 };
 

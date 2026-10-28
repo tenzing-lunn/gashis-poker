@@ -209,7 +209,8 @@ States:
 - `.turn` and `.win` → `.who` inverts (ink background, paper text). That is the *only* "whose turn" signal on the figure.
 - `.out` (folded / sitting out) → whole seat `var(--muted)`; its cards and bar border go `var(--faint)` and lose their shadow.
 - On the hero's decision their `.who` reads `YOUR TURN` on `--warn` (ink text) in place of the name, so `.act` keeps
-  showing their bet this street (`BET 1,100`) and the seat keeps its height.
+  showing their bet this street (`BET 1,100`) and the seat keeps its height. `(D)` is dropped there (it would not
+  fit the 14ch seat); the seat's screen-reader sentence still says dealer.
 - **Accepted deviation:** folded opponents keep two card backs (muted, `.out`) until the next hand, so the
   table still shows who was dealt in.
 
@@ -241,7 +242,8 @@ Card back (`.cd.back`): `outline:1px solid var(--ink); outline-offset:-5px` (an 
 For live play replace `REPLAY` + transport with `LIVE` + seat count / connection:
 `LIVE  6/8 SEATED                                     ● CONNECTED`. Solo practice reads `SOLO  6 SEATS` with
 nothing on the right. Before the first deal the hand line says what the table waits for, then the blinds:
-`PRESS DEAL TO START                                  BLINDS 50/100` (`TableHeader` `waiting`). Whose turn,
+`NO HAND YET                                          BLINDS 50/100` (`TableHeader` `waiting`; solo keeps
+`PRESS DEAL TO START` for the status line only, so it is not said twice). Whose turn,
 the clock and the result are on the status line above the controls (§5), not in the header.
 
 ### 4.6 Action strip (under the table)
@@ -292,11 +294,16 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   `YOUR TURN · TO CALL 300`, `S5 TAG-2 THINKING…` (a bot on the clock), `S4 BEA TO ACT`, the idle text before a hand
   (`PRESS DEAL TO START`), or at hand end the result: `YOU WIN 3,516 WITH TWO PAIR`,
   `S4 STATION WINS 400 WITH A STRAIGHT · YOU LOSE 100`, `S2 LAG WINS 150 · EVERYONE ELSE FOLDED`,
-  `SPLIT POT: S2 LAG AND S4 BEA EACH WIN 375`.
+  `SPLIT POT: S2 LAG AND S4 BEA EACH WIN 375`. A pot shared unevenly (odd chips) reads
+  `SPLIT POT: YOU, S3 LAG AND S4 NIT SHARE 350 WITH A STRAIGHT FLUSH`; main and side pots to different seats are
+  listed in turn, and a hero who won a pot but is down on the hand gets `· YOU NET -600`.
 - Solo holds the result: the action slot is a filled `[NEXT HAND →]` (focused when the controls had focus; `Enter`,
   `Space` or `N` deals). The setup row `AUTO-NEXT  [ ] DEAL THE NEXT HAND AFTER 3 S` (off by default) deals on a timer.
 - **Price line:** `TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY (4 TO 1)`. The pot already holds the bet faced, so the
-  equity needed is call / (pot + call), module 3's B / (P + 2B), and the ratio is its pot odds (P + B) : B (on
+  equity needed is call / (pot + call), module 3's B / (P + 2B), and the ratio is its pot odds (P + B) : B. When
+  the call is all-in for less, the pot is only what the call contests (`contestedPot`: each seat's chips this hand
+  capped at the hero's total after calling): 900 to call against a 5,000 bet into 200 reads
+  `TO CALL 900 INTO 1,100 → NEED 45.0%` (`1.2 TO 1`), not `INTO 5,300` (on
   mobile the line ends at the percentage, and the range slot is not reserved). Nothing to call: `NOTHING TO CALL · POT 1,200`; not your turn: `POT 1,200`. `STACK` at the right.
 - `[FOLD] [CHECK] [CALL n]` are boxed buttons (§3.4). The default action takes focus and is the filled `.cta`:
   **CHECK when it is free, else CALL** (FOLD only when neither applies). FOLD is disabled when checking is free.
@@ -305,7 +312,8 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
 - **Accepted deviation:** the controls sit under the table figure (not under the header), so the seats stay in view
   above them.
 - Raise input is an underlined field in `ch` width that shows thousands separators (typing strips anything but
-  digits), followed by one fixed-width slot that holds the legal range (`200–9,700`) or, instead of it, the error, so an
+  digits); while the user edits it the separators drop out, so the caret and Backspace move over digits, and they
+  come back on blur or when a preset fills it. It is followed by one fixed-width slot that holds the legal range (`200–9,700`) or, instead of it, the error, so an
   error never reflows the line. The sizing presets are `button.t` toggles that say what they are a fraction of:
   `1/2 POT  2/3 POT  POT  ALL-IN`. A preset fills the field and selects it.
 - Raise validation: the amount is never clamped. Out of range (or empty on submit) the field gets `aria-invalid`
@@ -316,10 +324,11 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   scrolled into view if it is not already (when taller than the viewport, the controls go to its bottom), then
   the default action takes focus without a second scroll, only if it is on screen and the user hasn't moved
   focus off the controls.
-- Keyboard: `F` fold, `C` check/call, `R` focus raise, `1–4` choose a size, `Enter` confirm, `Esc` back out of the field —
-  shown in the legend line `KEYS: F FOLD  C CHECK/CALL  R RAISE  1-4 SIZE  ENTER CONFIRM  ESC BACK` (solo adds
-  `N NEXT HAND`). In the raise field `1–4` still choose a size until something is typed or deleted; then digits type.
-  Letters never go in, and `F`/`C` still act.
+- Keyboard: `F` fold, `C` check/call, `1–4` choose a size (the field shows it, selected, and the filled box moves
+  to `[RAISE TO]` / `[BET]`), `R` focus the field to type an amount, `Enter` confirm, `Esc` back out of the field —
+  shown in the legend line `KEYS: F FOLD  C CHECK/CALL  1-4 SIZE  R TYPE AMOUNT  ENTER CONFIRM  ESC BACK` (solo adds
+  `N NEXT HAND`). `1–4` pick a size only outside the raise field; in it digits always type, so a size picked
+  with `1–4` is replaced by the first digit typed. Letters never go in, and `F`/`C` still act.
 - `NEW SESSION` wipes the stats, so it asks again: `[NEW SESSION →]` then `[CONFIRM — WIPES STATS →]`.
 - Coach mode adds a line above: `YOUR EQUITY EST. ____%  [SUBMIT]` and, after acting, a graded line using `--green`/`--red` for EV.
 

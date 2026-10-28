@@ -9,6 +9,7 @@ import {
   KeysLegend,
   PlayControls,
   PokerTable,
+  contestedPot,
   StatusBlock,
   StripLegend,
   TableHeader,
@@ -287,11 +288,12 @@ export default function PlayClient() {
       <Blank />
       <Rule />
       <Screen id={BAND_ID} aria-label="Practice table">
-        <TableHeader model={model} title="PRACTICE TABLE" mode={`SOLO  ${model.capacity} SEATS`} waiting="PRESS DEAL TO START" />
+        <TableHeader model={model} title="PRACTICE TABLE" mode={`SOLO  ${model.capacity} SEATS`} waiting="NO HAND YET" />
         <PokerTable model={model} label={`Practice table, ${model.seated} seats`} />
         <PlayControls
           legal={legal}
           pot={model.pot}
+          contestedPot={legal && hand ? contestedPot(hand.committed, HERO, legal.callAmount) : undefined}
           heroBet={hand ? hand.bets[HERO] : 0}
           stack={hand ? hand.stacks[HERO] : STACK}
           onAct={act}

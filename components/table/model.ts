@@ -114,7 +114,7 @@ export interface ResultWinner {
 /** How a finished hand ended, for the status line (`YOU WIN 3,516 WITH TWO PAIR`). */
 export interface HandResult {
   winners: ResultWinner[];
-  /** More than one seat won chips. */
+  /** One pot was shared by more than one seat. */
   split: boolean;
   showdown: boolean;
   /** The hero's net result for the hand; null without a dealt-in hero or starting stacks. */
@@ -161,8 +161,11 @@ export type TimelineEvent =
   | { kind: "blind"; seat: number; blind: "small" | "big"; amount: number; allIn: boolean }
   | { kind: "action"; seat: number; street: Street; action: ActionKind; to: number; allIn: boolean }
   | { kind: "deal"; street: Street }
-  /** The hand is over; W goes to these seats. */
-  | { kind: "end"; winners: { seat: number; amount: number }[] };
+  /**
+   * The hand is over; W goes to these seats. `pot` (0 = main pot) groups the shares of one pot; without it
+   * winners whose amounts are within an odd chip of each other are read as one split pot.
+   */
+  | { kind: "end"; winners: { seat: number; amount: number; pot?: number }[] };
 
 export interface TableInput {
   handNo: number;
@@ -268,10 +271,7 @@ export function seatMeta(s: SeatModel, width: number): { head: string; tail: str
 }
 
 const SEAT_CATEGORY: Record<string, string> = {
-  "THREE OF A KIND": "TRIPS",
-  "FOUR OF A KIND": "QUADS",
   "STRAIGHT FLUSH": "STR FLUSH",
-  "ROYAL FLUSH": "STR FLUSH",
 };
 /** A showdown hand short enough for the seat's `.act` line (12 characters at most). */
 export const seatCategory = (category: string): string => (SEAT_CATEGORY[category] ?? category).slice(0, SEAT_CHARS.tall);
@@ -284,7 +284,6 @@ const CATEGORY_PHRASE: Record<string, string> = {
   "FULL HOUSE": "A FULL HOUSE",
   QUADS: "FOUR OF A KIND",
   "STRAIGHT FLUSH": "A STRAIGHT FLUSH",
-  "ROYAL FLUSH": "A ROYAL FLUSH",
 };
 /** The full hand name for the result line: `A STRAIGHT`, `THREE OF A KIND`, `TWO PAIR`. */
 export const categoryPhrase = (category: string): string => CATEGORY_PHRASE[category] ?? category;
@@ -385,7 +384,7 @@ export function buildModel(input: TableInput): TableModel {
   const { timeline } = input;
   const last = new Array<string>(n).fill("");
   const lastStreet = new Array<Street | null>(n).fill(null);
-  let winners: { seat: number; amount: number }[] = [];
+  let winners: { seat: number; amount: number; pot?: number }[] = [];
   let awarded = 0;
   for (const e of timeline) {
     if (e.kind === "blind") {
@@ -481,15 +480,22 @@ export function buildModel(input: TableInput): TableModel {
     capacity: n,
     strip: buildStrip(input, seats),
     lastEvent: describe(timeline[timeline.length - 1], seats),
-    result: input.complete && winners.length > 0 ? buildResult(input, seats, won) : null,
+    result: input.complete && winners.length > 0 ? buildResult(input, seats, won, winners) : null,
   };
 }
 
 /**
  * The result line: `YOU WIN 3,516 WITH TWO PAIR`, `S4 STATION WINS 400 WITH A STRAIGHT · YOU LOSE 100`,
- * `S2 LAG WINS 150 · EVERYONE ELSE FOLDED`, `SPLIT POT: S2 LAG AND S4 BEA EACH WIN 375`.
+ * `S2 LAG WINS 150 · EVERYONE ELSE FOLDED`, `SPLIT POT: S2 LAG AND S4 BEA EACH WIN 375`,
+ * `SPLIT POT: YOU, S3 LAG AND S4 NIT SHARE 350 WITH A STRAIGHT FLUSH` (odd chips), and a hero who won a
+ * side pot but lost overall: `S2 NIT WINS 2,400 WITH A PAIR · YOU WIN 400 WITH A PAIR · YOU NET -600`.
  */
-function buildResult(input: TableInput, seats: SeatModel[], won: Map<number, number>): HandResult {
+function buildResult(
+  input: TableInput,
+  seats: SeatModel[],
+  won: Map<number, number>,
+  awards: readonly { seat: number; amount: number; pot?: number }[],
+): HandResult {
   const winners: ResultWinner[] = [...won]
     .sort((a, b) => a[0] - b[0])
     .map(([seat, amount]) => {
@@ -502,20 +508,44 @@ function buildResult(input: TableInput, seats: SeatModel[], won: Map<number, num
   const who = (w: ResultWinner) => (w.isHero ? "YOU" : `${w.label} ${w.name}`);
   const withHand = (c: string | null) => (c ? ` WITH ${categoryPhrase(c)}` : "");
 
-  let text: string;
-  const split = winners.length > 1;
-  if (split && winners.every((w) => w.amount === winners[0].amount)) {
-    const names = winners.map(who);
-    const list = `${names.slice(0, -1).join(", ")} AND ${names[names.length - 1]}`;
-    const same = winners.every((w) => w.category === winners[0].category);
-    text = `SPLIT POT: ${list} EACH WIN ${fmt(winners[0].amount)}${same ? withHand(winners[0].category) : ""}`;
+  // Who shared what: pots won by the same seats are one part (`B WINS` main and side pot once).
+  const parts = new Map<string, Map<number, number>>();
+  const add = (key: string, seat: number, amount: number) => {
+    const part = parts.get(key) ?? new Map<number, number>();
+    part.set(seat, (part.get(seat) ?? 0) + amount);
+    parts.set(key, part);
+  };
+  if (awards.every((a) => a.pot !== undefined)) {
+    const byPot = new Map<number, number[]>();
+    for (const a of awards) byPot.set(a.pot!, [...(byPot.get(a.pot!) ?? []), a.seat]);
+    for (const a of awards) add(byPot.get(a.pot!)!.sort((x, y) => x - y).join(","), a.seat, a.amount);
   } else {
-    text = winners.map((w) => `${who(w)} ${w.isHero ? "WIN" : "WINS"} ${fmt(w.amount)}${withHand(w.category)}`).join(" · ");
+    // No pot index: shares within an odd chip of each other (n winners, at most n - 1 apart) are one split pot.
+    const amounts = winners.map((w) => w.amount);
+    const shared = winners.length > 1 && Math.max(...amounts) - Math.min(...amounts) <= winners.length - 1;
+    for (const w of winners) add(shared ? "all" : String(w.seat), w.seat, w.amount);
   }
-  if (!input.showdown) text += " · EVERYONE ELSE FOLDED";
-  else if (hero !== null && !won.has(hero) && seats[hero]?.category && heroNet !== null && heroNet < 0) text += ` · YOU LOSE ${fmt(-heroNet)}`;
+  const byMinSeat = [...parts.values()].sort((a, b) => Math.min(...a.keys()) - Math.min(...b.keys()));
 
-  return { winners, split, showdown: input.showdown, heroNet, text };
+  const split = byMinSeat.some((p) => p.size > 1);
+  const lines = byMinSeat.map((p) => {
+    const ws = [...p].sort((a, b) => a[0] - b[0]).map(([seat, amount]) => ({ ...winners.find((w) => w.seat === seat)!, amount }));
+    if (ws.length === 1) return `${who(ws[0])} ${ws[0].isHero ? "WIN" : "WINS"} ${fmt(ws[0].amount)}${withHand(ws[0].category)}`;
+    const names = ws.map(who);
+    const list = `${names.slice(0, -1).join(", ")} AND ${names[names.length - 1]}`;
+    const hand = ws.every((w) => w.category === ws[0].category) ? withHand(ws[0].category) : "";
+    return ws.every((w) => w.amount === ws[0].amount)
+      ? `SPLIT POT: ${list} EACH WIN ${fmt(ws[0].amount)}${hand}`
+      : `SPLIT POT: ${list} SHARE ${fmt(ws.reduce((t, w) => t + w.amount, 0))}${hand}`;
+  });
+  if (!input.showdown) lines.push("EVERYONE ELSE FOLDED");
+  else if (hero !== null && heroNet !== null && heroNet < 0) {
+    // A hero who won a side pot can still be down on the hand.
+    if (won.has(hero)) lines.push(`YOU NET ${signed(heroNet)}`);
+    else if (seats[hero]?.category) lines.push(`YOU LOSE ${fmt(-heroNet)}`);
+  }
+
+  return { winners, split, showdown: input.showdown, heroNet, text: lines.join(" · ") };
 }
 
 const LABEL_OF: Record<Street, StripLabelText> = { preflop: "PRE", flop: "FLOP", turn: "TURN", river: "RIVER" };
@@ -636,7 +666,7 @@ function describe(e: TimelineEvent | undefined, seats: SeatModel[]): string {
 /** Engine events to timeline events, with engine seats mapped to table seats. */
 export function timelineFromEvents(events: readonly HandEvent[], tableSeat: (s: number) => number = (s) => s): TimelineEvent[] {
   const out: TimelineEvent[] = [];
-  let winners: { seat: number; amount: number }[] | null = null;
+  let winners: { seat: number; amount: number; pot: number }[] | null = null;
   for (const e of events) {
     switch (e.type) {
       case "blind":
@@ -650,7 +680,7 @@ export function timelineFromEvents(events: readonly HandEvent[], tableSeat: (s: 
         break;
       case "award":
         winners ??= [];
-        e.winners.forEach((w, k) => winners!.push({ seat: tableSeat(w), amount: e.shares[k] }));
+        e.winners.forEach((w, k) => winners!.push({ seat: tableSeat(w), amount: e.shares[k], pot: e.pot }));
         break;
       default:
         break;

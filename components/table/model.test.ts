@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createHand, seatToAct, type HandState } from "@/lib/engine/engine";
+import { applyAction, createHand, legalActions, seatToAct, type HandState } from "@/lib/engine/engine";
 import { PERSONA_IDS, PERSONAS } from "@/lib/bots/personas";
 import { chooseAction } from "@/lib/bots/policy";
 import { botView, publicView } from "@/lib/bots/view";
 import { createRng, parseCards } from "@/lib/poker/cards";
+import { HAND_CATEGORIES } from "@/lib/poker/evaluator";
 import {
   SEAT_CHARS,
   bbText,
+  buildModel,
   categoryPhrase,
   emptyTableModel,
   modelFromHand,
@@ -16,9 +18,10 @@ import {
   seatPoints,
   shortLabels,
   type SeatModel,
+  type TableInput,
   type TableModel,
 } from "./model";
-import { checkRaise, priceLine, type ControlsLegal } from "./play-controls";
+import { checkRaise, contestedPot, priceLine, type ControlsLegal } from "./play-controls";
 import { statusText } from "./status-block";
 
 const names = (n: number) => Array.from({ length: n }, (_, i) => (i === 0 ? "YOU" : `BOT${i}`));
@@ -318,9 +321,9 @@ describe("seat meta and bar", () => {
     }
     expect(seatMeta({ ...base, stack: 21750, net: 1783 }, SEAT_CHARS.wide)).toEqual({ head: "21,750  ", tail: "+1,783" });
     expect(seatMeta({ ...base, stack: 10000, bbDepth: 100, net: null }, SEAT_CHARS.tall)).toEqual({ head: "10,000 ", tail: "100BB" });
-    const categories = ["HIGH CARD", "PAIR", "TWO PAIR", "TRIPS", "STRAIGHT", "FLUSH", "FULL HOUSE", "QUADS", "STRAIGHT FLUSH"];
-    for (const c of [...categories, "THREE OF A KIND", "FOUR OF A KIND"]) expect(seatCategory(c).length, c).toBeLessThanOrEqual(SEAT_CHARS.tall);
-    expect(seatCategory("THREE OF A KIND")).toBe("TRIPS");
+    // The engine's own names (HAND_CATEGORIES), as the adapters upper-case them.
+    for (const c of HAND_CATEGORIES.map((x) => x.toUpperCase())) expect(seatCategory(c).length, c).toBeLessThanOrEqual(SEAT_CHARS.tall);
+    expect(seatCategory("TRIPS")).toBe("TRIPS");
     expect(seatCategory("STRAIGHT FLUSH")).toBe("STR FLUSH");
   });
 });
@@ -387,6 +390,62 @@ describe("hand result", () => {
     );
   });
 
+  it("odd-chip split pot: every winner shares the pot, even with unequal shares", () => {
+    // 4 seats, button 0: S2 small blind folds, the other three check down a royal flush on the board.
+    let s = createHand({ stacks: [10000, 10000, 10000, 10000], button: 0 }, { deck: parseCards("2c 3c 4c 5c 2d 3d 4d 5d As Ks Qs Js Ts") });
+    for (const a of [{ type: "call" }, { type: "call" }, { type: "fold" }, { type: "check" }, ...Array<Move>(9).fill({ type: "check" })] as Move[]) {
+      s = applyAction(s, a);
+    }
+    expect(s.complete).toBe(true);
+    const m = modelFromHand(s, 0, ["YOU", "SB", "LAG", "NIT"], { handNo: 1 });
+    const shares = m.result!.winners.map((w) => w.amount);
+    expect(new Set(shares).size).toBe(2); // 350 does not split three ways evenly
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(350);
+    expect(m.result!.split).toBe(true);
+    expect(m.result!.text).toBe("SPLIT POT: YOU, S3 LAG AND S4 NIT SHARE 350 WITH A STRAIGHT FLUSH");
+
+    // Without pot indices (the multiplayer adapter), shares within an odd chip still read as a split.
+    const seats = ["YOU", "LAG", "NIT"].map((name) => ({ name, kind: "bot" as const }));
+    const input = (amounts: number[]): TableInput => ({
+      handNo: 1,
+      seats,
+      button: 0,
+      smallBlind: 50,
+      bigBlind: 100,
+      street: "river",
+      board: parseCards("As Ks Qs Js Ts"),
+      pot: 0,
+      stacks: [10000, 10000, 10000],
+      committed: [100, 100, 100],
+      folded: [false, false, false],
+      inHand: [true, true, true],
+      toAct: null,
+      complete: true,
+      showdown: true,
+      timeline: [{ kind: "end", winners: amounts.map((amount, seat) => ({ seat, amount })) }],
+      holeCards: [null, null, null],
+      revealed: [false, false, false],
+      categories: ["STRAIGHT FLUSH", "STRAIGHT FLUSH", "STRAIGHT FLUSH"],
+      heroSeat: null,
+    });
+    expect(buildModel(input([116, 118, 116])).result!.text).toBe("SPLIT POT: S1 YOU, S2 LAG AND S3 NIT SHARE 350 WITH A STRAIGHT FLUSH");
+    expect(buildModel(input([100, 100, 100])).result!.text).toBe("SPLIT POT: S1 YOU, S2 LAG AND S3 NIT EACH WIN 100 WITH A STRAIGHT FLUSH");
+    expect(buildModel(input([100, 400])).result).toMatchObject({
+      split: false,
+      text: "S1 YOU WINS 100 WITH A STRAIGHT FLUSH · S2 LAG WINS 400 WITH A STRAIGHT FLUSH",
+    });
+  });
+
+  it("side pot: a hero who wins a side pot but loses overall sees the net", () => {
+    // 3 seats, button 0 (first to act). S2 holds aces and is all-in for less; the hero's kings beat S3's queens.
+    let s = createHand({ stacks: [1000, 800, 1000], button: 0 }, { deck: parseCards("As Qc Kc Ah Qd Kd 2c 7d 9h Js 3s") });
+    for (const a of [{ type: "raise", to: 1000 }, { type: "call" }, { type: "call" }] as Move[]) s = applyAction(s, a);
+    expect(s.complete).toBe(true);
+    const m = modelFromHand(s, 0, ["YOU", "NIT", "LAG"], { handNo: 1 });
+    expect(m.result).toMatchObject({ split: false, heroNet: -600 });
+    expect(m.result!.text).toBe("YOU WIN 400 WITH A PAIR · S2 NIT WINS 2,400 WITH A PAIR · YOU NET -600");
+  });
+
   it("names every winner of every finished bot hand with the amounts awarded", () => {
     for (const state of botStates(60, 17)) {
       if (!state.complete) continue;
@@ -395,6 +454,7 @@ describe("hand result", () => {
       for (const e of state.events) if (e.type === "award") e.winners.forEach((w, k) => won.set(w, (won.get(w) ?? 0) + e.shares[k]));
       expect(new Map(m.result!.winners.map((w) => [w.seat, w.amount]))).toEqual(won);
       expect(m.result!.heroNet).toBe(state.result!.net[0]);
+      expect(m.result!.split).toBe(state.result!.pots.some((p) => p.winners.length > 1));
       expect(m.result!.text).toMatch(/^(SPLIT POT: |YOU WIN |S\d )/);
     }
     expect(categoryPhrase("TRIPS")).toBe("THREE OF A KIND");
@@ -446,6 +506,23 @@ describe("priceLine", () => {
       expect(p.text).not.toMatch(/POT ODDS/);
     }
     expect(priceLine(0, 1200)).toBeNull();
+  });
+
+  it("prices an all-in call for less against the pot it can win, not the whole bet", () => {
+    // Heads-up, the hero (button) limps with 1,000 and has 900 behind; S2 bets 5,000 into 200.
+    let s = createHand({ stacks: [1000, 10000], button: 0 }, { seed: 3 });
+    for (const a of [{ type: "call" }, { type: "check" }, { type: "raise", to: 5000 }] as const) s = applyAction(s, a);
+    const legal = legalActions(s)!;
+    expect(legal.callAmount).toBe(900);
+    const contested = contestedPot(s.committed, 0, legal.callAmount);
+    expect(contested).toBe(2000);
+    const p = priceLine(legal.callAmount, contested - legal.callAmount)!;
+    expect(p.short).toBe("TO CALL 900 INTO 1,100 → NEED 45.0%");
+    expect(p.ratio).toBe("1.2 TO 1");
+    // Each opponent is capped separately at what the hero will have in.
+    expect(contestedPot([100, 2000, 300], 0, 400)).toBe(500 + 500 + 300);
+    // A call that matches the bet plays for the whole pot plus the call.
+    expect(contestedPot([100, 300, 300], 0, 200)).toBe(700 + 200);
   });
 });
 
