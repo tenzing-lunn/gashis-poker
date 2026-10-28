@@ -3,10 +3,26 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Blank, Line, Rule } from "@/components/doc";
+import { DRILL_LABELS, type DrillType } from "@/lib/drills";
 import { lessonComponents } from "../_components/mdx-components";
 import { LESSONS, lessonBySlug } from "../lessons";
+import { LessonProgressProvider } from "./lesson-progress";
+import { PRACTICE_HREF } from "./practice";
 
 type Params = PageProps<"/learn/[slug]">["params"];
+
+// The drill that practices each lesson's math. Rules has none; it points at the table instead.
+const LESSON_DRILL: Partial<Record<string, DrillType>> = {
+  combinatorics: "comboCount",
+  outs: "countOuts",
+  "pot-odds": "potOdds",
+  equity: "equityEstimate",
+  "game-theory": "mdf",
+  preflop: "comboCount",
+  postflop: "equityEstimate",
+  exploitation: "mdf",
+  variance: "callEv",
+};
 
 export function generateStaticParams() {
   return LESSONS.map((l) => ({ slug: l.slug }));
@@ -52,7 +68,11 @@ async function Lesson({ params }: { params: Params }) {
         <span className="text-muted">Module {lesson.module} · 10-module course</span>
       </Line>
       <Blank />
-      <Content components={lessonComponents} />
+      <LessonProgressProvider slug={lesson.slug}>
+        <Content components={lessonComponents} />
+      </LessonProgressProvider>
+      <Blank />
+      <NextSteps slug={lesson.slug} />
       <Blank />
       <Rule />
       <Line as="nav" aria-label="Lessons" className="uppercase">
@@ -67,5 +87,32 @@ async function Lesson({ params }: { params: Params }) {
       </Line>
       <Blank />
     </article>
+  );
+}
+
+function NextSteps({ slug }: { slug: string }) {
+  const drill = LESSON_DRILL[slug];
+  return (
+    <nav aria-label="Next steps" className="uppercase">
+      <Line as="h2">
+        <span>§ Next steps</span>
+      </Line>
+      <ul>
+        <Line as="li">
+          {drill ? (
+            <Link href={`/drill?type=${drill}`}>Drill this: {DRILL_LABELS[drill]} →</Link>
+          ) : (
+            <Link href="/play">Try it: play a few hands →</Link>
+          )}
+        </Line>
+        <Line as="li">
+          {PRACTICE_HREF ? (
+            <Link href={PRACTICE_HREF}>Practice this →</Link>
+          ) : (
+            <span className="text-muted">Practice this (soon)</span>
+          )}
+        </Line>
+      </ul>
+    </nav>
   );
 }

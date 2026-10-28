@@ -20,9 +20,12 @@ function numberFirstCell(children: ReactNode): ReactNode {
 // Prose stays sentence case on the line grid at a 72ch measure; headings are uppercase 15px lines.
 export const lessonComponents: MDXComponents = {
   h1: ({ children, ...props }) => (
-    <Line as="h1" className="uppercase" {...props}>
-      <span className="inv">{children}</span>
-    </Line>
+    <>
+      <Line as="h1" className="uppercase" {...props}>
+        <span className="inv">{children}</span>
+      </Line>
+      <Blank />
+    </>
   ),
   h2: ({ children, ...props }) => (
     <>

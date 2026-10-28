@@ -12,7 +12,7 @@ const sourceCodePro = Source_Code_Pro({
 
 export const metadata: Metadata = {
   title: "Gashi's Poker",
-  description: "A poker math trainer: learn, drill, play bots or friends, and test ideas in the lab.",
+  description: "A poker math trainer: lessons with small solvers to try, drills, and tables to play bots or friends.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

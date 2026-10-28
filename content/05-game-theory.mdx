@@ -1,3 +1,4 @@
+import { AkqGame } from "@/app/learn/_widgets/akq-game";
 import { BluffMdfCalculator } from "@/app/learn/_widgets/bluff-mdf-calculator";
 import { KuhnCfr } from "@/app/learn/_widgets/kuhn-cfr";
 
@@ -41,7 +42,7 @@ Here is the smallest game that contains bluffing. The deck has three cards, A > 
 - The bettor either checks, and the cards are shown at once (higher card wins the pot), or bets **B**.
 - Facing a bet, the caller folds (the bettor wins P) or calls (the higher card wins P + 2B).
 
-Only one player can bet, so this is called a **half-street** game.
+Only one player can bet, so this is called a **half-street** game. This is the simple version, where the caller always holds the K. In Chen and Ankenman's version (*The Mathematics of Poker*) both players get a random card, and the K calls less often there, because the caller's A also calls.
 
 **The easy parts.** With the A, betting is never worse than checking: it wins P if the caller folds and P + B if they call, against P for checking. So the bettor always bets the A. A bet made to get called by worse is a **value bet**. With the Q, checking loses for sure (EV 0). Betting can only win if the caller folds. A **bluff** is a bet with a hand that is usually behind if called, so it makes its money mainly from the opponent folding. A **pure bluff** is the extreme case: a hand that never wins when called (zero equity), like the Q here. The formulas in this lesson assume pure bluffs. The caller's K beats every bluff and loses to every value bet. A hand like that is a **bluff-catcher**.
 
@@ -79,6 +80,10 @@ Now see what deviating costs, starting from those 7.5bb for the bettor:
 Each one-sided deviation hands the opponent 2.5bb. The equilibrium strategies give away nothing: against the equilibrium caller, every bluffing frequency earns the bettor exactly 7.5bb, and against the equilibrium bettor, every calling frequency leaves the caller exactly 2.5bb.
 
 </Example>
+
+Try it below with any pot and bet: move one player's frequency and watch the other player's EV line tilt. It lies flat only at the equilibrium.
+
+<AkqGame />
 
 ## Bluff share, MDF and alpha at any bet size
 
@@ -177,6 +182,8 @@ Press **Run CFR** below. It starts by mixing 50/50 everywhere, which is worth +0
 
 Both charts use a **log scale** on the iteration axis: each labeled step is 10 times larger than the last (1, 10, 100, …), so the early and late iterations both fit. The exploitability chart uses a log scale going down too: each gridline is 10 times smaller than the one above it.
 
+Under **Advanced** you can switch the algorithm to **CFR+**, a refinement that resets negative regrets to 0 and counts later iterations more. When you switch, your last run of the other algorithm stays on both charts as a dashed line, so you can see how much faster CFR+ converges.
+
 <KuhnCfr />
 
 Real poker is the same idea at a vastly larger scale. Variants of CFR are what solved heads-up limit hold'em (a version where every bet has a fixed size) and what powered the first programs to beat top professionals at no-limit.
@@ -207,7 +214,7 @@ Real poker is the same idea at a vastly larger scale. Variants of CFR are what s
   Every β from 0 to ⅓ gives an equilibrium, all with the same value. The J bet is a bluff, and betting the K 3β of the time keeps the betting range balanced (bluffs are β / (β + 3β) = ¼ of it). The game value is −1/18 for Player 1, so acting first is a small disadvantage.
 </Check>
 
-<Practice drill="MDF and bluff-break-even % for a given bet size">Make B / (P + 2B), P / (P + B) and B / (P + B) automatic.</Practice>
+<Practice type="mdf" drill="MDF and bluff-break-even % for a given bet size">Make B / (P + 2B), P / (P + B) and B / (P + B) automatic.</Practice>
 
 ## Key points
 

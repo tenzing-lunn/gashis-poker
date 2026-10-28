@@ -105,7 +105,7 @@ Same cards, from a big underdog to a solid favorite. Card removal shows up in th
 
 **Range against range** works the same way, one level up: average over every pair of compatible combos, one from each range, each pair equally likely. Before the flop there are too many pairs to enumerate quickly, so we sample instead. A **Monte Carlo** estimate deals many random matchups and boards and averages the results. It is approximate, but the error is measurable and shrinks as the number of deals grows. With 2,000,000 deals, `TT+, AQ+` has about **67.4%** equity against `22+, A2+, K9+, QT+, JT`, with a margin of about ±0.06 percentage points: about 95% of the time, an estimate made this way lands within 0.06 points of the true value. Module 9 explains what a margin like this means.
 
-The calculator below handles all three cases. Try the presets, then type your own. When either side is a range and there is no board, it switches to Monte Carlo and shows "≈" with the margin. On a flop, it can often average every matchup exactly.
+The calculator below handles all three cases. Try the presets, then type your own. When either side is a range, it averages over every matchup and breaks the result down by hand class, like the JJ table above. When there are few enough matchups it counts every runout of every one exactly: a few seconds before the flop (the JJ preset reproduces the table), and about a second on a flop, where each matchup has only 990 runouts. While it counts, and whenever there are too many matchups to count, as for AQ against the wide range, it shows a Monte Carlo estimate with "≈" and the margin.
 
 <EquityCalculator />
 
@@ -146,7 +146,7 @@ Using the formula is an approximation because the EQR values you plug in are est
   0.30 × 0.7 × 20 = 4.2bb, compared with 0.30 × 20 = 6bb from raw equity.
 </Check>
 
-<Practice drill="Hand vs hand / hand vs range equity estimate">Estimate equity for a matchup, then see the exact number.</Practice>
+<Practice type="equityEstimate" drill="Hand vs hand / hand vs range equity estimate">Estimate equity for a matchup, then see the exact number.</Practice>
 
 ## Key points
 

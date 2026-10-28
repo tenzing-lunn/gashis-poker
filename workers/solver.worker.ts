@@ -1,5 +1,5 @@
-// The Lab's solver worker: Kuhn CFR, the AKQ game, push/fold Nash, the variance simulator and the DCFR
-// river solver, off the main thread. Message types live in lib/gto/worker-protocol.ts.
+// The solver worker behind the lesson widgets (the AKQ game, push/fold Nash) and the /learn/tools
+// DCFR river solver, off the main thread. Message types live in lib/gto/worker-protocol.ts.
 //
 // One job runs at a time. Jobs yield to the event loop between chunks, so a newer request or a
 // "cancel" (which bump `active`) stops the running job at its next yield. The page can also simply
@@ -8,21 +8,14 @@
 // The job runner (`runJob`) is exported and takes its `post` and `sleep` as arguments, so the same
 // code can be exercised in Node without a Worker.
 
-import { createCfrSolver, type CfrSolver } from "../lib/gto/cfr";
-import { createKuhnGame, kuhnAlpha } from "../lib/gto/kuhn";
+import { createCfrSolver } from "../lib/gto/cfr";
 import { createAkqGame, akqSummary } from "../lib/gto/akq";
 import { createPushFoldSolver, rangeText } from "../lib/gto/pushfold";
-import { simulateVariance } from "../lib/gto/variance";
 import { buildRiverGame, comboClassIndex, comboLabel, createRiverSolver, riverReach, type RiverGame } from "../lib/gto/river";
 import { formatCards } from "../lib/poker/cards";
 import { handCategory } from "../lib/poker/evaluator";
-import type { Game } from "../lib/gto/game";
 import {
-  KUHN_MAX_ITERATIONS,
   RIVER_MAX_ITERATIONS,
-  VARIANCE_MAX_HANDS_X_RUNS,
-  type KuhnBetProbs,
-  type KuhnPoint,
   type RiverComboView,
   type RiverNodeView,
   type RiverPoint,
@@ -46,82 +39,7 @@ const PROGRESS_INTERVAL_MS = 50;
 /** Work between yields when running at full speed. */
 const SLICE_MS = 12;
 
-/** Checkpoints 1, 2, ..., then about `perDecade` per decade up to n (always ending at n). */
-export function logSchedule(n: number, perDecade = 24): number[] {
-  const out: number[] = [];
-  let last = 0;
-  for (let k = 0; ; k++) {
-    const it = Math.round(10 ** (k / perDecade));
-    if (it >= n) break;
-    if (it > last) out.push((last = it));
-  }
-  out.push(n);
-  return out;
-}
-
-function betProbs(game: Game, profile: Float64Array): KuhnBetProbs {
-  const out: KuhnBetProbs = {};
-  for (const s of game.infoSets) out[s.key] = profile[s.offset + 1];
-  return out;
-}
-
 const clampInt = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(x)));
-
-async function runKuhn(req: Extract<JobRequest, { kind: "kuhn" }>, ctx: JobContext): Promise<void> {
-  const t0 = ctx.now();
-  const total = clampInt(req.iterations, 1, KUHN_MAX_ITERATIONS);
-  const pace = Math.max(0, req.paceMs);
-  const game = createKuhnGame();
-  const solver: CfrSolver = createCfrSolver(game, { variant: req.variant });
-  const all: KuhnPoint[] = [];
-  let pending: KuhnPoint[] = [];
-  let lastPost = -Infinity, sliceStart = ctx.now();
-
-  for (const target of logSchedule(total)) {
-    // Step to the checkpoint in slices so a cancel can land even at full speed.
-    while (solver.iterations < target) {
-      solver.step(Math.min(target - solver.iterations, 2000));
-      if (ctx.now() - sliceStart > SLICE_MS) {
-        await ctx.sleep(0);
-        if (!ctx.isCurrent()) return;
-        sliceStart = ctx.now();
-      }
-    }
-    const r = solver.report();
-    const point = { iteration: target, exploitability: r.exploitability, value: r.value };
-    all.push(point);
-    pending.push(point);
-    if (target < total && ctx.now() - lastPost >= PROGRESS_INTERVAL_MS) {
-      ctx.post({ id: req.id, kind: "kuhn", type: "progress", points: pending, iterations: target, strategy: betProbs(game, solver.averageStrategy()) });
-      pending = [];
-      lastPost = ctx.now();
-    }
-    if (pace > 0 && target < total) {
-      await ctx.sleep(pace);
-      if (!ctx.isCurrent()) return;
-      sliceStart = ctx.now();
-    }
-  }
-
-  const avg = solver.averageStrategy();
-  const r = solver.report();
-  ctx.post({
-    id: req.id,
-    kind: "kuhn",
-    type: "done",
-    points: pending,
-    result: {
-      variant: req.variant,
-      iterations: solver.iterations,
-      exploitability: r.exploitability,
-      nashConv: r.nashConv,
-      value: r.value,
-      strategy: betProbs(game, avg),
-      alpha: kuhnAlpha(game, avg),
-      timeMs: ctx.now() - t0,
-    },
-  });
-}
 
 async function runAkq(req: Extract<JobRequest, { kind: "akq" }>, ctx: JobContext): Promise<void> {
   const t0 = ctx.now();
@@ -135,23 +53,13 @@ async function runAkq(req: Extract<JobRequest, { kind: "akq" }>, ctx: JobContext
   }
   const avg = solver.averageStrategy();
   const r = solver.report();
-  const s = akqSummary(game, avg, req.pot, req.bet, r.value);
   ctx.post({
     id: req.id,
     kind: "akq",
     type: "done",
     result: {
-      pot: req.pot,
-      bet: req.bet,
+      ...akqSummary(game, avg, req.pot, req.bet),
       iterations: solver.iterations,
-      yBluff: s.yBluff,
-      yBetA: s.yBetA,
-      kCall: s.kCall,
-      xCallVsBluff: s.xCallVsBluff,
-      xCallGivenBet: s.xCallGivenBet,
-      bluffShareOfBets: s.bluffShareOfBets,
-      valueY: s.valueY,
-      yPotShare: s.yPotShare,
       exploitability: r.exploitability,
       timeMs: ctx.now() - t0,
     },
@@ -194,43 +102,6 @@ async function runPushFold(req: Extract<JobRequest, { kind: "pushfold" }>, ctx: 
       iterations: report.iterations,
       pushRange: rangeText(report.push),
       callRange: rangeText(report.call),
-      timeMs: ctx.now() - t0,
-    },
-  });
-}
-
-async function runVariance(req: Extract<JobRequest, { kind: "variance" }>, ctx: JobContext): Promise<void> {
-  await ctx.sleep(0);
-  if (!ctx.isCurrent()) return;
-  if (req.hands * req.runs > VARIANCE_MAX_HANDS_X_RUNS) throw new Error("hands x runs is too large");
-  const t0 = ctx.now();
-  // simulateVariance is one synchronous call (about 25 ns per hand), so this job has no progress stream.
-  const v = simulateVariance({
-    winRate: req.winRate,
-    stdDev: req.stdDev,
-    hands: req.hands,
-    runs: req.runs,
-    seed: req.seed,
-    samplePaths: 12,
-    pathPoints: 200,
-    histogramBins: 40,
-  });
-  ctx.post({
-    id: req.id,
-    kind: "variance",
-    type: "done",
-    result: {
-      winRate: req.winRate,
-      stdDev: req.stdDev,
-      hands: req.hands,
-      runs: req.runs,
-      seed: req.seed,
-      histogram: { min: v.histogram.min, binWidth: v.histogram.binWidth, counts: Array.from(v.histogram.counts) },
-      pathHands: Array.from(v.pathHands),
-      paths: v.paths.map((p) => Array.from(p)),
-      simulated: v.simulated,
-      analytic: v.analytic,
-      drawdown: v.drawdown,
       timeMs: ctx.now() - t0,
     },
   });
@@ -346,11 +217,9 @@ async function runRiver(req: Extract<JobRequest, { kind: "river" }>, ctx: JobCon
 /** Runs one job, posting its progress and result through ctx.post. Errors become "error" responses. */
 export async function runJob(req: JobRequest, ctx: JobContext): Promise<void> {
   try {
-    if (req.kind === "kuhn") await runKuhn(req, ctx);
-    else if (req.kind === "akq") await runAkq(req, ctx);
+    if (req.kind === "akq") await runAkq(req, ctx);
     else if (req.kind === "pushfold") await runPushFold(req, ctx);
-    else if (req.kind === "river") await runRiver(req, ctx);
-    else await runVariance(req, ctx);
+    else await runRiver(req, ctx);
   } catch (err) {
     if (ctx.isCurrent()) ctx.post({ id: req.id, kind: req.kind, type: "error", message: err instanceof Error ? err.message : String(err) } as SolverResponse);
   }

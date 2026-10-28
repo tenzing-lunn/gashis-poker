@@ -1,12 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { parseCards } from "@/lib/poker/cards";
-import { COMBO_HI, COMBO_LO } from "@/lib/poker/combinatorics";
-import { exactEquity, monteCarloEquity } from "@/lib/poker/equity";
-import { parseRange, removeDeadCards } from "@/lib/poker/range";
+import { useEffect, useRef, useState } from "react";
 import { BoxButton, Field, Legend, Line, Tag, TextButton } from "@/components/doc";
-import { Row, WidgetFrame } from "../_components/widget-frame";
+import { NumTable, Row, WidgetFrame } from "../_components/widget-frame";
+import type { EquityOutcome, EquityQuery, EquityResponse } from "./equity-math";
 
 const PRESETS = [
   { label: "AA vs KK", hero: "AsAh", villain: "KdKc", board: "" },
@@ -17,116 +14,82 @@ const PRESETS = [
   { label: "Range vs range on a flop", hero: "TT+, AQ+", villain: "22+, A2+, K9+, QT+, JT", board: "Qs7h2c" },
 ];
 
-/** Monte Carlo trials: fewer with a board, where each trial costs more in the browser. Both stay near ~250 ms. */
-const MC_TRIALS_PREFLOP = 300_000;
-const MC_TRIALS_POSTFLOP = 60_000;
-/** Exact range enumeration is used on a flop or later while (pairs of hands) × (runouts) stays under this. */
-const EXACT_BUDGET = 1_500_000;
+const START: EquityQuery = { hero: PRESETS[0].hero, villain: PRESETS[0].villain, board: PRESETS[0].board };
+/** Class rows shown before [show all]. */
+const CLASS_ROWS = 12;
 
-interface Query {
-  hero: string;
-  villain: string;
-  board: string;
-}
-
-interface Outcome {
-  equity: number;
-  win: number;
-  tie: number;
-  /** 95% margin (1.96 standard errors) for Monte Carlo, 0 when exact. */
-  margin: number;
-  method: string;
-  heroCombos: number;
-  villainCombos: number;
+interface View {
+  /** The latest result and the query it answers; while a newer query runs it stays on screen, greyed. */
+  outcome: EquityOutcome | null;
+  error: string | null;
+  answers: EquityQuery | null;
+  busy: boolean;
+  progress: { done: number; total: number } | null;
 }
 
 const pct = (x: number, d = 1) => `${(100 * x).toFixed(d)}%`;
-const cardsOf = (combo: number) => [COMBO_HI[combo], COMBO_LO[combo]];
-
-function compute(q: Query): Outcome {
-  const board = parseCards(q.board);
-  if (board.length !== 0 && (board.length < 3 || board.length > 5)) throw new Error("The board must be empty or have 3, 4 or 5 cards");
-  if (new Set(board).size !== board.length) throw new Error("The same card appears twice on the board");
-  const hero = removeDeadCards(parseRange(q.hero), board);
-  const villain = removeDeadCards(parseRange(q.villain), board);
-  if (hero.length === 0) throw new Error("Your side has no hands left after removing the board cards");
-  if (villain.length === 0) throw new Error("The opponent's side has no hands left after removing the board cards");
-
-  // Every compatible pair of hands is equally likely (the two sides cannot share a card).
-  const pairs: [number[], number[]][] = [];
-  for (const a of hero) {
-    for (const b of villain) {
-      const ha = cardsOf(a), hb = cardsOf(b);
-      if (ha[0] !== hb[0] && ha[0] !== hb[1] && ha[1] !== hb[0] && ha[1] !== hb[1]) pairs.push([ha, hb]);
-    }
-  }
-  if (pairs.length === 0) throw new Error("The two sides share every card, so no matchup is possible");
-  // When one side is a single hand, its cards are known too, so remove them from the other side's count.
-  const heroCombos = villain.length === 1 ? removeDeadCards(hero, cardsOf(villain[0])).length : hero.length;
-  const villainCombos = hero.length === 1 ? removeDeadCards(villain, cardsOf(hero[0])).length : villain.length;
-
-  const unseen = 52 - 4 - board.length;
-  const toDeal = 5 - board.length;
-  let runouts = 1;
-  for (let k = 0; k < toDeal; k++) runouts = (runouts * (unseen - k)) / (k + 1);
-
-  if (pairs.length === 1 || (board.length >= 3 && pairs.length * runouts <= EXACT_BUDGET)) {
-    let eq = 0, win = 0, tie = 0;
-    for (const [a, b] of pairs) {
-      const p = exactEquity([a, b], board).players[0];
-      eq += p.equity;
-      win += p.win;
-      tie += p.tie;
-    }
-    const n = pairs.length;
-    return {
-      equity: eq / n,
-      win: win / n,
-      tie: tie / n,
-      margin: 0,
-      method:
-        n === 1
-          ? `Exact: all ${Math.round(runouts).toLocaleString("en-US")} runouts enumerated.`
-          : `Exact: ${n.toLocaleString("en-US")} equally likely matchups × ${Math.round(runouts).toLocaleString("en-US")} runouts each.`,
-      heroCombos,
-      villainCombos,
-    };
-  }
-
-  const trials = board.length ? MC_TRIALS_POSTFLOP : MC_TRIALS_PREFLOP;
-  const r = monteCarloEquity([hero, villain], { board, trials, seed: 1 }).players[0];
-  return {
-    equity: r.equity,
-    win: r.win,
-    tie: r.tie,
-    margin: 1.96 * r.stdErr,
-    method: `Monte Carlo: ${trials.toLocaleString("en-US")} random deals, with a fixed seed (the same random deals every time, so the result repeats exactly). The true value is within the ± margin about 95% of the time.`,
-    heroCombos,
-    villainCombos,
-  };
-}
 
 export function EquityCalculator() {
-  const [hero, setHero] = useState(PRESETS[0].hero);
-  const [villain, setVillain] = useState(PRESETS[0].villain);
-  const [board, setBoard] = useState(PRESETS[0].board);
-  const [query, setQuery] = useState<Query>({ hero: PRESETS[0].hero, villain: PRESETS[0].villain, board: PRESETS[0].board });
+  const [hero, setHero] = useState(START.hero);
+  const [villain, setVillain] = useState(START.villain);
+  const [board, setBoard] = useState(START.board);
+  const [query, setQuery] = useState<EquityQuery>(START);
+  const [view, setView] = useState<View>({ outcome: null, error: null, answers: null, busy: true, progress: null });
+  const [showAll, setShowAll] = useState(false);
 
-  const result = useMemo(() => {
-    try {
-      return { ok: true as const, out: compute(query) };
-    } catch (e) {
-      return { ok: false as const, error: (e as Error).message };
-    }
-  }, [query]);
+  // One worker for this widget. Each job has an id; replies to anything but the latest job are dropped.
+  const workerRef = useRef<Worker | null>(null);
+  const jobRef = useRef(0);
+  const queriesRef = useRef(new Map<number, EquityQuery>());
+
+  const post = (worker: Worker, q: EquityQuery) => {
+    const id = ++jobRef.current;
+    queriesRef.current.clear();
+    queriesRef.current.set(id, q);
+    worker.postMessage({ id, ...q });
+  };
+
+  useEffect(() => {
+    const worker = new Worker(new URL("./equity.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (e: MessageEvent<EquityResponse>) => {
+      const msg = e.data;
+      if (msg.id !== jobRef.current) return;
+      const answers = queriesRef.current.get(msg.id) ?? null;
+      if (msg.type === "progress") setView((v) => ({ ...v, progress: { done: msg.done, total: msg.total } }));
+      else if (msg.type === "error") setView({ outcome: null, error: msg.message, answers, busy: false, progress: null });
+      else setView({ outcome: msg.outcome, error: null, answers, busy: !msg.final, progress: null });
+    };
+    worker.onerror = (e) => {
+      e.preventDefault();
+      const answers = queriesRef.current.get(jobRef.current) ?? null;
+      setView({ outcome: null, error: e.message || "The calculator's worker failed to load", answers, busy: false, progress: null });
+    };
+    workerRef.current = worker;
+    post(worker, START);
+    return () => {
+      worker.terminate();
+      workerRef.current = null;
+    };
+  }, []);
+
+  const calculate = (q: EquityQuery) => {
+    setQuery(q);
+    const worker = workerRef.current;
+    if (!worker) return;
+    setView((v) => ({ ...v, busy: true, progress: null }));
+    post(worker, q);
+  };
 
   const dirty = hero !== query.hero || villain !== query.villain || board !== query.board;
-  const approx = result.ok && result.out.margin > 0 ? "≈ " : "";
+  const stale = view.answers !== query;
+  const out = view.outcome;
+  const approx = out && out.margin > 0 ? "≈ " : "";
+  const classes = out && out.classes.length > 1 ? out.classes : null;
 
   return (
     <WidgetFrame
       title="Equity calculator"
-      footer="Each side can be one hand (AhKd) or a range (QQ+, AK). Hand vs hand is exact. A range is averaged over every compatible hand in it, each equally likely: exactly on a flop or later when that is fast enough, otherwise by Monte Carlo."
+      footer="Each side can be one hand (AhKd) or a range (QQ+, AK). Hand vs hand is exact. A range is averaged over every compatible pair of hands, each equally likely, and broken down by hand class. When every runout of every matchup fits the budget it is counted exactly, after a quick Monte Carlo preview; otherwise the result is Monte Carlo with a ± margin."
     >
       <Line>
         <span className="flex flex-wrap gap-x-[1ch]">
@@ -138,7 +101,7 @@ export function EquityCalculator() {
                 setHero(p.hero);
                 setVillain(p.villain);
                 setBoard(p.board);
-                setQuery({ hero: p.hero, villain: p.villain, board: p.board });
+                calculate({ hero: p.hero, villain: p.villain, board: p.board });
               }}
             >
               [{p.label}]
@@ -149,7 +112,7 @@ export function EquityCalculator() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setQuery({ hero, villain, board });
+          calculate({ hero, villain, board });
         }}
       >
         <Field label="You (hand or range)" value={hero} onChange={(e) => setHero(e.target.value)} spellCheck={false} />
@@ -162,43 +125,102 @@ export function EquityCalculator() {
         </Line>
       </form>
 
+      {view.busy && (
+        <Line>
+          <span className="text-muted tabular-nums">
+            <span aria-hidden="true">● </span>
+            {view.progress
+              ? `Counting every runout exactly: ${view.progress.done.toLocaleString("en-US")} of ${view.progress.total.toLocaleString("en-US")} matchups`
+              : out && !stale
+                ? "Counting every runout exactly"
+                : "Calculating"}
+            …
+          </span>
+        </Line>
+      )}
       <div aria-live="polite">
-        {!result.ok ? (
+        {view.error && !stale ? (
           <Line>
-            <Tag>{result.error}.</Tag>
+            <Tag>{view.error.replace(/\.$/, "")}.</Tag>
           </Line>
         ) : (
-          <>
-            <Line className="items-center">
-              <span className="flex h-[19px] w-full border border-ink text-[12px] leading-none">
-                <span className="flex items-center bg-ink px-[1ch] text-paper" style={{ width: `${100 * result.out.equity}%` }}>
-                  {result.out.equity >= 0.12 ? pct(result.out.equity) : ""}
+          out && (
+            <div className={stale ? "text-muted" : undefined}>
+              <Line className="items-center">
+                <span className="flex h-[19px] w-full border border-ink text-[12px] leading-none">
+                  <span className="flex items-center bg-ink px-[1ch] text-paper" style={{ width: `${100 * out.equity}%` }}>
+                    {out.equity >= 0.12 ? pct(out.equity) : ""}
+                  </span>
+                  <span className="flex flex-1 items-center justify-end px-[1ch]">{out.equity <= 0.88 ? pct(1 - out.equity) : ""}</span>
                 </span>
-                <span className="flex flex-1 items-center justify-end px-[1ch]">{result.out.equity <= 0.88 ? pct(1 - result.out.equity) : ""}</span>
-              </span>
-            </Line>
-            <Row label="Your equity">
-              <span className="inv">
+              </Line>
+              <Row label="Your equity">
+                <span className="inv">
+                  {approx}
+                  {pct(out.equity, 2)}
+                </span>
+                {out.margin > 0 && <span className="text-muted"> ± {(100 * out.margin).toFixed(2)} pts</span>}
+              </Row>
+              <Row label="Opponent's equity">
                 {approx}
-                {pct(result.out.equity, 2)}
-              </span>
-              {result.out.margin > 0 && <span className="text-muted"> ± {(100 * result.out.margin).toFixed(2)} pts</span>}
-            </Row>
-            <Row label="Opponent's equity">
-              {approx}
-              {pct(1 - result.out.equity, 2)}
-            </Row>
-            <Row label="You win outright / split">
-              {approx}
-              {pct(result.out.win, 2)} / {pct(result.out.tie, 2)}
-            </Row>
-            <Row label="Combos left after card removal">
-              {result.out.heroCombos} vs {result.out.villainCombos}
-            </Row>
-            <Legend>
-              <span>{result.out.method}</span>
-            </Legend>
-          </>
+                {pct(1 - out.equity, 2)}
+              </Row>
+              <Row label="You win outright / split">
+                {approx}
+                {pct(out.win, 2)} / {pct(out.tie, 2)}
+              </Row>
+              <Row label="Combos left after card removal">
+                {out.heroCombos} vs {out.villainCombos}
+              </Row>
+              {classes && (
+                <>
+                  <NumTable
+                    head={[
+                      out.bySide === "villain" ? "Their class" : "Your class",
+                      "Combos",
+                      "Weight",
+                      out.bySide === "villain" ? "Your equity vs it" : "Your equity with it",
+                    ]}
+                    rows={[
+                      ...(showAll ? classes : classes.slice(0, CLASS_ROWS)).map((c) => ({
+                        key: c.name,
+                        cells: [
+                          <span key="n" className="normal-case">
+                            {c.name}
+                          </span>,
+                          c.combos,
+                          pct(c.weight),
+                          <>
+                            {approx}
+                            {pct(c.equity)}
+                            {c.margin > 0 && <span className="text-muted"> ± {(100 * c.margin).toFixed(1)}</span>}
+                          </>,
+                        ],
+                      })),
+                      {
+                        key: "total",
+                        cells: ["Total", classes.reduce((n, c) => n + c.combos, 0), "100%", `${approx}${pct(out.equity)}`],
+                      },
+                    ]}
+                  />
+                  {classes.length > CLASS_ROWS && (
+                    <Line>
+                      <span className="text-muted">
+                        {showAll ? `All ${classes.length} classes shown.` : `First ${CLASS_ROWS} of ${classes.length} classes shown.`}
+                      </span>
+                      <TextButton onClick={() => setShowAll(!showAll)}>[{showAll ? "show fewer" : `show all ${classes.length}`}]</TextButton>
+                    </Line>
+                  )}
+                </>
+              )}
+              <Legend>
+                <span>
+                  {classes && "Your equity is the weighted average of the rows: each class's equity times its weight (its share of all the equally likely matchups). "}
+                  {out.method}
+                </span>
+              </Legend>
+            </div>
+          )
         )}
       </div>
     </WidgetFrame>
