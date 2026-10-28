@@ -104,6 +104,7 @@ export class PokerTable extends DurableObject<Env> {
     } finally {
       this.save();
     }
+    await this.wipeIfClosed();
   }
 
   async webSocketClose(ws: WebSocket, code: number): Promise<void> {
@@ -129,12 +130,18 @@ export class PokerTable extends DurableObject<Env> {
     } finally {
       this.save();
     }
-    if (this.room.closed) {
-      // Empty for too long: forget the table entirely, so its code answers 404 and can be drawn again.
-      this.room = null;
-      await this.ctx.storage.deleteAlarm();
-      await this.ctx.storage.deleteAll();
-    }
+    await this.wipeIfClosed();
+  }
+
+  /**
+   * Once the room is over (empty for too long, or ended by the host): forget the table entirely, so its
+   * code answers 404 and can be drawn again.
+   */
+  private async wipeIfClosed(): Promise<void> {
+    if (!this.room?.closed) return;
+    this.room = null;
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
   }
 
   private disconnect(ws: WebSocket): void {

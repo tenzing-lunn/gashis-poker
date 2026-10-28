@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connectTable, createTable, CreateTableError, MAX_FAILED_OPENS, probeTable, type TableClientEvent } from "./client";
+import { connectTable, createTable, CreateTableError, MAX_FAILED_OPENS, probeTable, TABLE_ENDED_CLOSE, type TableClientEvent } from "./client";
 
 const ID = "KQMXWD";
 
-/** A WebSocket the test drives: `open()`, `fail()` (never opened) or `drop()` (closes after opening). */
+/** A WebSocket the test drives: `open()`, `fail()` (never opened) or `drop(code)` (closes after opening). */
 class FakeSocket {
   static readonly OPEN = 1;
   static all: FakeSocket[] = [];
   readyState = 0;
   sent: string[] = [];
   onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((ev: { code: number }) => void) | null = null;
   onmessage: ((ev: { data: unknown }) => void) | null = null;
   constructor(readonly url: string) {
     FakeSocket.all.push(this);
@@ -27,11 +27,11 @@ class FakeSocket {
   }
   fail() {
     this.readyState = 3;
-    this.onclose?.();
+    this.onclose?.({ code: 1006 });
   }
-  drop() {
+  drop(code = 1006) {
     this.readyState = 3;
-    this.onclose?.();
+    this.onclose?.({ code });
   }
 }
 
@@ -76,7 +76,34 @@ async function settleAndRetry() {
   await vi.advanceTimersByTimeAsync(20_000);
 }
 
+describe("host and leave messages", () => {
+  it("sends leave, replaceWithBot, removePlayer and endTable", () => {
+    const { client } = connect();
+    latest().open();
+    expect(client.sendLeave()).toBe(true);
+    expect(client.sendReplaceWithBot(2, "tag")).toBe(true);
+    expect(client.sendRemovePlayer(3)).toBe(true);
+    expect(client.sendEndTable()).toBe(true);
+    expect(latest().sent.slice(1).map((t) => JSON.parse(t))).toEqual([
+      { type: "leave" },
+      { type: "replaceWithBot", seat: 2, persona: "tag" },
+      { type: "removePlayer", seat: 3 },
+      { type: "endTable" },
+    ]);
+  });
+});
+
 describe("connectTable gives up when retrying cannot help", () => {
+  it("stops for good with an ended event when the host ends the table (close 4002)", async () => {
+    const { client, events } = connect();
+    latest().open();
+    latest().drop(TABLE_ENDED_CLOSE);
+    await settleAndRetry();
+    expect(events.filter((e) => e.type === "ended")).toHaveLength(1);
+    expect(FakeSocket.all).toHaveLength(1);
+    expect(client.status).toBe("closed");
+  });
+
   it("stops with no_such_table when the probe answers 404", async () => {
     probeStatus = 404;
     const { client, rejected } = connect();

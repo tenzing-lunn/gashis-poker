@@ -183,7 +183,9 @@ export function modelFromState(state: TableState, hole: HoleMsg | null, playerId
       }
       return s;
     }
-    if (!info || (!info.sittingOut && !info.leaving)) return s;
+    if (!info) return s;
+    // Sat down after this hand was dealt: in from the next one (the shared model would say SITTING OUT).
+    if (!info.sittingOut && !info.leaving) return input ? { ...s, out: true, lastAction: "NEXT HAND" } : s;
     return { ...s, out: true, lastAction: info.leaving ? "LEAVING" : "SITTING OUT" };
   });
   // The strip's marks are each seat's blinds, actions and wins in order: name the timed-out actions.
@@ -264,10 +266,9 @@ export function modeText(state: TableState): string {
   return `${head}  ${playing}/${state.config.seats} IN${out > 0 ? `, ${out} OUT` : ""}`;
 }
 
-/** Why a started table is paused (see isPaused), for the status line. */
+/** Why a started table is paused (see isPaused), for the note line; short enough for one line at 375px. */
 export function pausedText(state: TableState): string {
   const { playing, out } = seatCounts(state);
-  const outText = out === 0 ? "" : ` — ${out} SITTING OUT`;
-  if (playing < 2) return `WAITING FOR A SECOND PLAYER${outText}`;
-  return "WAITING FOR A PLAYER TO COME BACK";
+  if (playing < 2) return `NEED A SECOND PLAYER${out === 0 ? "" : ` · ${out} OUT`}`;
+  return "WAITING FOR A PLAYER TO RETURN";
 }

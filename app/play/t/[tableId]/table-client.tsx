@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { Blank, BoxButton, Line, Rule, Screen, Sheet, Tag, TextButton } from "@/components/doc";
 import { ActionStrip, KeysLegend, PlayControls, PokerTable, revealTable, StatusBlock, StripLegend, TableHeader } from "@/components/table";
@@ -15,11 +16,11 @@ import {
   secondsLeft,
   waitingText,
 } from "@/components/multiplayer/model";
-import { HandLogLines, HostPanel, SeatList, TableBar } from "@/components/multiplayer/panels";
+import { FinalRows, HandLogLines, HostPanel, SeatList, TableBar } from "@/components/multiplayer/panels";
 import { loadNickname, saveNickname } from "@/components/multiplayer/storage";
 import { useTable } from "@/components/multiplayer/use-table";
 import type { RejectCode } from "@/lib/multiplayer/client";
-import { sanitizeName } from "@/lib/multiplayer/protocol";
+import { sanitizeName, type FinalRow } from "@/lib/multiplayer/protocol";
 
 const noSubscribe = () => () => {};
 const pageOrigin = () => window.location.origin;
@@ -156,6 +157,32 @@ function TableGone({ title, missing, onRetry }: { title: ReactNode; missing: boo
   );
 }
 
+/** The host ended the table: everyone's final chips, then where to go next. */
+function TableEnded({ title, rows }: { title: ReactNode; rows: FinalRow[] | null }) {
+  return (
+    <Sheet className="flex-1">
+      <Blank />
+      {title}
+      <Blank />
+      <Line>
+        <Tag role="status">TABLE ENDED BY THE HOST</Tag>
+      </Line>
+      <Blank />
+      {rows ? <FinalRows rows={rows} /> : null}
+      <Blank />
+      <Line>
+        <span className="flex flex-wrap items-baseline gap-[2ch]">
+          <BoxButton href="/play/friends" filled>
+            NEW TABLE →
+          </BoxButton>
+          <Link href="/play/friends">JOIN ANOTHER CODE →</Link>
+        </span>
+      </Line>
+      <Blank />
+    </Sheet>
+  );
+}
+
 function NicknameForm({ initial, error, onJoin }: { initial: string; error: string | null; onJoin: (name: string) => void }) {
   const [value, setValue] = useState(initial);
   const [invalid, setInvalid] = useState(false);
@@ -205,6 +232,8 @@ function NicknameForm({ initial, error, onJoin }: { initial: string; error: stri
 }
 
 const SCREEN_ID = "live-table";
+/** A note never wraps: it is cut with an ellipsis instead (see LiveTable). */
+const NOTE = "inline-block min-w-0 max-w-full truncate align-bottom";
 const pageUrl = () => window.location.href.split(/[?#]/)[0];
 /** Prefixed to the tab title while it is this player's decision, for a tab in the background. */
 const TURN_PREFIX = "● YOUR TURN · ";
@@ -232,6 +261,7 @@ function LiveTable({
   title: ReactNode;
   onRejected: (code: RejectCode, message: string) => void;
 }) {
+  const router = useRouter();
   const { view, actions } = useTable(tableId, name, onRejected);
   const { state, playerId } = view;
   const inviteUrl = useSyncExternalStore(noSubscribe, pageUrl, () => `/play/t/${tableId}`);
@@ -269,16 +299,18 @@ function LiveTable({
   const error = showError ? view.error : null;
   const notSent = useRecent(view.notSentAt, 4000) && !online;
 
-  // The first time a hand reaches this seated player, bring the table band into view once (the controls
-  // do it again on each of the player's own decisions).
-  const dealtIn = !!me && !!state?.started && !!state.hand;
+  // Controls only for a seated player while hands are dealt: none before the first deal or while paused.
+  const controls = !!me && !!state?.started && !!state.hand && !isPaused(state);
+  // The first time the controls appear for this seated player, bring the table band into view once (the
+  // controls do it again on each of the player's own decisions).
   const revealed = useRef(false);
   useEffect(() => {
-    if (!dealtIn || revealed.current) return;
-    revealed.current = true;
+    if (!controls || revealed.current) return;
     const band = document.getElementById(SCREEN_ID);
-    if (band) revealTable(band);
-  }, [dealtIn]);
+    if (!band?.querySelector(".controls-dock")) return;
+    revealed.current = true;
+    revealTable(band);
+  }, [controls]);
 
   // The connection only (DESIGN.md §6): no round-trip time, so the header never jitters.
   const conn = (
@@ -302,11 +334,11 @@ function LiveTable({
     );
   }
 
+  if (state.ended || view.ended) return <TableEnded title={title} rows={state.ended?.rows ?? null} />;
+
   const hand = state.hand;
   const paused = isPaused(state);
   const freeSeat = state.seats.findIndex((s) => s === null);
-  // Controls only for a seated player while hands are dealt: none before the first deal or while paused.
-  const controls = !!me && state.started && !!hand && !paused;
 
   // The status line's words when nobody is on the clock and no result is up.
   const idle =
@@ -348,19 +380,26 @@ function LiveTable({
   );
 
   // One line under the status (or under the controls, in place of the keys) carries whatever needs saying
-  // now, so a message never adds or removes a row.
+  // now, so a message never adds or removes a row. Worded to fit one line at 375px; anything longer (a
+  // server error) is cut with an ellipsis, the whole text still read out.
   const note = notSent ? (
-    <Tag role="alert">NOT CONNECTED — NOT SENT</Tag>
+    <Tag role="alert" className={NOTE}>
+      NOT CONNECTED — NOT SENT
+    </Tag>
   ) : error ? (
-    <Tag role="alert">{error.message.toUpperCase()}</Tag>
+    <Tag role="alert" className={NOTE}>
+      {error.message.toUpperCase()}
+    </Tag>
   ) : !online ? (
-    <span className="text-muted">CONTROLS PAUSED UNTIL RECONNECTED</span>
+    <span className={`text-muted ${NOTE}`}>OFFLINE — CONTROLS PAUSED</span>
+  ) : state.ending ? (
+    <Tag className={NOTE}>TABLE ENDS AFTER THIS HAND</Tag>
   ) : me?.sittingOut ? (
-    <Tag>SITTING OUT AFTER TIMING OUT — PRESS [SIT BACK IN]</Tag>
+    <Tag className={NOTE}>SITTING OUT AFTER 2 TIMEOUTS</Tag>
   ) : me?.leaving ? (
-    <span className="text-muted">LEAVING AFTER THIS HAND</span>
+    <span className={`text-muted ${NOTE}`}>LEAVING AFTER THIS HAND</span>
   ) : paused ? (
-    <span className="text-muted">{pausedText(state)}</span>
+    <span className={`text-muted ${NOTE}`}>{pausedText(state)}</span>
   ) : null;
   const names = model.seats.map((s) => s.name);
 
@@ -369,7 +408,18 @@ function LiveTable({
       <Blank />
       {title}
       <Blank />
-      <TableBar code={tableId} url={inviteUrl} state={state} isHost={isHost} onStart={actions.start} />
+      <TableBar
+        code={tableId}
+        url={inviteUrl}
+        state={state}
+        isHost={isHost}
+        onStart={actions.start}
+        onLeave={() => {
+          actions.leave();
+          router.push("/play/friends");
+        }}
+        onEnd={actions.endTable}
+      />
       <Rule />
       <Screen id={SCREEN_ID} aria-label="Table with friends">
         <TableHeader model={model} title={`TABLE ${tableId}`} mode={modeText(state)} right={conn} waiting={waitingText(state, isHost)} />
@@ -416,7 +466,7 @@ function LiveTable({
       <Blank />
       {isHost ? (
         <>
-          <HostPanel state={state} names={names} actions={actions} />
+          <HostPanel state={state} names={names} heroSeat={heroSeat} actions={actions} />
           <Blank />
         </>
       ) : null}

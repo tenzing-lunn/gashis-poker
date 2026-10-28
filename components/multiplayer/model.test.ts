@@ -235,6 +235,16 @@ describe("modelFromState", () => {
     expect(m.seats[4].kind).toBe("empty");
   });
 
+  it("says NEXT HAND, not SITTING OUT, for a player who sat down after the hand was dealt", () => {
+    const t = fourHanded();
+    t.send("a", { type: "start" });
+    expect(t.state.hand && !t.state.hand.complete).toBe(true);
+    t.join("c", "Cy");
+    t.send("c", { type: "sit", seat: 4 });
+    const m = modelFromState(t.state, null, null);
+    expect(m.seats[4]).toMatchObject({ out: true, lastAction: "NEXT HAND" });
+  });
+
   it("marks a player sitting out once the next hand deals without them", () => {
     const t = fourHanded();
     play(t, 2);
@@ -411,7 +421,7 @@ describe("waitingText", () => {
     t.send("a", { type: "start" });
     expect(isPaused(t.state)).toBe(true);
     expect(modeText(t.state)).toBe("PAUSED  1/4 IN");
-    expect(pausedText(t.state)).toBe("WAITING FOR A SECOND PLAYER");
+    expect(pausedText(t.state)).toBe("NEED A SECOND PLAYER");
     t.send("b", { type: "sit", seat: 1 });
     expect(isPaused(t.state)).toBe(false);
     expect(modeText(t.state)).toBe("LIVE  2/4 IN");

@@ -22,6 +22,18 @@ so a friend can read it out or type it in any case (`lib/multiplayer/code.ts`). 
 - A table that has had nobody connected for 2 hours closes: its storage is wiped and the code can be
   drawn again. Its old link then says the table is gone.
 
+## Leaving, bots for players, ending
+
+| Message | Who | What |
+|---|---|---|
+| `leave` | anyone | `[LEAVE]`: stands up for good (at the end of the hand if dealt in) and goes back to `/play/friends`. The seat remembers the chips they left with (`vacated`), so the host's `[+ BOT]` there plays those chips for them. A host who leaves hands the role on at once. |
+| `replaceWithBot` | host | `[BOT IN]` on a player's row: a bot takes the seat and the player's chips (at the end of the hand if they are dealt in). If the player was away (disconnected, sitting out or leaving), they get the seat back with the bot's chips when they return (rejoin or sit there), at the end of the bot's hand. A player taken out while present does not. |
+| `removePlayer` | host | `[REMOVE]` on a player's row: the player stands up (at the end of the hand) and watches; their chips stay theirs. They can't undo it with `[STAY]`. |
+| `endTable` | host | `[END TABLE]`, then `[CONFIRM — ENDS FOR EVERYONE]`: the table ends after the hand in progress (at once between hands). Everyone gets a last `state` with `ended.rows` (each player's chips and net, buy-ins and rebuys counted; a bot standing in for a player counts as that player), every socket is closed with code 4002 (the client stops, no reconnect), and the storage is wiped like the idle close, so the code answers 404. |
+
+Every buy-in and rebuy is counted per player (`buyIns`), so the final net is chips minus buy-ins. A bot the host
+removes hands its chips back to the player it stood in for, when that player has no seat.
+
 The app finds the server through `NEXT_PUBLIC_TABLE_SERVER_URL` (default `http://localhost:8787`, see
 `.env.example`). The server only accepts browsers from the origins it is told about.
 
