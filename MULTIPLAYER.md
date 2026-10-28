@@ -2,7 +2,25 @@
 
 Tables with friends run on a small Cloudflare Worker in `table-server/` (one Durable Object per table;
 the game rules are `lib/multiplayer/room.ts`). The Next.js app talks to it over a WebSocket:
-`/play/friends` creates a table, `/play/t/<tableId>` is the table.
+`/play/friends` creates a table or joins one by its code, `/play/t/<CODE>` is the table.
+
+## Table codes and routes
+
+A table is named by a 6-letter code such as `KXRTVM`, from `ABCDEFGHJKMNPQRSTUVWXYZ` (no I, L or O),
+so a friend can read it out or type it in any case (`lib/multiplayer/code.ts`). 23^6 ≈ 148M codes.
+
+| Route | What |
+|---|---|
+| `GET /tables/new[?seats=2..8]` (server) | Draws a random code, maps it to a Durable Object with `idFromName(code)` and creates the table there; a code a live table already holds is refused and another is drawn. Answers `{"tableId": "KXRTVM"}`. |
+| `GET /tables/<CODE>/ws` (server) | The table's WebSocket. Uppercase codes only (clients uppercase). 404 when no table holds the code, 426 for a plain GET of a live table (the client's probe). |
+| `/play/friends` (site) | Nickname, JOIN WITH CODE (checks the code exists first), recent tables, and CREATE TABLE. |
+| `/play/t/<CODE>` (site) | The table. A lowercase code redirects to uppercase. |
+
+- Joining sends `sit: true`: a new player takes the lowest free seat, so the creator sits in seat 1 and
+  friends are seated as they arrive (a full table leaves them watching). A reconnect keeps whatever seat
+  the player had, or none.
+- A table that has had nobody connected for 2 hours closes: its storage is wiped and the code can be
+  drawn again. Its old link then says the table is gone.
 
 The app finds the server through `NEXT_PUBLIC_TABLE_SERVER_URL` (default `http://localhost:8787`, see
 `.env.example`). The server only accepts browsers from the origins it is told about.
@@ -19,8 +37,8 @@ cd table-server && npm install && npm run dev
 npm run dev
 ```
 
-Open http://localhost:3000/play/friends, create a table, and open the invite link as a second player
-in a **private window or another browser**. A second normal window shares the first one's storage
+Open http://localhost:3000/play/friends, create a table, and join as a second player (type the code on
+`/play/friends` or open the link) in a **private window or another browser**. A second normal window shares the first one's storage
 (nickname and seat token), so it rejoins as you instead of as a new player.
 
 Use `localhost`, not `127.0.0.1`: `npm run dev` in `table-server/` allows only the origin
@@ -50,7 +68,8 @@ from `DEV_ORIGINS` (local) or `ALLOWED_ORIGIN` (deployed).
 ## Deploy
 
 Live now: site `https://gashis-poker.vercel.app` (Vercel project `gashis-poker`), table server
-`https://gashis-poker-tables.10zinglunn.workers.dev`. To ship changes: `cd table-server && npx wrangler deploy`
+`https://gashis-poker-tables.10zinglunn.workers.dev`. Deploy the server and the site together when the
+table routes change (the 6-letter codes replaced 64-hex ids: old links stop working). To ship changes: `cd table-server && npx wrangler deploy`
 for the server, `vercel deploy --prod` from the root for the site (`.vercelignore` keeps `.claude/`,
 `table-server/` and `oracle/` out of the upload).
 

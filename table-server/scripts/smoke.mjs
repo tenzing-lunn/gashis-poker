@@ -31,6 +31,12 @@ if (!res.ok) fail(`/tables/new -> ${res.status}`);
 if (res.headers.get("access-control-allow-origin") !== ORIGIN) fail("missing CORS header");
 const { tableId } = await res.json();
 console.log("table", tableId);
+if (!/^[ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(tableId)) fail(`table code ${tableId} is not 6 letters from the code alphabet`);
+// A well-formed code nobody holds, and a malformed one, are both "no such table".
+for (const code of ["ZZZZZZ", tableId.toLowerCase()]) {
+  const r = await fetch(`${BASE}/tables/${code}/ws`, { headers: { Origin: ORIGIN } });
+  if (code !== tableId && r.status !== 404) fail(`/tables/${code}/ws -> ${r.status}, expected 404`);
+}
 const wsUrl = `${BASE.replace(/^http/, "ws")}/tables/${tableId}/ws`;
 
 // Origin is enforced on the upgrade: a foreign site's socket never opens.

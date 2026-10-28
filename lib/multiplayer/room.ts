@@ -11,6 +11,9 @@
 // Timing uses one alarm: the next due event is either the player on the clock (a human's deadline or a
 // bot's think delay) or the next deal after a finished hand. `onAlarm` handles whatever is due and the
 // room asks for the next alarm through `setAlarm`.
+//
+// A table nobody is connected to for `idleMs` closes: `closed` turns true and the platform wipes its
+// storage, so the table code can be reused and a stale link says the table is gone.
 
 import {
   applyAction,
@@ -24,6 +27,7 @@ import {
   type HandState,
 } from "../engine/engine";
 import { PERSONAS, type PersonaId } from "../bots/personas";
+import { DEFAULT_ROOM_CONFIG, type RoomConfig } from "./config";
 import { chooseAction } from "../bots/policy";
 import { botView } from "../bots/view";
 import { createRng, formatCard, FULL_DECK, type Card } from "../poker/cards";
@@ -40,7 +44,6 @@ import {
   type SeatInfo,
   type ServerMessage,
   type ServerMessageBody,
-  type TableConfigPublic,
   type TableState,
 } from "./protocol";
 
@@ -56,31 +59,7 @@ export interface RoomDeps {
   random(): number;
 }
 
-export interface RoomConfig extends TableConfigPublic {
-  /** Pause after a hand ends, ms. */
-  betweenHandsMs: number;
-  botDelayMinMs: number;
-  botDelayMaxMs: number;
-  /** Consecutive timeouts before a player is marked sitting out. */
-  maxTimeouts: number;
-  /** Messages allowed per connection per `rateWindowMs`. */
-  rateLimit: number;
-  rateWindowMs: number;
-}
-
-export const DEFAULT_ROOM_CONFIG: RoomConfig = {
-  seats: 6,
-  smallBlind: 50,
-  bigBlind: 100,
-  startingStack: 10_000,
-  turnMs: 20_000,
-  betweenHandsMs: 3_000,
-  botDelayMinMs: 300,
-  botDelayMaxMs: 900,
-  maxTimeouts: 2,
-  rateLimit: 20,
-  rateWindowMs: 1_000,
-};
+export { DEFAULT_ROOM_CONFIG, type RoomConfig } from "./config";
 
 export const MIN_TABLE_SEATS = 2;
 export const MAX_TABLE_SEATS = 8;
@@ -160,7 +139,12 @@ export interface RoomSnapshot {
   hand: HandRecord | null;
   lastResult: HandResultPublic | null;
   nextHandAt: number | null;
+  /** Missing in older snapshots. */
+  idleSince?: number | null;
 }
+
+/** Set while `restore` constructs a room, so the constructor leaves scheduling to restore. */
+let restoring = false;
 
 export class TableRoom {
   private readonly deps: RoomDeps;
@@ -176,6 +160,15 @@ export class TableRoom {
   private hand: HandRecord | null = null;
   private lastResult: HandResultPublic | null = null;
   private nextHandAt: number | null = null;
+  /** Since when the table has had no connection, epoch ms; null while anyone is connected. */
+  private idleSince: number | null;
+  /**
+   * While anyone is connected: a wake-up idleMs out (not persisted), so that sockets lost without a close
+   * event (a deploy restarts the object) are noticed. The platform's constructor then syncs connections
+   * with the sockets that are really open, and the idle clock starts.
+   */
+  private backstopAt: number | null = null;
+  private isClosed = false;
 
   private broadcastPending = false;
   private persistPending = false;
@@ -192,10 +185,13 @@ export class TableRoom {
       throw new Error(`A table has ${MIN_TABLE_SEATS}-${MAX_TABLE_SEATS} seats, got ${n}`);
     }
     this.seats = new Array(n).fill(null);
+    this.idleSince = deps.now();
     // Starting from the clock keeps `seq` increasing even across a restore that lost a few un-persisted
     // pongs (see restore): the clock advances far faster than messages are sent.
     this.seq = deps.now();
     this.persistPending = true;
+    // The idle deadline of a table nobody has opened yet (restore schedules once it is filled in).
+    if (!restoring) this.schedule();
   }
 
   // -------------------------------------------------------------------------
@@ -253,6 +249,14 @@ export class TableRoom {
 
   onAlarm(): void {
     this.alarmAt = undefined; // the platform alarm has fired; always re-arm below
+    if (this.isClosed) return;
+    if (this.idleSince !== null && this.deps.now() >= this.idleSince + this.config.idleMs) {
+      this.isClosed = true;
+      this.deps.setAlarm(null);
+      this.alarmAt = null;
+      return;
+    }
+    if (this.backstopAt !== null && this.deps.now() >= this.backstopAt) this.backstopAt = this.deps.now() + this.config.idleMs;
     let ok = false;
     try {
       for (let guard = 0; guard < 1000; guard++) {
@@ -292,6 +296,11 @@ export class TableRoom {
     this.flush();
   }
 
+  /** The table sat empty for `idleMs` and is over: the platform should delete everything it stored. */
+  get closed(): boolean {
+    return this.isClosed;
+  }
+
   /** True once if anything worth persisting changed since the last call. */
   consumeDirty(): boolean {
     const d = this.persistPending;
@@ -317,13 +326,20 @@ export class TableRoom {
       hand: this.hand,
       lastResult: this.lastResult,
       nextHandAt: this.nextHandAt,
+      idleSince: this.idleSince,
     });
   }
 
   static restore(snapshot: RoomSnapshot, deps: RoomDeps): TableRoom {
     if (snapshot.v !== 1 && snapshot.v !== 2) throw new Error(`Unknown room snapshot version ${String(snapshot.v)}`);
     const s = structuredCloneJson(snapshot);
-    const room = new TableRoom(deps, s.config);
+    restoring = true;
+    let room: TableRoom;
+    try {
+      room = new TableRoom(deps, s.config);
+    } finally {
+      restoring = false;
+    }
     const now = deps.now();
     // Version 1 snapshots may lack these times: count from the restore rather than compute NaN deadlines.
     const time = (t: number | undefined): number => (typeof t === "number" && Number.isFinite(t) ? t : now);
@@ -338,6 +354,7 @@ export class TableRoom {
     room.hand = s.hand;
     room.lastResult = s.lastResult;
     room.nextHandAt = s.nextHandAt;
+    room.idleSince = s.idleSince !== undefined ? s.idleSince : room.conns.size === 0 ? now : null;
     room.persistPending = false;
     room.schedule();
     return room;
@@ -402,7 +419,7 @@ export class TableRoom {
       return;
     }
     if (msg.type === "join") {
-      this.join(connId, conn, msg.name, msg.token);
+      this.join(connId, conn, msg.name, msg.token, msg.sit === true);
       return;
     }
     const player = conn.playerId ? this.players.get(conn.playerId) : undefined;
@@ -426,7 +443,7 @@ export class TableRoom {
     }
   }
 
-  private join(connId: string, conn: Conn, rawName: string, token: string | undefined): void {
+  private join(connId: string, conn: Conn, rawName: string, token: string | undefined, sit: boolean): void {
     if (conn.playerId) {
       this.error(connId, "already_joined", "Already joined");
       return;
@@ -475,6 +492,10 @@ export class TableRoom {
       };
       this.players.set(player.id, player);
       this.hostId ??= player.id;
+      if (sit) {
+        const free = this.seats.indexOf(null);
+        if (free >= 0) this.seatPlayer(player, free);
+      }
     }
     conn.playerId = player.id;
     this.sendTo(connId, {
@@ -806,8 +827,21 @@ export class TableRoom {
   }
 
   private schedule(): void {
+    if (this.isClosed) return;
+    // Every change to the connections ends here (onConnect, flush), so the idle clock is kept here too.
+    if (this.conns.size === 0 && this.idleSince === null) {
+      this.idleSince = this.deps.now();
+      this.persistPending = true;
+    } else if (this.conns.size > 0 && this.idleSince !== null) {
+      this.idleSince = null;
+      this.persistPending = true;
+    }
     const h = this.hand;
     const dues: number[] = [];
+    if (this.conns.size === 0) this.backstopAt = null;
+    else this.backstopAt ??= this.deps.now() + this.config.idleMs;
+    if (this.idleSince !== null) dues.push(this.idleSince + this.config.idleMs);
+    if (this.backstopAt !== null) dues.push(this.backstopAt);
     const game = h && !h.state.complete && h.turnDue !== null ? h.turnDue : this.nextHandAt;
     if (game !== null) dues.push(game);
     for (const c of this.conns.values()) if (c.playerId === null) dues.push(c.openedAt + JOIN_TIMEOUT_MS);

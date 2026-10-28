@@ -1,10 +1,12 @@
-// The hand log under a multiplayer table, dealer-trace style (DESIGN.md §6): `+0.074  S2 CHECK`.
+// The hand log under a multiplayer table, dealer-trace style (DESIGN.md §6): `+0.074  BEA CHECK`.
+// Players are named as on the table (humans by handle, bots by persona); an empty seat by its number.
 // Built from successive `state` snapshots: each new action, board deal and result becomes a row, timed
 // from when this client first saw the hand. Pure, so it is unit-tested.
 
 import { fmt, padHand, rankText, suitGlyph } from "@/components/table/model";
 import type { PublicAction, TableState } from "@/lib/multiplayer/protocol";
 import { parseCard } from "@/lib/poker/cards";
+import { seatSources } from "./model";
 
 export interface LogRow {
   key: string;
@@ -31,13 +33,12 @@ export const LOG_ROWS = 20;
 
 export const emptyLog = (): HandLog => ({ handNo: 0, startedAt: 0, actions: 0, board: 0, result: false, count: 0, rows: [] });
 
-const seatLabel = (seat: number) => `S${seat + 1}`;
 const cardText = (c: string) => {
   const id = parseCard(c);
   return `${rankText(id)}${suitGlyph(id)}`;
 };
 
-export function actionWords(a: PublicAction): string {
+export function actionWords(a: PublicAction, name: (seat: number) => string): string {
   let w: string;
   if (a.action === "fold") w = "FOLD";
   else if (a.action === "check") w = "CHECK";
@@ -45,7 +46,7 @@ export function actionWords(a: PublicAction): string {
   else if (a.action === "call") w = `CALL ${fmt(a.to)}`;
   else if (a.action === "bet") w = `BET ${fmt(a.to)}`;
   else w = `RAISE TO ${fmt(a.to)}`;
-  return `${seatLabel(a.seat)} ${w}${a.auto ? " (AUTO)" : ""}`;
+  return `${name(a.seat)} ${w}${a.auto ? " (AUTO)" : ""}`;
 }
 
 const STREET_AT: Record<number, string> = { 3: "FLOP", 4: "TURN", 5: "RIVER" };
@@ -55,6 +56,8 @@ export function updateLog(log: HandLog, state: TableState, now: number): HandLog
   const hand = state.hand;
   if (!hand) return log;
   let next = log;
+  const names = seatSources(state).map((s) => s?.name ?? null);
+  const seatLabel = (seat: number) => names[seat] ?? `S${seat + 1}`;
   const rows: LogRow[] = [];
   const push = (text: string) => rows.push({ key: String(next.count + rows.length), t: now - next.startedAt, text });
 
@@ -77,7 +80,7 @@ export function updateLog(log: HandLog, state: TableState, now: number): HandLog
   const fresh = hand.actions.slice(next.actions);
   for (const a of fresh) {
     dealTo(a.street === "flop" ? 3 : a.street === "turn" ? 4 : a.street === "river" ? 5 : 0);
-    push(actionWords(a));
+    push(actionWords(a, seatLabel));
   }
   dealTo(hand.board.length);
 

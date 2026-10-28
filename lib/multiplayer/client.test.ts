@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connectTable, createTable, CreateTableError, MAX_FAILED_OPENS, type TableClientEvent } from "./client";
+import { connectTable, createTable, CreateTableError, MAX_FAILED_OPENS, probeTable, type TableClientEvent } from "./client";
 
-const ID = "a".repeat(64);
+const ID = "KQMXWD";
 
 /** A WebSocket the test drives: `open()`, `fail()` (never opened) or `drop()` (closes after opening). */
 class FakeSocket {
@@ -57,10 +57,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function connect() {
+function connect(sit?: boolean) {
   const events: TableClientEvent[] = [];
   const client = connectTable("http://localhost:8787", ID, {
     name: "Alice",
+    sit,
     WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
     pingIntervalMs: 1_000_000,
   });
@@ -156,6 +157,35 @@ describe("connectTable gives up when retrying cannot help", () => {
     expect(client.sendSit(1)).toBe(false);
     latest().open();
     expect(client.sendSit(1)).toBe(true);
+  });
+});
+
+describe("join", () => {
+  it("asks for a seat only when sit is set", () => {
+    connect();
+    latest().open();
+    expect(JSON.parse(latest().sent[0])).toEqual({ type: "join", name: "Alice" });
+    connect(true);
+    latest().open();
+    expect(JSON.parse(latest().sent[0])).toEqual({ type: "join", name: "Alice", sit: true });
+    expect(latest().url).toBe(`ws://localhost:8787/tables/${ID}/ws`);
+  });
+});
+
+describe("probeTable", () => {
+  it("tells an open table from a missing one, a refused site and a dead server", async () => {
+    const cases: [number | null, string][] = [
+      [426, "open"],
+      [404, "no_such_table"],
+      [403, "origin_refused"],
+      [503, "open"],
+      [null, "unreachable"],
+    ];
+    for (const [status, want] of cases) {
+      probeStatus = status;
+      expect(await probeTable("http://localhost:8787", ID)).toBe(want);
+    }
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]?.toString()).toBe(`http://localhost:8787/tables/${ID}/ws`);
   });
 });
 

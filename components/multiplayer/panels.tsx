@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
 import { BoxButton, Legend, Line, TextButton, Tx } from "@/components/doc";
 import { TableHeader } from "@/components/table";
 import { fmt } from "@/components/table/model";
 import { PERSONA_IDS, PERSONAS, type PersonaId } from "@/lib/bots/personas";
 import type { TableState } from "@/lib/multiplayer/protocol";
 import { stamp, type HandLog } from "./log";
-import { cycleNext } from "./model";
+import { cycleNext, seatedCount } from "./model";
 import type { TableActions } from "./use-table";
 
 /** A persona's display name in caps, `MIXED` for a random one: `TAG`, `CALLING STATION`. */
@@ -67,28 +67,13 @@ export function LiveHeader({ waiting, ...props }: ComponentProps<typeof TableHea
   );
 }
 
-/** Host only: start the table, put bots in empty seats, take them out again. */
+/** Host only: put bots in empty seats and take them out again. */
 export function HostPanel({ state, names, actions }: { state: TableState; names: string[]; actions: TableActions }) {
   const [persona, setPersona] = useState<Record<number, PersonaId>>({});
-  const seated = state.seats.filter(Boolean).length;
   return (
     <>
       <Line center>
-        <span>HOST</span>
-      </Line>
-      <Line>
-        <span>
-          {state.started
-            ? "TABLE STARTED. HANDS DEAL WHILE TWO OR MORE ARE SEATED."
-            : seated >= 2
-              ? "READY: DEAL THE FIRST HAND WHEN EVERYONE IS IN."
-              : "SEAT AT LEAST TWO PLAYERS OR BOTS TO START."}
-        </span>
-        {state.started ? null : (
-          <BoxButton filled={seated >= 2} disabled={seated < 2} onClick={actions.start}>
-            START →
-          </BoxButton>
-        )}
+        <span>BOTS (HOST)</span>
       </Line>
       {state.seats.map((s, i) => {
         if (s && s.kind === "human") return null;
@@ -130,10 +115,39 @@ export function HostPanel({ state, names, actions }: { state: TableState; names:
   );
 }
 
-/** The table link in an underlined read-only field with a [COPY] button (DESIGN.md §6). */
-export function InviteLine({ url }: { url: string }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState<"yes" | "select" | null>(null);
+/** Copies text: the async clipboard, else a selected off-screen textarea and execCommand. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Refused (no permission, not focused): try the old way.
+  }
+  // Selecting the textarea moves focus; give it back afterwards so keyboard users stay where they were.
+  const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.setAttribute("readonly", "");
+  el.style.position = "fixed";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  el.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  el.remove();
+  focused?.focus({ preventScroll: true });
+  return ok;
+}
+
+/** `[COPY CODE]` that flashes `[COPIED]` / `[COPY FAILED]` for 2 s, announced politely. */
+function CopyButton({ text, label, what }: { text: string; label: string; what: string }) {
+  const [result, setResult] = useState<"ok" | "failed" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -141,41 +155,87 @@ export function InviteLine({ url }: { url: string }) {
     },
     [],
   );
-  const flash = (v: "yes" | "select") => {
-    if (timer.current) clearTimeout(timer.current);
-    setCopied(v);
-    timer.current = setTimeout(() => setCopied(null), 2000);
-  };
-  const fallback = () => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    el.select();
-    let ok = false;
-    try {
-      ok = document.execCommand("copy");
-    } catch {
-      ok = false;
-    }
-    flash(ok ? "yes" : "select");
-  };
-  const copy = () => {
-    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(() => flash("yes"), fallback);
-    else fallback();
-  };
+  const copy = () =>
+    void copyText(text).then((ok) => {
+      if (timer.current) clearTimeout(timer.current);
+      setResult(ok ? "ok" : "failed");
+      timer.current = setTimeout(() => setResult(null), 2000);
+    });
   return (
-    <div className="l field">
-      <span>INVITE</span>
-      <span className="flex items-baseline gap-[2ch]">
-        <input ref={ref} className="u min-w-0 flex-1" readOnly value={url} aria-label="Table link" onFocus={(e) => e.currentTarget.select()} />
-        <TextButton className="shrink-0" onClick={copy}>
-          {copied === "yes" ? "[COPIED]" : copied === "select" ? "[PRESS CTRL+C]" : "[COPY]"}
-        </TextButton>
-        <span className="sr-only" aria-live="polite">
-          {copied === "yes" ? "Link copied" : copied === "select" ? "Link selected; copy it with your keyboard" : ""}
-        </span>
+    <>
+      <TextButton onClick={copy}>{result === "ok" ? "[COPIED]" : result === "failed" ? "[COPY FAILED]" : `[${label}]`}</TextButton>
+      <span className="sr-only" aria-live="polite">
+        {result === "ok" ? `${what} copied` : result === "failed" ? `Could not copy the ${what.toLowerCase()}` : ""}
       </span>
-    </div>
+    </>
+  );
+}
+
+/** `.apply:disabled`'s look for an aria-disabled box button (it keeps focus when it turns on). */
+const DISABLED_LOOK =
+  "aria-disabled:cursor-default! aria-disabled:border-faint! aria-disabled:bg-transparent! aria-disabled:text-muted!";
+
+/**
+ * The lines above the table: the code with copy buttons for everyone; before START also what to do
+ * with it and, for the host, START. Once started only the code line stays, so play never moves the table.
+ */
+export function TableBar({
+  code,
+  url,
+  state,
+  isHost,
+  onStart,
+}: {
+  code: string;
+  url: string;
+  state: TableState;
+  isHost: boolean;
+  onStart: () => void;
+}) {
+  const seated = seatedCount(state);
+  const ready = seated >= 2;
+  // Unique per mount: Next keeps earlier table pages in the DOM, hidden.
+  const whyId = useId();
+  return (
+    <>
+      <Line>
+        <span>
+          CODE <span className="inv">{code}</span>
+        </span>
+        <span className="whitespace-pre-wrap">
+          <CopyButton text={code} label="COPY CODE" what="Code" />
+          {"  "}
+          <CopyButton text={url} label="COPY LINK" what="Link" />
+        </span>
+      </Line>
+      {state.started ? null : (
+        <>
+          <Line>
+            <span>SEND THE CODE OR LINK TO FRIENDS. NO ACCOUNT NEEDED.</span>
+          </Line>
+          {isHost ? (
+            <Line>
+              <span id={whyId}>
+                {seated}/{state.config.seats} SEATED — {ready ? "READY WHEN EVERYONE IS IN" : "WAITING FOR A FRIEND, OR ADD A BOT BELOW"}
+              </span>
+              <BoxButton
+                filled={ready}
+                aria-disabled={ready ? undefined : true}
+                aria-describedby={whyId}
+                className={DISABLED_LOOK}
+                onClick={ready ? onStart : undefined}
+              >
+                START →
+              </BoxButton>
+            </Line>
+          ) : (
+            <Line>
+              <span>WAITING FOR THE HOST TO START</span>
+            </Line>
+          )}
+        </>
+      )}
+    </>
   );
 }
 

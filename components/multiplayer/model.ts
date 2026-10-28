@@ -204,6 +204,12 @@ export function cycleNext<T>(options: readonly T[], value: T): T {
 
 /** The hand line before the first deal, instead of `HAND 000000`. */
 export function waitingText(state: TableState, isHost: boolean): string {
-  if (!state.started) return isHost ? "HOST: PRESS START" : "WAITING FOR THE HOST";
+  if (!state.started) {
+    if (!isHost) return "WAITING FOR THE HOST";
+    return seatedCount(state) >= 2 ? "PRESS START ABOVE" : "WAITING FOR A SECOND PLAYER";
+  }
   return "WAITING FOR PLAYERS";
 }
+
+/** Seats taken, by humans or bots. */
+export const seatedCount = (state: TableState): number => state.seats.filter(Boolean).length;
