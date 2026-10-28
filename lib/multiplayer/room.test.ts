@@ -1138,6 +1138,93 @@ describe("TableRoom host tools: leave, bot in, remove, end", () => {
     expect(h.closeCodes.get("a")).toBe(4002);
   });
 
+  it("doesn't let a player the host took out while present reclaim through a bot added later on that seat", () => {
+    const h = lobby(42);
+    const token = tokenOf(h, "b");
+    // Kick with a bot while Bob is at the table, then the host removes that bot: his chips come back to him.
+    h.send("a", { type: "replaceWithBot", seat: 1, persona: "tag" });
+    h.send("a", { type: "removeBot", seat: 1 });
+    expect(h.state("a").vacated[1]).toEqual({ name: "Bob", stack: 10_000 });
+    // A bot the host puts on that seat plays his chips, but he can't take the seat back.
+    h.send("a", { type: "addBot", seat: 1, persona: "nit" });
+    expect(h.state("a").seats[1]).toMatchObject({ kind: "bot", stack: 10_000, replaces: "Bob" });
+    expect(h.state("a").seats[1]!.reclaimable).toBeUndefined();
+    h.close("b");
+    h.connect("b2");
+    h.send("b2", { type: "join", name: "Bob", token });
+    expect(h.lastOf("b2", "welcome")!.you.seat).toBeNull();
+    h.send("b2", { type: "sit", seat: 1 });
+    expect(h.lastOf("b2", "error")?.code).toBe("seat_taken");
+    expect(h.state("a").seats[1]).toMatchObject({ kind: "bot" });
+  });
+
+  it("doesn't let a player the host removed while present reclaim through a bot on the seat", () => {
+    const h = lobby(43);
+    h.send("a", { type: "removePlayer", seat: 1 });
+    h.send("a", { type: "addBot", seat: 1, persona: "nit" });
+    expect(h.state("a").seats[1]!.reclaimable).toBeUndefined();
+    h.send("b", { type: "sit", seat: 1 });
+    expect(h.lastOf("b", "error")?.code).toBe("seat_taken");
+  });
+
+  it("refuses a fresh buy-in elsewhere while a bot holds the player's chips for them", () => {
+    const h = lobby(44);
+    h.send("b", { type: "leave" });
+    h.send("a", { type: "addBot", seat: 1, persona: "lag" });
+    expect(h.state("b").seats[1]).toMatchObject({ replacesId: idOf(h, "b"), reclaimable: true });
+    h.send("b", { type: "sit", seat: 2 });
+    expect(h.lastOf("b", "error")).toMatchObject({ code: "bad_seat", message: expect.stringContaining("S2") });
+    expect(h.state("a").seats[2]).toBeNull();
+    h.send("b", { type: "sit", seat: 1 });
+    expect(h.state("a").seats[1]).toMatchObject({ kind: "human", name: "Bob", stack: 10_000 });
+  });
+
+  it("cancels the bot when the away player is back before it sat: by rejoining", () => {
+    const h = setupTable(45, [{ seat: 1, persona: "station" }]);
+    const token = tokenOf(h, "b");
+    h.close("b");
+    h.send("a", { type: "replaceWithBot", seat: 3, persona: "nit" });
+    expect(h.state("a").seats[3]).toMatchObject({ kind: "human", leaving: true });
+    h.connect("b2");
+    h.send("b2", { type: "join", name: "Bob", token });
+    expect(h.state("a").seats[3]).toMatchObject({ kind: "human", name: "Bob", leaving: false });
+    until(h, { a: 0, b2: 3 }, () => (h.state("a").handNo ?? 0) >= 3);
+    expect(h.state("a").seats[3]).toMatchObject({ kind: "human", name: "Bob" });
+    expect(h.state("a").seats.filter((s) => s?.kind === "bot")).toHaveLength(1);
+  });
+
+  it("cancels the bot when the away player is back before it sat: by pressing STAY", () => {
+    const h = setupTable(46, [{ seat: 1, persona: "station" }]);
+    h.send("b", { type: "stand" });
+    expect(h.state("a").seats[3]).toMatchObject({ leaving: true });
+    h.send("a", { type: "replaceWithBot", seat: 3, persona: "nit" });
+    h.send("b", { type: "sit", seat: 3 });
+    expect(h.lastOf("b", "error")).toBeUndefined();
+    expect(h.state("a").seats[3]).toMatchObject({ kind: "human", name: "Bob", leaving: false });
+    until(h, { a: 0, b: 3 }, () => (h.state("a").handNo ?? 0) >= 3);
+    expect(h.state("a").seats[3]).toMatchObject({ kind: "human", name: "Bob" });
+  });
+
+  it("takes the seat back from a seated bot by sitting there: after the bot's hand, flagged meanwhile", () => {
+    const h = setupTable(47, [{ seat: 1, persona: "station" }]);
+    h.send("b", { type: "leave" });
+    until(h, { a: 0 }, () => h.state("a").seats[3] === null);
+    h.send("a", { type: "addBot", seat: 3, persona: "nit" });
+    until(h, { a: 0 }, () => !!h.state("a").hand && !h.state("a").hand!.complete && h.state("a").seats[3]!.inHand);
+    h.send("b", { type: "sit", seat: 3 });
+    expect(h.state("a").seats[3]).toMatchObject({ kind: "bot", reclaimable: true, reclaiming: true });
+    until(h, { a: 0 }, () => h.state("a").seats[3]?.kind === "human");
+    expect(h.state("a").seats[3]).toMatchObject({ name: "Bob" });
+  });
+
+  it("restores an ended table as closed", () => {
+    const h = lobby(48);
+    h.send("a", { type: "endTable" });
+    const snap = h.room.serialize();
+    const r = new Harness(48, {}, { snapshot: JSON.parse(JSON.stringify(snap)), t: h.t, calls: h.calls });
+    expect(r.room.closed).toBe(true);
+  });
+
   it("keeps the new fields across serialize() -> restore()", () => {
     const h = lobby(41);
     h.connect("c");
@@ -1148,7 +1235,7 @@ describe("TableRoom host tools: leave, bot in, remove, end", () => {
     h.send("a", { type: "start" });
     h.send("a", { type: "endTable" });
     const snap = h.room.serialize();
-    expect(snap.vacated).toEqual([null, null, expect.any(String)]);
+    expect(snap.vacated).toEqual([null, null, { id: expect.any(String), away: true }]);
     const r = new Harness(41, {}, { snapshot: JSON.parse(JSON.stringify(snap)), t: h.t, calls: h.calls });
     expect(stripSeq(r.room.serialize())).toEqual(stripSeq(snap));
     expect(r.room.publicState()).toMatchObject({ ending: true, vacated: [null, null, { name: "Cid", stack: 10_000 }] });

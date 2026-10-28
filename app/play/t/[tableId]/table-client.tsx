@@ -135,7 +135,7 @@ function TableGone({ title, missing, onRetry }: { title: ReactNode; missing: boo
       <Line as="p">
         <span>
           {missing
-            ? "NO TABLE WITH THIS CODE. IT MAY BE MISTYPED, OR THE TABLE CLOSED AFTER 2 HOURS WITH NOBODY AT IT."
+            ? "NO TABLE WITH THIS CODE. IT MAY BE MISTYPED, OR THE TABLE WAS CLOSED (BY ITS HOST, OR AFTER 2 HOURS WITH NOBODY AT IT)."
             : "IT MAY BE DOWN, OR THIS DEVICE IS OFFLINE. TRY AGAIN IN A MOMENT."}
         </span>
       </Line>
@@ -339,13 +339,17 @@ function LiveTable({
   const hand = state.hand;
   const paused = isPaused(state);
   const freeSeat = state.seats.findIndex((s) => s === null);
+  // A bot playing this watcher's chips since they went away: they may take that seat back.
+  const standIn = heroSeat === null && playerId ? state.seats.findIndex((s) => s?.replacesId === playerId && s.reclaimable) : -1;
 
   // The status line's words when nobody is on the clock and no result is up.
   const idle =
     heroSeat === null
-      ? freeSeat >= 0
-        ? "WATCHING"
-        : "WATCHING — EVERY SEAT IS TAKEN"
+      ? standIn >= 0
+        ? `A BOT HAS YOUR CHIPS (S${standIn + 1})`
+        : freeSeat >= 0
+          ? "WATCHING"
+          : "WATCHING — EVERY SEAT IS TAKEN"
       : !state.started
         ? isHost
           ? "SEATED — PRESS START ABOVE WHEN FRIENDS ARE IN"
@@ -355,7 +359,15 @@ function LiveTable({
           : "NEXT HAND…";
   const action =
     heroSeat === null ? (
-      freeSeat >= 0 ? (
+      standIn >= 0 ? (
+        state.seats[standIn]!.reclaiming ? (
+          <span>BACK IN NEXT HAND</span>
+        ) : (
+          <TextButton onClick={() => actions.sit(standIn)} aria-label={`Take seat ${standIn + 1} back from the bot`}>
+            [TAKE SEAT BACK]
+          </TextButton>
+        )
+      ) : freeSeat >= 0 ? (
         <TextButton onClick={() => actions.sit(freeSeat)} aria-label={`Sit in seat ${freeSeat + 1}, the first free seat`}>
           [SIT]
         </TextButton>

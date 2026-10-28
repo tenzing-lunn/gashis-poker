@@ -203,7 +203,7 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /** `[COPY CODE]` that flashes `[COPIED]` / `[COPY FAILED]` for 2 s, announced politely. */
-function CopyButton({ text, label, what }: { text: string; label: string; what: string }) {
+function CopyButton({ text, label, short, what }: { text: string; label: string; short?: string; what: string }) {
   const [result, setResult] = useState<"ok" | "failed" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -220,10 +220,38 @@ function CopyButton({ text, label, what }: { text: string; label: string; what: 
     });
   return (
     <>
-      <TextButton onClick={copy}>{result === "ok" ? "[COPIED]" : result === "failed" ? "[COPY FAILED]" : `[${label}]`}</TextButton>
+      <TextButton onClick={copy} aria-label={result === null ? `Copy ${what.toLowerCase()}` : undefined}>
+        {result === "ok" ? (
+          <Narrow full="[COPIED]" short={short ? "[DONE]" : "[COPIED]"} />
+        ) : result === "failed" ? (
+          <Narrow full="[COPY FAILED]" short={short ? "[FAIL]" : "[COPY FAILED]"} />
+        ) : (
+          <Narrow full={`[${label}]`} short={`[${short ?? label}]`} />
+        )}
+      </TextButton>
       <span className="sr-only" aria-live="polite">
         {result === "ok" ? `${what} copied` : result === "failed" ? `Could not copy the ${what.toLowerCase()}` : ""}
       </span>
+    </>
+  );
+}
+
+/** Under 680px the short form (the code bar must stay one line at 375px), else the full one. */
+function Narrow({ full, short }: { full: string; short: string }) {
+  return (
+    <>
+      <span className="max-[679px]:hidden">{full}</span>
+      <span className="hidden max-[679px]:inline">{short}</span>
+    </>
+  );
+}
+
+/** Two spaces between text buttons, one on a phone. */
+function Gap() {
+  return (
+    <>
+      {" "}
+      <span className="max-[679px]:hidden"> </span>
     </>
   );
 }
@@ -263,25 +291,29 @@ export function TableBar({
     <>
       <Line>
         <span>
-          CODE <span className="inv">{code}</span>
+          <span className="max-[679px]:sr-only">CODE </span>
+          <span className="inv">{code}</span>
         </span>
+        {/* On a phone the link alone is copied (the code is on screen to read out) and the gaps are single. */}
         <span className="whitespace-pre-wrap">
-          <CopyButton text={code} label="COPY CODE" what="Code" />
-          {"  "}
-          <CopyButton text={url} label="COPY LINK" what="Link" />
-          {"  "}
+          <span className="max-[679px]:hidden">
+            <CopyButton text={code} label="COPY CODE" what="Code" />
+            {"  "}
+          </span>
+          <CopyButton text={url} label="COPY LINK" short="LINK" what="Link" />
+          <Gap />
           <TextButton onClick={onLeave} aria-label="Leave the table">
             [LEAVE]
           </TextButton>
           {isHost && !state.ending ? (
             <>
-              {"  "}
+              <Gap />
               <TextButton
                 onClick={() => (confirmEnd ? onEnd() : setConfirmEnd(true))}
                 onBlur={() => setConfirmEnd(false)}
                 aria-label={confirmEnd ? "Confirm: end the table for everyone" : "End the table for everyone"}
               >
-                {confirmEnd ? "[CONFIRM — ENDS FOR EVERYONE]" : "[END TABLE]"}
+                {confirmEnd ? <Narrow full="[CONFIRM — ENDS FOR EVERYONE]" short="[END?]" /> : <Narrow full="[END TABLE]" short="[END]" />}
               </TextButton>
             </>
           ) : null}

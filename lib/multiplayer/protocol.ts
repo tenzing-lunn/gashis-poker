@@ -155,6 +155,12 @@ export interface SeatInfo {
   leaving: boolean;
   /** A bot standing in for this human (by name), who gets the seat back on returning if they were away. */
   replaces?: string;
+  /** That human's playerId (so they can tell it is their chips). */
+  replacesId?: string;
+  /** They may take the seat back from this bot. */
+  reclaimable?: boolean;
+  /** They are back: the bot hands the seat over when this hand ends. */
+  reclaiming?: boolean;
 }
 
 /** One player's chips when the table ended. */

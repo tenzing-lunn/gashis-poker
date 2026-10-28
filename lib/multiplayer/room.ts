@@ -120,7 +120,17 @@ interface Player {
  * remembers their chips for a bot. `bot`: the host put a bot in with their chips. `reclaim` (bots): the
  * human it stands in for came back and takes the seat at the end of the hand.
  */
-type Exit = { kind: "leave" } | { kind: "remove" } | { kind: "bot"; persona: PersonaId; away: boolean } | { kind: "reclaim" };
+type Exit = { kind: "leave" } | { kind: "remove"; away: boolean } | { kind: "bot"; persona: PersonaId; away: boolean } | { kind: "reclaim" };
+
+/**
+ * A seat someone gave up with chips, kept for a bot the host may put in with those chips. `away`: they left,
+ * or were away when the host took them out, so they get the seat back from that bot on returning; false when
+ * the host took them out while they were at the table.
+ */
+interface Vacated {
+  id: string;
+  away: boolean;
+}
 
 /** A bot that left the table, kept for the final results. */
 interface RetiredBot {
@@ -167,7 +177,8 @@ export interface RoomSnapshot {
   /** Missing in older snapshots. */
   idleSince?: number | null;
   /** Missing in older snapshots. */
-  vacated?: (string | null)[];
+  /** Older snapshots of this branch kept only the player id (counted as `away`). */
+  vacated?: (Vacated | string | null)[];
   retired?: RetiredBot[];
   ending?: boolean;
   ended?: { rows: FinalRow[] } | null;
@@ -191,7 +202,7 @@ export class TableRoom {
   private lastResult: HandResultPublic | null = null;
   private nextHandAt: number | null = null;
   /** Per seat: the human who left it (or was taken out) with chips a bot can take over. */
-  private vacated: (string | null)[];
+  private vacated: (Vacated | null)[];
   private retired: RetiredBot[] = [];
   /** The host ended the table: it closes when no hand is running. */
   private ending = false;
@@ -413,10 +424,12 @@ export class TableRoom {
     room.lastResult = s.lastResult;
     room.nextHandAt = s.nextHandAt;
     room.idleSince = s.idleSince !== undefined ? s.idleSince : room.conns.size === 0 ? now : null;
-    room.vacated = s.vacated ?? new Array(s.config.seats).fill(null);
+    room.vacated = (s.vacated ?? new Array(s.config.seats).fill(null)).map((v) => (typeof v === "string" ? { id: v, away: true } : v));
     room.retired = s.retired ?? [];
     room.ending = s.ending ?? false;
     room.ended = s.ended ?? null;
+    // Saved between the last state and the wipe: finish the close.
+    if (room.ended) room.isClosed = true;
     room.persistPending = false;
     room.schedule();
     return room;
@@ -448,7 +461,12 @@ export class TableRoom {
         leaving: p.leaving,
       };
       const stood = p.replaces ? this.players.get(p.replaces) : undefined;
-      if (stood) info.replaces = stood.name;
+      if (stood) {
+        info.replaces = stood.name;
+        info.replacesId = stood.id;
+        if (p.reclaimable) info.reclaimable = true;
+        if (p.exit?.kind === "reclaim") info.reclaiming = true;
+      }
       return info;
     });
     const toAct = live ? h.seats[seatToAct(h.state)!] : null;
@@ -474,8 +492,8 @@ export class TableRoom {
       serverNow: this.deps.now(),
       ending: this.ending,
       ended: this.ended,
-      vacated: this.vacated.map((id) => {
-        const p = id ? this.players.get(id) : undefined;
+      vacated: this.vacated.map((v) => {
+        const p = v ? this.players.get(v.id) : undefined;
         return p && p.seat === null && p.stack > 0 ? { name: p.name, stack: p.stack } : null;
       }),
     };
@@ -542,8 +560,10 @@ export class TableRoom {
     }
     if (player) {
       if (name && !this.nameTaken(name, player)) player.name = name;
-      // Back after a bot took the seat while they were away: they get it back.
-      this.reclaim(player);
+      // Back after a bot took the seat while they were away: they get it back (or keep it, if the bot has
+      // not sat down yet).
+      if (player.seat !== null) this.cancelPendingBot(player);
+      else this.reclaim(player);
     } else {
       if (!name) {
         this.error(connId, "bad_name", "Nickname must be 1-16 characters");
@@ -597,7 +617,9 @@ export class TableRoom {
     if (seat >= this.config.seats) return this.error(connId, "bad_seat", `Seats are 0-${this.config.seats - 1}`);
     if (player.seat === seat) {
       if (!player.sittingOut && !player.leaving) return this.error(connId, "already_seated", "Already in that seat");
-      if (player.exit && player.exit.kind !== "leave") return this.error(connId, "bad_seat", "The host took you out of this seat");
+      // Back before the bot the host put in while they were away sat down: they keep the seat.
+      const back = player.exit?.kind === "bot" && player.exit.away;
+      if (player.exit && player.exit.kind !== "leave" && !back) return this.error(connId, "bad_seat", "The host took you out of this seat");
       // Sitting in again at one's own seat: back from sitting out, or cancelling a stand.
       player.sittingOut = false;
       player.leaving = false;
@@ -608,11 +630,14 @@ export class TableRoom {
       return;
     }
     if (player.seat !== null) return this.error(connId, "already_seated", "Stand up first");
-    if (this.seats[seat] !== null) {
-      // The bot standing in for this player since they went away: the seat is theirs again.
-      if (this.reclaim(player, seat)) return this.tryDeal();
-      return this.error(connId, "seat_taken", "That seat is taken");
+    // A bot standing in for this player since they went away holds their chips: that seat is theirs again,
+    // and they don't buy in fresh at another one.
+    const standIn = this.reclaimableBotFor(player);
+    if (standIn) {
+      if (standIn.seat === seat && this.reclaim(player, seat)) return this.tryDeal();
+      return this.error(connId, "bad_seat", `Your chips are in S${standIn.seat! + 1}: sit there to take them back`);
     }
+    if (this.seats[seat] !== null) return this.error(connId, "seat_taken", "That seat is taken");
     this.seatPlayer(player, seat);
     this.tryDeal();
   }
@@ -645,8 +670,9 @@ export class TableRoom {
     if (seat >= this.config.seats) return this.error(connId, "bad_seat", `Seats are 0-${this.config.seats - 1}`);
     if (this.seats[seat] !== null) return this.error(connId, "seat_taken", "That seat is taken");
     // A seat someone left with chips: the bot plays those chips for them.
-    const left = this.vacated[seat] ? this.players.get(this.vacated[seat]!) : undefined;
-    if (left && left.seat === null && left.stack > 0) this.seatBotFor(left, seat, persona, true);
+    const v = this.vacated[seat];
+    const left = v ? this.players.get(v.id) : undefined;
+    if (v && left && left.seat === null && left.stack > 0) this.seatBotFor(left, seat, persona, v.away);
     else this.seatPlayer(this.newBot(persona), seat);
     this.tryDeal();
   }
@@ -690,10 +716,8 @@ export class TableRoom {
    */
   private reclaim(human: Player, onlySeat?: number): boolean {
     if (human.kind !== "human" || human.seat !== null) return false;
-    const bot = [...this.players.values()].find(
-      (b) => b.kind === "bot" && b.replaces === human.id && b.reclaimable && b.seat !== null && (onlySeat === undefined || b.seat === onlySeat),
-    );
-    if (!bot) return false;
+    const bot = this.reclaimableBotFor(human);
+    if (!bot || (onlySeat !== undefined && bot.seat !== onlySeat)) return false;
     const h = this.hand;
     if (h && !h.state.complete && h.seats.includes(bot.seat!)) {
       // The bot plays out this hand (it doesn't fold it for leaving); nextHand swaps them.
@@ -703,6 +727,20 @@ export class TableRoom {
       this.swapBack(bot, human);
     }
     return true;
+  }
+
+  /** The seated bot playing `human`'s chips that they may take back, if any. */
+  private reclaimableBotFor(human: Player): Player | undefined {
+    for (const b of this.players.values()) if (b.kind === "bot" && b.replaces === human.id && b.reclaimable && b.seat !== null) return b;
+    return undefined;
+  }
+
+  /** `player` is back while still in the seat a bot was to take over (they were away): the bot never sits. */
+  private cancelPendingBot(player: Player): void {
+    if (player.exit?.kind !== "bot" || !player.exit.away) return;
+    player.exit = null;
+    player.leaving = false;
+    this.changed();
   }
 
   private swapBack(bot: Player, human: Player): void {
@@ -756,8 +794,7 @@ export class TableRoom {
     if (!target) return;
     // Away (gone, sitting out or on the way out): they get the seat back when they return. A player taken out
     // while at the table does not.
-    const away = !this.isConnected(target.id) || target.sittingOut || target.leaving;
-    target.exit = { kind: "bot", persona, away };
+    target.exit = { kind: "bot", persona, away: this.isAway(target) };
     this.leaveSeat(target);
     this.tryDeal();
   }
@@ -765,8 +802,13 @@ export class TableRoom {
   private removePlayer(connId: string, player: Player, seat: number): void {
     const target = this.hostTarget(connId, player, seat, "remove a player");
     if (!target) return;
-    target.exit = { kind: "remove" };
+    target.exit = { kind: "remove", away: this.isAway(target) };
     this.leaveSeat(target);
+  }
+
+  /** Gone, sitting out or on the way out: a player the host replaces then may take the seat back. */
+  private isAway(p: Player): boolean {
+    return !this.isConnected(p.id) || p.sittingOut || p.leaving;
   }
 
   private endTable(connId: string, player: Player): void {
@@ -802,7 +844,7 @@ export class TableRoom {
     this.vacated[seat] = null;
     if (player.kind === "human") {
       // Their chips go where they sit: no seat keeps them for a bot, and no bot hands a seat back to them.
-      this.vacated = this.vacated.map((id) => (id === player.id ? null : id));
+      this.vacated = this.vacated.map((v) => (v?.id === player.id ? null : v));
       for (const b of this.players.values()) if (b.replaces === player.id && b.exit?.kind === "reclaim") b.exit = null;
     }
     this.changed();
@@ -844,7 +886,7 @@ export class TableRoom {
     } else if (seat !== null && exit?.kind === "bot") {
       this.seatBotFor(player, seat, exit.persona, exit.away);
     } else if (seat !== null && exit && player.stack > 0) {
-      this.vacated[seat] = player.id;
+      this.vacated[seat] = { id: player.id, away: exit.kind === "leave" || (exit.kind === "remove" && exit.away) };
     }
     this.changed();
   }
@@ -858,7 +900,7 @@ export class TableRoom {
     if (human && human.seat === null) {
       human.stack += bot.stack;
       human.buyIns += bot.buyIns;
-      if (human.stack > 0) this.vacated[seat] = human.id;
+      if (human.stack > 0) this.vacated[seat] = { id: human.id, away: bot.reclaimable };
     } else {
       this.retired.push({ name: bot.name, replaces: human ? human.id : null, stack: bot.stack, buyIns: bot.buyIns });
     }
