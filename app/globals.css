@@ -855,7 +855,8 @@ input.u:focus-visible {
 }
 
 /* labels and letters punch the line (paper behind them, like a seat on the felt): no strike-through.
-   Their `left` is clamped (stripLeft) so the first and last end flush with the line, never past it. */
+   A full word's `left` is clamped (stripLeft) so PRE and SHOW end flush with the line, never past it; a single
+   letter stays on its tick (`.in`'s 1ch inset holds its box inside the measure). */
 .strips .track b {
   position: absolute;
   top: 0;
@@ -913,7 +914,12 @@ button.t.lc {
   color: var(--muted);
 }
 
-/* numeric records (the /play SESSION stats): numbers right-aligned on their last digit */
+/* numeric records (the /play SESSION stats): numbers right-aligned on their last digit, in a column as wide as
+   the number, so the label keeps the line (on phones a 22ch value column left it 6ch) */
+.tx.num {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .tx.num > :last-child {
   text-align: right;
 }

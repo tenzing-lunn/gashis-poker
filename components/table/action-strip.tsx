@@ -8,11 +8,14 @@ import { shortLabels, type StripLetter, type StripModel } from "./model";
 const pct = (x: number): string => `${Math.round(x * 10000) / 100}%`;
 
 /**
- * `left` for a centered label of `chars` characters at `at` on the track, kept inside the line: a label at
- * 0 or 1 (PRE, SHOW, a W) ends flush with the line's ends instead of hanging past them. Each label carries
- * 0.3ch of paper either side (it punches the line), counted in.
+ * `left` for a centered label of `chars` characters at `at` on the track. A full word at 0 or 1 (PRE, SHOW) is
+ * kept inside the line: it ends flush with the line's ends instead of hanging past the measure. Each label
+ * carries 0.3ch of paper either side (it punches the line), counted in. A single letter (every mark, a W, a
+ * street initial) stays on its tick, so letters keep the tick spacing: `.in` is inset 1ch from the track, so
+ * its 1.6ch box hangs at most 0.8ch past the line's ends and never past the measure.
  */
 export function stripLeft(at: number, chars: number): string {
+  if (chars <= 1) return pct(at);
   const half = Math.round((chars / 2 + 0.3) * 100) / 100;
   return `clamp(${half}ch, ${pct(at)}, calc(100% - ${half}ch))`;
 }

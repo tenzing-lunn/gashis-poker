@@ -274,10 +274,12 @@ A per-seat timeline across streets — the hand history as a figure.
   runs up to "now"; the remainder is a `--faint` line. Action letters (`b X C B R A F W`) sit on the line at their
   time position; `W` is inverted. Future marks are `--muted`. Folded seats' names go `--muted`.
 - Street labels and letters punch the line (`background: var(--paper); padding: 0 .3ch`, as a seat punches the felt),
-  so the line never strikes through them. Their `left` is clamped to the line (`stripLeft`:
-  `clamp(half, at%, 100% - half)`), so `PRE` at the start and `SHOW` / a `W` at the end finish flush with the line's
-  ends instead of hanging past the measure; label shortening measures them where they are drawn. Each letter has
-  its action in a `title` (`RAISE TO 500`, `SB 50`, `WINS 1,200`).
+  so the line never strikes through them. A full-word label's `left` is clamped to the line (`stripLeft`:
+  `clamp(half, at%, 100% - half)`), so `PRE` at the start and `SHOW` at the end finish flush with the line's ends
+  instead of hanging past the measure. A single letter (every mark, the `W`, a street initial) is not clamped: it
+  sits on its tick so neighbouring ticks never pile up at the ends, and the track's 1ch inset holds its box inside
+  the measure. Label shortening measures labels where they are drawn. Each letter has its action in a `title`
+  (`RAISE TO 500`, `SB 50`, `WINS 1,200`).
 - Two legend lines beneath (`StripLegend`): how to read it, `EACH ROW IS A SEAT: ITS ACTIONS IN ORDER, UNDER THE
   STREET THEY HAPPENED ON`, then the letters.
 

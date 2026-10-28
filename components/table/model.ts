@@ -523,12 +523,14 @@ export function buildModel(input: TableInput): TableModel {
 /**
  * Each seat's position this hand: `seatPositions` over the seats dealt in, in table order from the button
  * (multiplayer skips empty and sitting-out seats). Null before the first deal and for seats not dealt in.
+ * Based on `inHand`, not on who is seated now: a player who leaves is unseated at hand end while the
+ * finished hand is still shown, and the others keep their labels (the empty seat is never labelled).
  */
 export function dealtPositions(input: Pick<TableInput, "seats" | "inHand" | "button" | "handNo">): (string | null)[] {
   const n = input.seats.length;
   const out = new Array<string | null>(n).fill(null);
   if (input.handNo <= 0 || input.button === null) return out;
-  const dealt = (i: number) => !!input.seats[i] && input.inHand[i];
+  const dealt = (i: number) => input.inHand[i];
   // From the button (or, should it not be dealt in, the last dealt-in seat before it) clockwise.
   let from = input.button;
   for (let k = 0; k < n && !dealt(from); k++) from = (from - 1 + n) % n;
@@ -712,19 +714,24 @@ function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
  * Street labels drawn as their initial (`F T R S`): both neighbours of a gap narrower than half of each
  * label plus a space, as on the reference (an all-in runout puts FLOP TURN RIVER SHOW one tick apart).
  * `trackPx` is the width the `at` fractions span, `chPx` one character. A label is measured where it is
- * drawn: kept inside the track (`stripLeft`), so `SHOW` at the very end sits half its width further in.
+ * drawn (`stripLeft`): a full word is kept inside the track, so `SHOW` at the very end sits half its width
+ * further in; an initial sits on its tick. Shortening only narrows a label and moves it out to its tick (away
+ * from its neighbour), so a pair with room as full words keeps it once either is shortened.
  */
 export function shortLabels(labels: readonly { label: string; at: number }[], trackPx: number, chPx: number): boolean[] {
   const short = labels.map(() => false);
-  const center = (l: { label: string; at: number }) => {
-    const half = (l.label.length / 2 + 0.3) * chPx;
-    return Math.min(Math.max(l.at * trackPx, half), trackPx - half);
-  };
   for (let t = 1; t < labels.length; t++) {
-    const room = center(labels[t]) - center(labels[t - 1]);
+    const room = labelCenter(labels[t], false, trackPx, chPx) - labelCenter(labels[t - 1], false, trackPx, chPx);
     if (room < ((labels[t].label.length + labels[t - 1].label.length) / 2 + 1) * chPx) short[t] = short[t - 1] = true;
   }
   return short;
+}
+
+/** Where a street label's center is drawn, in px from the start of the track (as `stripLeft` places it). */
+export function labelCenter(l: { label: string; at: number }, short: boolean, trackPx: number, chPx: number): number {
+  if (short || l.label.length <= 1) return l.at * trackPx;
+  const half = (l.label.length / 2 + 0.3) * chPx;
+  return Math.min(Math.max(l.at * trackPx, half), trackPx - half);
 }
 
 function describe(e: TimelineEvent | undefined, seats: SeatModel[]): string {

@@ -87,7 +87,6 @@ type SeatProps = {
 function Seat({ seat: s, handNo, style, open, onToggle, onSit, onInfo }: SeatProps) {
   const empty = s.kind === "empty";
   const yourTurn = s.isHero && s.turn;
-  const position = s.position ?? (s.isButton ? "BTN" : null);
   // `S3 MICRO-2`: the name shrinks to an ellipsis so `S8 ` + name + ` BTN` stays inside the seat; a `-2` suffix
   // stays whole (`STAT…-2`), so two bots of one style never look the same.
   const [base, suffix] = nameParts(s.name);
@@ -152,9 +151,9 @@ function Seat({ seat: s, handNo, style, open, onToggle, onSit, onInfo }: SeatPro
                 ○
               </span>
             ) : null}
-            {position ? (
+            {s.position ? (
               <span className="pos" aria-hidden="true">
-                {position}
+                {s.position}
               </span>
             ) : null}
           </>

@@ -12,6 +12,7 @@ import {
   categoryPhrase,
   dealtPositions,
   emptyTableModel,
+  labelCenter,
   modelFromHand,
   modelFromPublicView,
   seatAct,
@@ -665,10 +666,61 @@ describe("action strip", () => {
     expect(shortLabels([{ label: "RIVER", at: 0.85 }, { label: "SHOW", at: 1 }], 100, 2)).toEqual([true, true]); // 95.4 - 85 < 10
   });
 
-  it("keeps every label and letter inside the line: the ends are clamped, not centered past them", () => {
+  it("keeps full-word labels inside the line, and every single letter on its tick", () => {
     expect(stripLeft(0.5, 4)).toBe("clamp(2.3ch, 50%, calc(100% - 2.3ch))");
-    expect(stripLeft(1, 1)).toBe("clamp(0.8ch, 100%, calc(100% - 0.8ch))"); // W ends flush with the line
     expect(stripLeft(0, 3)).toBe("clamp(1.8ch, 0%, calc(100% - 1.8ch))");
+    expect(stripLeft(1, 4)).toBe("clamp(2.3ch, 100%, calc(100% - 2.3ch))"); // SHOW ends flush with the line
+    expect(stripLeft(1, 1)).toBe("100%"); // a W, an initial: on its tick, inside the track's 1ch inset
+    expect(stripLeft(0.95, 1)).toBe("95%");
+  });
+
+  // `stripLeft` resolved to px: `in` is the line's width (the track minus its 1ch inset either side).
+  const leftPx = (css: string, inPx: number, ch: number): number => {
+    const v = (x: string) => (x.endsWith("ch") ? parseFloat(x) * ch : (parseFloat(x) / 100) * inPx);
+    const m = css.match(/^clamp\(([\d.]+ch), ([\d.]+%), calc\(100% - ([\d.]+ch)\)\)$/);
+    if (!m) return v(css);
+    return Math.min(Math.max(v(m[2]), v(m[1])), inPx - v(m[3]));
+  };
+  // A drawn box (0.3ch of paper either side) and its glyphs, in px from the line's start.
+  const box = (at: number, chars: number, inPx: number, ch: number) => {
+    const c = leftPx(stripLeft(at, chars), inPx, ch);
+    return { box: [c - (chars / 2 + 0.3) * ch, c + (chars / 2 + 0.3) * ch], glyphs: [c - (chars / 2) * ch, c + (chars / 2) * ch] };
+  };
+
+  it("keeps a winner's last action and its W apart on a 375px phone (20-tick hand)", () => {
+    const inPx = 257, ch = 9; // 375px: the line is 257px, one character 9px
+    const c = box(19 / 20, 1, inPx, ch);
+    const w = box(1, 1, inPx, ch);
+    expect(c.glyphs[1]).toBeLessThanOrEqual(w.box[0]); // the W's ink box stops short of the C
+    expect(w.box[1]).toBeLessThanOrEqual(inPx + ch); // and the W stays inside the track
+    // The header of an all-in runout: `F T R S`, each initial on its tick, none under its neighbour.
+    const labels = ["FLOP", "TURN", "RIVER", "SHOW"].map((label, k) => ({ label, at: (20 + k) / 23 }));
+    const short = shortLabels(labels, inPx, ch);
+    expect(short).toEqual([true, true, true, true]);
+    const centers = labels.map((l, k) => labelCenter(l, short[k], inPx, ch));
+    for (let k = 1; k < centers.length; k++) expect(centers[k] - centers[k - 1]).toBeGreaterThanOrEqual(ch);
+    expect(centers.at(-1)! + 0.8 * ch).toBeLessThanOrEqual(inPx + ch);
+  });
+
+  it("draws street labels so no two overlap and none passes the measure, at 1280, 800 and 375", () => {
+    // The line's width and one character (15px type), measured at each viewport, and a 320px phone at 13px.
+    for (const [inPx, ch] of [[641, 9], [577, 9], [257, 9], [200, 7.8]]) {
+      for (let k = 0; k < lines.length; k++) {
+        const m = modelFromHand(lines[k], 0, names(3), { handNo: 1 });
+        const short = shortLabels(m.strip.labels, inPx, ch);
+        const drawn = m.strip.labels.map((l, i) => {
+          const chars = short[i] ? 1 : l.label.length;
+          expect(leftPx(stripLeft(l.at, chars), inPx, ch)).toBeCloseTo(labelCenter(l, short[i], inPx, ch), 1); // stripLeft rounds to 0.01%
+          return box(l.at, chars, inPx, ch);
+        });
+        for (let i = 0; i < drawn.length; i++) {
+          expect(drawn[i].box[0]).toBeGreaterThanOrEqual(-ch - 1e-9); // inside the track's 1ch inset
+          expect(drawn[i].box[1]).toBeLessThanOrEqual(inPx + ch + 1e-9);
+          if (i > 0) expect(drawn[i].glyphs[0]).toBeGreaterThanOrEqual(drawn[i - 1].glyphs[1] - 1e-9);
+          if (i > 0 && !(short[i] && short[i - 1])) expect(drawn[i].box[0]).toBeGreaterThanOrEqual(drawn[i - 1].box[1] - 1e-9);
+        }
+      }
+    }
   });
 
   it("gives each mark its action in words, for the tooltip", () => {
@@ -727,6 +779,37 @@ describe("positions", () => {
     ).toEqual(["SB", null, "BB", "CO", null, "BTN"]);
     // A button that is not dealt in: the last dealt-in seat before it takes BTN, so SB and BB follow it.
     expect(dealtPositions({ seats, inHand, button: 4, handNo: 7 })).toEqual(["SB", null, "BB", "BTN", null, null]);
+    // A player who left is unseated at hand end while the hand is still shown: the others keep their labels.
+    const left = [seats[0], null, null, seats[3], seats[4], null];
+    expect(dealtPositions({ seats: left, inHand, button: 2, handNo: 7 })).toEqual(["BB", null, "BTN", "SB", null, null]);
+  });
+
+  it("keeps the dealt positions when a player leaves at hand end, and never labels the empty seat", () => {
+    // 4 dealt in from the button on seat 1: BTN SB BB CO. The big blind (seat 3) leaves as the hand ends.
+    const seats = ["ANA", "BEA", null, "DEE"].map((name) => (name ? { name, kind: "human" as const } : null));
+    const m = buildModel({
+      handNo: 3,
+      seats,
+      button: 0,
+      smallBlind: 50,
+      bigBlind: 100,
+      street: "preflop",
+      board: [],
+      pot: 0,
+      stacks: [10000, 10150, 0, 9900],
+      committed: [0, 0, 0, 0],
+      folded: [true, false, true, true],
+      inHand: [true, true, true, true],
+      toAct: null,
+      complete: true,
+      showdown: false,
+      timeline: [],
+      holeCards: [null, null, null, null],
+      revealed: [false, false, false, false],
+      categories: [null, null, null, null],
+      heroSeat: null,
+    });
+    expect(m.seats.map((x) => x.position)).toEqual(["BTN", "SB", null, "CO"]);
   });
 
   it("is null before the first deal and for seats not dealt in", () => {
