@@ -20,6 +20,7 @@ import {
   seatMeta,
   seatPoints,
   shortLabels,
+  wrappedLines,
   type SeatModel,
   type TableInput,
   type TableModel,
@@ -340,7 +341,9 @@ describe("seat lines fit the seat box", () => {
     expect(seatAct("RAISE TO 1,100", SEAT_CHARS.wide)).toBe("RAISE TO 1,100");
     expect(seatAct("RAISE TO 1,100", SEAT_CHARS.tall)).toBe("RAISE 1,100");
     expect(seatAct("ALL-IN 10,000", SEAT_CHARS.wide)).toBe("ALL-IN 10,000");
-    expect(seatAct("ALL-IN 10,000", SEAT_CHARS.tall)).toBe("ALL-IN 10.0K");
+    expect(seatAct("ALL-IN 10,000", SEAT_CHARS.tall)).toBe("ALL-IN 10K");
+    expect(seatAct("ALL-IN 12,500", SEAT_CHARS.tall)).toBe("ALL-IN 12.5K");
+    expect(seatAct("RAISE TO 2,000,000", SEAT_CHARS.tall)).toBe("RAISE 2M");
     expect(seatAct("RAISE TO 1,234,567", SEAT_CHARS.tall)).toBe("RAISE 1.2M");
     expect(seatAct("SITTING OUT", SEAT_CHARS.tall)).toBe("SITTING OUT");
     for (const verb of ["SB", "BB", "CALL", "BET", "RAISE TO", "ALL-IN"]) {
@@ -510,6 +513,49 @@ describe("hand result", () => {
     expect(m.result!.short).toBe("YOU WIN 400 · PAIR · S2 WINS 2,400 · PAIR · YOU -600");
   });
 
+  it("mobile result: two lines at most, dropping the hero's net, then the hand names, never a winner", () => {
+    // Words wrap at spaces in 39 characters; the last line keeps 16 free for NEXT HAND.
+    expect(wrappedLines("S2 WINS 2,400 · PAIR", 39, 16)).toBe(1);
+    expect(wrappedLines("S2 WINS 2,400 · FULL HOUSE · S3 WINS 800", 39, 16)).toBe(2);
+    expect(wrappedLines("S2 WINS 2,400 · FULL HOUSE · S3 WINS 800 · STRAIGHT · YOU -1,200", 39, 16)).toBe(3);
+    const seats = ["YOU", "NIT", "LAG", "TAG"].map((name) => ({ name, kind: "bot" as const }));
+    const input = (awards: { seat: number; amount: number; pot: number }[]): TableInput => ({
+      handNo: 1,
+      seats,
+      button: 0,
+      smallBlind: 50,
+      bigBlind: 100,
+      street: "river",
+      board: parseCards("2c 7d 9h Js 3s"),
+      pot: 0,
+      stacks: [3800, 12400, 8000, 2000],
+      startingStacks: [5000, 5000, 5000, 5000],
+      committed: [1200, 5000, 5000, 5000],
+      folded: [false, false, false, false],
+      inHand: [true, true, true, true],
+      toAct: null,
+      complete: true,
+      showdown: true,
+      timeline: [{ kind: "end", winners: awards }],
+      holeCards: [null, null, null, null],
+      revealed: [false, false, false, false],
+      categories: ["PAIR", "FULL HOUSE", "STRAIGHT", "TWO PAIR"],
+      heroSeat: 0,
+    });
+    const fits = (t: string) => wrappedLines(t, 39, 16) <= 2;
+    // Two pots: the hero's net goes (it is on the hero's seat).
+    const two = buildModel(input([{ seat: 1, amount: 2400, pot: 0 }, { seat: 2, amount: 800, pot: 1 }])).result!;
+    expect(two.text).toBe("S2 NIT WINS 2,400 WITH A FULL HOUSE · S3 LAG WINS 800 WITH A STRAIGHT · YOU LOSE 1,200");
+    expect(two.short).toBe("S2 WINS 2,400 · FULL HOUSE · S3 WINS 800 · STRAIGHT");
+    expect(fits(two.short)).toBe(true);
+    // Three pots: the hand names go too (they are on the seats); every winner and amount stays.
+    const three = buildModel(
+      input([{ seat: 1, amount: 12400, pot: 0 }, { seat: 2, amount: 8000, pot: 1 }, { seat: 3, amount: 2000, pot: 2 }]),
+    ).result!;
+    expect(three.short).toBe("S2 WINS 12,400 · S3 WINS 8,000 · S4 WINS 2,000");
+    expect(fits(three.short)).toBe(true);
+  });
+
   it("names every winner of every finished bot hand with the amounts awarded", () => {
     for (const state of botStates(60, 17)) {
       if (!state.complete) continue;
@@ -520,9 +566,11 @@ describe("hand result", () => {
       expect(m.result!.heroNet).toBe(state.result!.net[0]);
       expect(m.result!.split).toBe(state.result!.pots.some((p) => p.winners.length > 1));
       expect(m.result!.text).toMatch(/^(SPLIT POT: |YOU WIN |S\d )/);
-      // The mobile form (13px at 375px: 39 characters) fits one line for one pot under 10,000 and up to 3 winners.
+      // The mobile form (13px at 375px: 39 characters a line) fits one line for one pot under 10,000 and up to
+      // 3 winners, and two lines, NEXT HAND included, up to 3 pots.
       const one = state.result!.pots.length === 1 && m.result!.winners.length <= 3 && m.pot < 10000;
       if (one) expect(m.result!.short.length, m.result!.short).toBeLessThanOrEqual(39);
+      if (state.result!.pots.length <= 3) expect(wrappedLines(m.result!.short, 39, 16), m.result!.short).toBeLessThanOrEqual(2);
     }
     expect(categoryPhrase("TRIPS")).toBe("THREE OF A KIND");
     expect(categoryPhrase("TWO PAIR")).toBe("TWO PAIR");
@@ -542,28 +590,28 @@ describe("checkRaise", () => {
     isBet: false,
   };
   it("passes amounts in range and rejects the rest instead of clamping", () => {
-    expect(checkRaise("200", legal)).toEqual({ to: 200, error: null });
-    expect(checkRaise("9700", legal)).toEqual({ to: 9700, error: null });
-    expect(checkRaise("12003", legal)).toEqual({ to: null, error: "MAX 9,700 (ALL-IN)" });
-    expect(checkRaise("99999999", legal)).toEqual({ to: null, error: "MAX 9,700 (ALL-IN)" });
-    for (const v of ["", "1", "50", "199"]) expect(checkRaise(v, legal)).toEqual({ to: null, error: "MIN 200" });
-    expect(checkRaise("1,200", legal)).toEqual({ to: 1200, error: null });
+    expect(checkRaise("200", legal)).toEqual({ to: 200, error: null, short: null });
+    expect(checkRaise("9700", legal)).toEqual({ to: 9700, error: null, short: null });
+    // Mobile drops `(ALL-IN)`: the raise row has no room for it at 375px.
+    expect(checkRaise("12003", legal)).toEqual({ to: null, error: "MAX 9,700 (ALL-IN)", short: "MAX 9,700" });
+    expect(checkRaise("99999999", legal)).toEqual({ to: null, error: "MAX 9,700 (ALL-IN)", short: "MAX 9,700" });
+    for (const v of ["", "1", "50", "199"]) expect(checkRaise(v, legal)).toEqual({ to: null, error: "MIN 200", short: "MIN 200" });
+    expect(checkRaise("1,200", legal)).toEqual({ to: 1200, error: null, short: null });
   });
 });
 
 describe("priceLine", () => {
   it("says the call, the pot and the equity it needs, module 3's B / (P + 2B)", () => {
     expect(priceLine(300, 1200)).toEqual({
-      short: "TO CALL 300 INTO 1,200 → NEED 20.0%",
       text: "TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY",
+      short: "TO CALL 300 → NEED 20%",
       need: 20,
       ratio: "4 TO 1",
-      brief: "TO CALL 300 → NEED 20%",
     });
     // Mobile: whole percents from 10% up, one decimal below; with STACK it fits a 375px line (39 characters).
-    expect(priceLine(100, 150)!.brief).toBe("TO CALL 100 → NEED 40%");
-    expect(priceLine(50, 950)!.brief).toBe("TO CALL 50 → NEED 5.0%");
-    expect(`${priceLine(9950, 20000)!.brief}  STACK 50,000`.length).toBeLessThanOrEqual(39);
+    expect(priceLine(100, 150)!.short).toBe("TO CALL 100 → NEED 40%");
+    expect(priceLine(50, 950)!.short).toBe("TO CALL 50 → NEED 5.0%");
+    expect(`${priceLine(9950, 20000)!.short}  STACK 50,000`.length).toBeLessThanOrEqual(39);
     // Module 3's examples: pot P, bet B; the pot shown already holds the bet.
     for (const [P, B, need, ratio] of [
       [100, 50, 25, "3 TO 1"],
@@ -589,7 +637,7 @@ describe("priceLine", () => {
     const contested = contestedPot(s.committed, 0, legal.callAmount);
     expect(contested).toBe(2000);
     const p = priceLine(legal.callAmount, contested - legal.callAmount)!;
-    expect(p.short).toBe("TO CALL 900 INTO 1,100 → NEED 45.0%");
+    expect(p.text).toBe("TO CALL 900 INTO 1,100 → NEED 45.0% EQUITY");
     expect(p.ratio).toBe("1.2 TO 1");
     // Each opponent is capped separately at what the hero will have in.
     expect(contestedPot([100, 2000, 300], 0, 400)).toBe(500 + 500 + 300);

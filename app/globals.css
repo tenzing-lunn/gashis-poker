@@ -1139,7 +1139,7 @@ button.t[aria-disabled="true"],
     inset: -6px -0.5ch;
   }
 
-  /* The dock: 13px text on 27px lines, one row each: status (a result and NEXT HAND may take two), price,
+  /* The dock: 13px text on 27px lines, one row each: status (a result may take two), price,
      FOLD CALL, RAISE TO + field + range, presets. Boxes and toggles are 25px tall with 1px clear above and below,
      so rows never touch and every target is at least 24px. Sticky at the bottom; revealTable scrolls to where it
      sits in the flow, so on the hero's turn it is under the hero's seat, not over it. */
@@ -1180,7 +1180,8 @@ button.t[aria-disabled="true"],
     width: auto;
   }
 
-  /* status and price: one line each (the status action may wrap to a second); the narrow forms fit 375px */
+  /* the narrow forms: the price fits one line at 375px; the status words wrap (a result takes two lines at most,
+     STATUS_CHARS in model.ts), never cut, and the action floats at the right of their last line, or under it */
   .l.status .full,
   .controls-dock .full {
     display: none;
@@ -1191,16 +1192,27 @@ button.t[aria-disabled="true"],
     display: inline;
   }
 
+  .l.status {
+    display: flow-root;
+  }
+
   .l.status .cols {
-    flex-wrap: nowrap;
-    min-width: 0;
+    display: inline;
+  }
+
+  .l.status .words + * {
+    margin-left: 2ch;
+  }
+
+  .l.status .side {
+    float: right;
+    margin-left: 2ch;
   }
 
   .controls-dock .price {
     flex-wrap: nowrap;
   }
 
-  .l.status .words,
   .controls-dock .price > :first-child {
     min-width: 0;
     overflow: hidden;

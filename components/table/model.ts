@@ -133,6 +133,8 @@ export interface HandResult {
   /**
    * The same in the narrow form the mobile status line uses (seat labels, seat hand names):
    * `YOU WIN 3,516 · TWO PAIR`, `S4 WINS 400 · STRAIGHT · YOU -100` (the hero's net), `S2 WINS 150 · OTHERS FOLDED`.
+   * When that would take more than two status lines (`STATUS_CHARS`), the hero's net goes, then the hand names
+   * (both are on the seats); who won and how much always stay.
    */
   short: string;
 }
@@ -252,11 +254,12 @@ export function bbText(depth: number): string {
   return `${(Math.floor(depth * 10) / 10).toFixed(1)} BB`;
 }
 
-/** `12,345` → `12.3K`, `1,234,567` → `1.2M` (rounded down); below 10,000 as `fmt`. */
+/** `12,345` → `12.3K`, `10,000` → `10K`, `1,234,567` → `1.2M` (rounded down); below 10,000 as `fmt`. */
 function compact(n: number): string {
   const a = Math.abs(n);
   const sign = n < 0 ? "-" : "";
-  const cut = (x: number, unit: string) => `${sign}${x >= 100 ? Math.floor(x) : (Math.floor(x * 10) / 10).toFixed(1)}${unit}`;
+  // One decimal below 100 units, none when it is `.0`.
+  const cut = (x: number, unit: string) => `${sign}${x >= 100 ? Math.floor(x) : Math.floor(x * 10) / 10}${unit}`;
   if (a < 10_000) return `${sign}${fmt(a)}`;
   if (a < 1_000_000) return cut(a / 1000, "K");
   return cut(a / 1_000_000, "M");
@@ -264,6 +267,29 @@ function compact(n: number): string {
 
 /** Seat width in characters: 14ch on the wide figure, 12ch on the tall (mobile) one (DESIGN.md §4.2, §4.7). */
 export const SEAT_CHARS = { wide: 14, tall: 12 } as const;
+
+/**
+ * The mobile status line (DESIGN.md §4.7): 13px text at 375px holds 39 characters a line, and the action at its
+ * right (`[NEXT HAND →]`, 14ch, after a 2ch gap) shares the last line with the words. A result takes two lines at most.
+ */
+export const STATUS_CHARS = { line: 39, action: 16, lines: 2 } as const;
+
+/**
+ * Lines `text` takes wrapped at its spaces in `width` characters, with `reserve` characters kept free at the
+ * end of the last line (else the reserve goes on a line of its own).
+ */
+export function wrappedLines(text: string, width: number, reserve = 0): number {
+  let lines = 1;
+  let at = 0;
+  for (const word of text.split(" ")) {
+    if (at > 0 && at + 1 + word.length > width) {
+      lines++;
+      at = 0;
+    }
+    at += (at > 0 ? 1 : 0) + word.length;
+  }
+  return at + reserve > width ? lines + 1 : lines;
+}
 
 /**
  * The `.meta` line fitted to `width` characters: the stack, then its depth in big blinds, or at hand end
@@ -589,13 +615,15 @@ function buildResult(
   const tag = (w: ResultWinner) => (w.isHero ? "YOU" : w.label);
   const seatHand = (c: string | null) => (c ? ` · ${seatCategory(c)}` : "");
   const lines: string[] = [];
-  const short: string[] = [];
+  // Each part with and without its hand name; the hero's net goes last.
+  const short: { won: string; hand: string }[] = [];
+  let shortNet = "";
   for (const p of byMinSeat) {
     const ws = [...p].sort((a, b) => a[0] - b[0]).map(([seat, amount]) => ({ ...winners.find((w) => w.seat === seat)!, amount }));
     if (ws.length === 1) {
       const won = `${ws[0].isHero ? "WIN" : "WINS"} ${fmt(ws[0].amount)}`;
       lines.push(`${who(ws[0])} ${won}${withHand(ws[0].category)}`);
-      short.push(`${tag(ws[0])} ${won}${seatHand(ws[0].category)}`);
+      short.push({ won: `${tag(ws[0])} ${won}`, hand: seatHand(ws[0].category) });
       continue;
     }
     const names = ws.map(who);
@@ -605,24 +633,35 @@ function buildResult(
     const tags = ws.map(tag).join(", ");
     if (ws.every((w) => w.amount === ws[0].amount)) {
       lines.push(`SPLIT POT: ${list} EACH WIN ${fmt(ws[0].amount)}${hand}`);
-      short.push(`${tags} WIN ${fmt(ws[0].amount)} EACH${same ? seatHand(ws[0].category) : ""}`);
+      short.push({ won: `${tags} WIN ${fmt(ws[0].amount)} EACH`, hand: same ? seatHand(ws[0].category) : "" });
     } else {
       const total = fmt(ws.reduce((t, w) => t + w.amount, 0));
       lines.push(`SPLIT POT: ${list} SHARE ${total}${hand}`);
-      short.push(`${tags} SHARE ${total}${same ? seatHand(ws[0].category) : ""}`);
+      short.push({ won: `${tags} SHARE ${total}`, hand: same ? seatHand(ws[0].category) : "" });
     }
   }
   if (!input.showdown) {
     lines.push("EVERYONE ELSE FOLDED");
-    short.push("OTHERS FOLDED");
+    short.push({ won: "OTHERS FOLDED", hand: "" });
   } else if (hero !== null && heroNet !== null && heroNet < 0) {
     // A hero who won a side pot can still be down on the hand.
     if (won.has(hero)) lines.push(`YOU NET ${signed(heroNet)}`);
     else if (seats[hero]?.category) lines.push(`YOU LOSE ${fmt(-heroNet)}`);
-    if (won.has(hero) || seats[hero]?.category) short.push(`YOU ${signed(heroNet)}`);
+    if (won.has(hero) || seats[hero]?.category) shortNet = ` · YOU ${signed(heroNet)}`;
   }
+  // Two status lines at most on mobile: the hero's net goes first, then the hand names (both are on the seats).
+  const withHands = short.map((p) => p.won + p.hand).join(" · ");
+  const forms = [withHands + shortNet, withHands, short.map((p) => p.won).join(" · ")];
+  const fits = (t: string) => wrappedLines(t, STATUS_CHARS.line, STATUS_CHARS.action) <= STATUS_CHARS.lines;
 
-  return { winners, split, showdown: input.showdown, heroNet, text: lines.join(" · "), short: short.join(" · ") };
+  return {
+    winners,
+    split,
+    showdown: input.showdown,
+    heroNet,
+    text: lines.join(" · "),
+    short: forms.find(fits) ?? forms[forms.length - 1],
+  };
 }
 
 const LABEL_OF: Record<Street, StripLabelText> = { preflop: "PRE", flop: "FLOP", turn: "TURN", river: "RIVER" };

@@ -17,9 +17,9 @@ import {
   emptyTableModel,
   enterTable,
   fmt,
+  keepDockInFlow,
   modelFromHand,
   onScreen,
-  revealTable,
 } from "@/components/table";
 import { botNames } from "@/components/table/names";
 import { BOT_COPY, MIXED_COPY } from "@/components/table/bot-profiles";
@@ -196,14 +196,15 @@ export default function PlayClient() {
 
   const complete = !!session?.hand.complete;
   const handNo = session?.handNo ?? 0;
-  // A finished hand: if the controls had focus, the band is brought into view (on mobile the result can add a
-  // line to the docked controls) and NEXT HAND takes focus if it is on screen; N deals too.
+  // A finished hand: on mobile the result can add a line to the docked controls, so a dock that grew over the
+  // hero's seat is scrolled back into the flow (never on desktop, never when the user has scrolled away). If the
+  // controls had focus, NEXT HAND takes it when it is on screen; N deals too.
   useEffect(() => {
     if (!complete) return;
     const a = document.activeElement;
     const btn = nextRef.current;
+    if (btn) keepDockInFlow(btn);
     if (btn && (!a || a === document.body || btn.closest(".controls-dock")?.contains(a))) {
-      revealTable(btn);
       if (onScreen(btn)) btn.focus({ preventScroll: true });
     }
     const onKey = (e: KeyboardEvent) => {

@@ -37,8 +37,8 @@ export function statusText(model: TableModel, heroTurn: boolean, toCall = 0): st
 /**
  * The one status line directly above the play controls (DESIGN.md §5): status words, the clock, an action
  * slot at the right. Solo and multiplayer mount the same line, so it is always in the same place. On mobile
- * the result takes its narrow form (`YOU WIN 3,516 · TWO PAIR`) on one line, and the action moves to a
- * second line when it does not fit beside it.
+ * the result takes its narrow form (`YOU WIN 3,516 · TWO PAIR`), which wraps to a second line rather than
+ * being cut, and the action sits at the right of the last line.
  */
 export function StatusBlock({ model, heroTurn, toCall, seconds, idle, action }: StatusBlockProps) {
   const mine = heroTurn ?? (model.heroSeat !== null && model.toAct === model.heroSeat && !model.complete);

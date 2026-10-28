@@ -33,6 +33,20 @@ export function revealTable(inside: Element): void {
 }
 
 /**
+ * After the docked controls grew in place (a hand's result can take a second line on mobile): when the sticky
+ * dock now covers the band by at most `lines` of its lines, scroll that much, so it sits in the flow under the
+ * hero's seat again. Nothing on desktop (the dock is not sticky) and nothing when the user has scrolled away
+ * (the dock is in the flow already, or covers more than it could have grown by).
+ */
+export function keepDockInFlow(inside: Element, lines = 2): void {
+  const dock = inside.closest<HTMLElement>(".controls-dock") ?? (inside.closest(".screen") ?? inside).querySelector<HTMLElement>(".controls-dock");
+  if (!dock || getComputedStyle(dock).position !== "sticky") return;
+  const over = flowBottom(dock) - window.innerHeight;
+  const line = parseFloat(getComputedStyle(dock).lineHeight) || 27;
+  if (over > 0 && over <= lines * line) window.scrollBy({ top: over, behavior: "instant" });
+}
+
+/**
  * Bring the table into view and put focus on the controls (no second scroll), so the default action
  * takes it when the hero's turn comes: for DEAL and NEXT HAND.
  */

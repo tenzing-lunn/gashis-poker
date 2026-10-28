@@ -75,14 +75,24 @@ export function presetRaiseTo(legal: ControlsLegal, pot: number, heroBet: number
 
 /**
  * The typed raise amount checked against the legal range. Never clamped: an amount outside the range
- * is not submitted; the field says why (DESIGN.md §5).
+ * is not submitted; the field says why (DESIGN.md §5). `short` is the error on mobile (`MAX 9,700`), where the
+ * raise row has no room for `(ALL-IN)`.
  */
-export function checkRaise(value: string, legal: ControlsLegal): { to: number | null; error: string | null } {
+export function checkRaise(
+  value: string,
+  legal: ControlsLegal,
+): { to: number | null; error: string | null; short: string | null } {
   value = value.replace(/[^0-9]/g, "");
   const to = value === "" ? null : Number(value);
-  if (to === null || to < legal.minRaiseTo) return { to: null, error: `MIN ${fmt(legal.minRaiseTo)}` };
-  if (to > legal.maxRaiseTo) return { to: null, error: `MAX ${fmt(legal.maxRaiseTo)} (ALL-IN)` };
-  return { to, error: null };
+  if (to === null || to < legal.minRaiseTo) {
+    const min = `MIN ${fmt(legal.minRaiseTo)}`;
+    return { to: null, error: min, short: min };
+  }
+  if (to > legal.maxRaiseTo) {
+    const max = `MAX ${fmt(legal.maxRaiseTo)}`;
+    return { to: null, error: `${max} (ALL-IN)`, short: max };
+  }
+  return { to, error: null, short: null };
 }
 
 /**
@@ -96,22 +106,20 @@ export function contestedPot(committed: readonly number[], hero: number, callAmo
 }
 
 /**
- * The price of a call in words: `TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY`. `pot` already holds the bet
- * faced, so the equity needed is call / (pot + call), module 3's B / (P + 2B); `ratio` is the pot odds
+ * The price of a call in words: `text` is the desktop line, `TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY`
+ * (drawn with `(ratio)` after it), `short` the mobile one, `TO CALL 300 → NEED 20%`. `pot` already holds the
+ * bet faced, so the equity needed is call / (pot + call), module 3's B / (P + 2B); `ratio` is the pot odds
  * (P + B) : B as `4 TO 1`. Null when there is nothing to call.
  */
-export function priceLine(
-  callAmount: number,
-  pot: number,
-): { short: string; text: string; need: number; ratio: string; brief: string } | null {
+export function priceLine(callAmount: number, pot: number): { text: string; short: string; need: number; ratio: string } | null {
   if (callAmount <= 0) return null;
   const need = (100 * callAmount) / (pot + callAmount);
   const x = pot / callAmount;
   const ratio = `${Number.isInteger(x) ? x : x.toFixed(1)} TO 1`;
-  const short = `TO CALL ${fmt(callAmount)} INTO ${fmt(pot)} → NEED ${need.toFixed(1)}%`;
+  const text = `TO CALL ${fmt(callAmount)} INTO ${fmt(pot)} → NEED ${need.toFixed(1)}% EQUITY`;
   // Mobile: one line with STACK at 375px. The pot is on the table just above; whole percents from 10% up.
-  const brief = `TO CALL ${fmt(callAmount)} → NEED ${need < 10 ? need.toFixed(1) : Math.round(need)}%`;
-  return { short, text: `${short} EQUITY`, need, ratio, brief };
+  const short = `TO CALL ${fmt(callAmount)} → NEED ${need < 10 ? need.toFixed(1) : Math.round(need)}%`;
+  return { text, short, need, ratio };
 }
 
 /**
@@ -188,9 +196,9 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
     raise();
   };
 
-  /** Esc: the safe default is filled and focused again. */
+  /** Esc: the safe default is filled and focused again, and the field goes back to the min raise. */
   const backOut = () => {
-    update({ armed: false });
+    update({ armed: false, value: legal?.canRaise ? String(legal.minRaiseTo) : "", tried: false, typed: false });
     (defaultRef.current ?? formRef.current)?.focus();
   };
 
@@ -239,7 +247,8 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
 
   // The price counts only the chips the call plays for (an all-in call for less leaves part of the bet out).
   const price = legal ? priceLine(legal.callAmount, contestedPot === undefined ? pot : contestedPot - legal.callAmount) : null;
-  const selected = (frac: number) => !!check?.to && check.to === presetRaiseTo(legal!, pot, heroBet, frac);
+  // A preset is pressed only while a raise is armed, so it never says RAISE while Enter would check or call.
+  const selected = (frac: number) => draft.armed && !!check?.to && check.to === presetRaiseTo(legal!, pot, heroBet, frac);
   const verb = legal?.isBet ? "BET" : "RAISE TO";
   // The safe default takes focus; the filled box is the default until a raise size is chosen.
   const safe = legal?.canCheck ? "check" : legal?.canCall ? "call" : legal?.canFold ? "fold" : null;
@@ -258,9 +267,9 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
           ) : price ? (
             <>
               <span className="full">
-                {price.short} EQUITY ({price.ratio})
+                {price.text} ({price.ratio})
               </span>
-              <span className="short">{price.brief}</span>
+              <span className="short">{price.short}</span>
             </>
           ) : (
             <>
@@ -344,9 +353,16 @@ export function PlayControls({ legal, pot, contestedPot, heroBet, stack, onAct, 
             />
             <span className="slot" style={{ "--slot": `${slotCh}ch` } as CSSProperties}>
               {error ? (
-                <Tag id={`${ids}-err`} className="err">
-                  {error}
-                </Tag>
+                <>
+                  {/* Mobile shows `MAX 9,700` (the row has no room for `(ALL-IN)`); screen readers get the full text. */}
+                  <Tag className="err" aria-hidden="true">
+                    <span className="full">{error}</span>
+                    <span className="short">{check?.short}</span>
+                  </Tag>
+                  <span id={`${ids}-err`} className="sr-only">
+                    {error}
+                  </span>
+                </>
               ) : legal?.canRaise ? (
                 <span className="range" id={`${ids}-range`}>
                   {fmt(legal.minRaiseTo)}–{fmt(legal.maxRaiseTo)}

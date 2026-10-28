@@ -218,7 +218,7 @@ Seat stack, top to bottom:
    showdown seat shows its hand (`TWO PAIR`; seat forms `TRIPS`, `QUADS`, `STR FLUSH` keep it within 12
    characters) and an uncontested winner shows `WINS`. The full result goes on the status line (§5).
    Fitted to the seat like `.meta` (`seatAct`, 14 / 12 characters): `RAISE TO` drops its `TO`
-   (`RAISE 10,000`), then the amount goes compact (`ALL-IN 10.0K`), then the verb to its strip letter (`R 1.2M`);
+   (`RAISE 10,000`), then the amount goes compact (`ALL-IN 10K`, `ALL-IN 12.5K`: no `.0`), then the verb to its strip letter (`R 1.2M`);
    the screen-reader sentence keeps the full text. A disconnected seat with nothing else to show reads `AWAY`
    (and its sentence says `away`).
 
@@ -293,7 +293,7 @@ Text buttons on the table, its header and the controls are at least 24px tall on
 The docked controls (sticky at the bottom, `padding-bottom: env(safe-area-inset-bottom)`) are 13px text on 27px
 lines (`--lh: calc(27 / 13)`), one row per line, never overlapping:
 ```
-25  YOUR TURN (BB) · TO CALL 800                    status (a result + NEXT HAND may take 2 rows)
+25  YOUR TURN (BB) · TO CALL 800                    status (a result may take 2 rows)
 26  TO CALL 800 → NEED 37%            STACK 9,900   price, one line
 27  [FOLD]  [CALL 800]                              row 1
     [RAISE TO] 1,500  1,500–10,000                  row 2
@@ -303,12 +303,19 @@ Boxes and toggles in the dock are 25px tall with 1px clear above and below (`.ap
 margin-block: 1px }`, `button.t { line-height: 25px; margin-block: 1px }`), so every target is at least 24px and
 neighbouring rows stay 2px apart; the raise field's underline sits inside its row. The status line takes the
 result's narrow form (`HandResult.short`: `YOU WIN 3,516 · TWO PAIR`, `S4 WINS 400 · STRAIGHT · YOU -100`,
-`S2 WINS 150 · OTHERS FOLDED`, seat labels for names) on one line (ellipsis past 39 characters, the full text in
-its `title`), and `[NEXT HAND →]` moves to a second row, at the right, when it does not fit beside it. The price
+`S2 WINS 150 · OTHERS FOLDED`, seat labels for names, the full text in its `title`). Its words wrap at spaces
+onto a second 27px row (one line number, like the controls' rows), never cut, and `[NEXT HAND →]` floats at the
+right of the last row, or on the row under it when it does not fit beside the words. A result takes two rows at
+most at 375px (`STATUS_CHARS`: 39 characters a row, 16 kept for the action on the last): when it would take more
+(several pots), the hero's net goes first, then the hand names (both are on the seats); who won and how much always
+stay (`S2 WINS 12,400 · S3 WINS 8,000 · S4 WINS 2,000`). The price
 line drops `INTO` and `EQUITY (4 TO 1)` and rounds to whole percents from 10% (`TO CALL 300 → NEED 20%`;
-nothing to call: `NOTHING TO CALL`, the pot being on the table just above). The dock covers the figure only while
-the user scrolls up: on the hero's turn, and when a hand ends, `revealTable` scrolls to where the dock sits in the
-flow, so it is under the hero's seat, not over it. At 375×812 the band from the table header through the dock
+nothing to call: `NOTHING TO CALL`, the pot being on the table just above). A raise error drops `(ALL-IN)`
+(`MAX 9,700`), so the raise row stays inside the measure; screen readers get the full text. The dock covers the
+figure only while the user scrolls up: on the hero's turn `revealTable` scrolls to where the dock sits in the flow,
+so it is under the hero's seat, not over it; when a hand ends and the result's second row pushes the stuck dock
+over the seat by at most two rows, `keepDockInFlow` scrolls just that much (never on desktop, where the dock is not
+sticky, and never once the user has scrolled away). At 375×812 the band from the table header through the dock
 fits the viewport.
 
 ### 4.8 Home attract table
@@ -368,8 +375,8 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   `1/2 POT  2/3 POT  POT  ALL-IN`. A clicked preset fills the field and selects it (the next digit typed replaces
   it); one chosen with `1–4` fills it and focuses `[RAISE TO]` / `[BET]` (below).
 - Raise validation: the amount is never clamped. Out of range (or empty on submit) the field gets `aria-invalid`
-  and a `Tag` says why — `MIN 200` or `MAX 9,700 (ALL-IN)` — and nothing is sent until the number is in range
-  or ALL-IN is chosen explicitly.
+  and a `Tag` says why — `MIN 200` or `MAX 9,700 (ALL-IN)` (`MAX 9,700` on mobile, §4.7) — and nothing is sent
+  until the number is in range or ALL-IN is chosen explicitly.
 - Buttons that don't apply are `aria-disabled` (not `disabled`), so focus stays where it was after an action. When
   the hero's next decision comes up (and on DEAL / NEXT HAND) the band from the table header through the controls is
   scrolled into view if it is not already (when taller than the viewport, the controls go to its bottom), then
@@ -377,7 +384,9 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   focus off the controls.
 - Keyboard: `F` fold, `C` check/call, `1–4` choose a size (the field shows it and focus goes to the filled
   `[RAISE TO]` / `[BET]`, so another `1–4` switches the size and `Enter` raises), `R` focus the field to type an
-  amount, `Enter` confirm, `Esc` back out (the safe default is filled and focused again) — shown in the legend line
+  amount, `Enter` confirm, `Esc` back out (the safe default is filled and focused again, the field goes back to
+  the min raise; a preset shows pressed only while a raise is armed, so it never says RAISE while `Enter` would check or
+  call) — shown in the legend line
   `KEYS: F FOLD  C CHECK/CALL  1-4 SIZE  R TYPE  ENTER OK  ESC BACK` (solo adds `N NEXT HAND`; one line from 800px
   up, below that it breaks between keys, never inside one). `1–4` pick a size only outside the raise field; in
   it digits always type. Letters never go in, and `F`/`C` still act. The raise draft resets with every new
