@@ -694,8 +694,11 @@ export class TableRoom {
     }
   }
 
-  /** The seat on the clock does `action`. Throws IllegalActionError (state unchanged) if it isn't legal. */
-  private applyHandAction(action: Action, auto: boolean): void {
+  /**
+   * The seat on the clock does `action`. Throws IllegalActionError (state unchanged) if it isn't legal.
+   * `timedOut`: the server acts because the player's turn clock ran out.
+   */
+  private applyHandAction(action: Action, auto: boolean, timedOut = false): void {
     const h = this.hand!;
     const before = h.state.events.length;
     const next = applyAction(h.state, action);
@@ -712,6 +715,7 @@ export class TableRoom {
         allIn: ev.allIn,
       };
       if (auto) pa.auto = true;
+      if (timedOut) pa.timedOut = true;
       h.actions.push(pa);
     }
     this.changed();
@@ -746,7 +750,7 @@ export class TableRoom {
     }
     p.timeouts += 1;
     if (p.timeouts >= this.config.maxTimeouts) p.sittingOut = true;
-    this.applyHandAction(this.autoAction(), true);
+    this.applyHandAction(this.autoAction(), true, true);
   }
 
   private finishHand(): void {

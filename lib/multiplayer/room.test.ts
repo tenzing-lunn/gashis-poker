@@ -340,6 +340,7 @@ describe("TableRoom", () => {
         h.advance(1);
         const auto = timeouts().at(-1)!;
         expect(auto.action).toBe(la.canCheck ? "check" : "fold");
+        expect(auto.timedOut).toBe(true);
         total++;
         continue;
       }
@@ -358,6 +359,16 @@ describe("TableRoom", () => {
     const n2 = h.state("a").handNo;
     for (let i = 0; i < 500 && h.state("a").handNo < n2 + 1; i++) step(h, { a: 0, b: 3 });
     expect(h.state("a").hand!.players.map((p) => p.seat)).toContain(0);
+  });
+
+  it("marks only a run-out clock as timed out, not standing up on the clock", () => {
+    const h = setupTable(4, [{ seat: 1, persona: "station" }]);
+    for (let i = 0; i < 500 && !(h.state("a").hand && !h.state("a").hand!.complete && h.state("a").toAct === 0); i++) step(h, { b: 3 });
+    expect(h.state("a").toAct).toBe(0);
+    h.send("a", { type: "stand" });
+    const last = h.state("b").hand!.actions.filter((x) => x.seat === 0).at(-1)!;
+    expect(last.auto).toBe(true);
+    expect(last.timedOut).toBeUndefined();
   });
 
   it("keeps a disconnected player's seat on the clock and restores it on reconnect with the token", () => {

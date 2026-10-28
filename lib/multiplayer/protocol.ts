@@ -148,6 +148,8 @@ export interface PublicAction {
   allIn: boolean;
   /** Set when the server acted for the player (turn clock ran out, sitting out or leaving). */
   auto?: boolean;
+  /** Set (with `auto`) only when the player's turn clock ran out. */
+  timedOut?: true;
 }
 
 export interface PublicLegal {

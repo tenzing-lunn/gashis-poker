@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { BoxButton, Legend, Line, TextButton, Tx } from "@/components/doc";
-import { TableHeader } from "@/components/table";
 import { fmt } from "@/components/table/model";
 import { PERSONA_IDS, PERSONAS, type PersonaId } from "@/lib/bots/personas";
 import type { TableState } from "@/lib/multiplayer/protocol";
@@ -41,29 +40,6 @@ export function CycleButton<T extends string>({
     >
       [{text(value)} ▸]
     </TextButton>
-  );
-}
-
-/** The table header; before the first deal the hand line says what the table is waiting for. */
-export function LiveHeader({ waiting, ...props }: ComponentProps<typeof TableHeader> & { waiting: string }) {
-  const { model, title, mode, right } = props;
-  if (model.handNo > 0) return <TableHeader {...props} />;
-  return (
-    <>
-      <Line center gap>
-        <span>{title}</span>
-      </Line>
-      <Line className="table-head">
-        <span className="pre">{mode}</span>
-        {right ? <span>{right}</span> : null}
-      </Line>
-      <Line className="hand-line">
-        <span>{waiting}</span>
-        <span>
-          BLINDS {model.smallBlind}/{model.bigBlind}
-        </span>
-      </Line>
-    </>
   );
 }
 
@@ -302,27 +278,39 @@ export function SeatList({ state, names, heroSeat }: { state: TableState; names:
 /** Seat rows: on mobile the value column shrinks to fit the chips instead of a fixed 22ch. */
 const ROW = "whitespace-pre-wrap max-[679px]:grid-cols-[minmax(0,1fr)_auto]!";
 
-/** The last rows of the hand log, dealer-trace style: `+0.074  S2 CHECK` with muted times. */
+/**
+ * The last rows of the hand log, dealer-trace style: `+0.074  BEA CHECK` with muted times. `[HIDE]` on the
+ * heading folds the rows away.
+ */
 export function HandLogLines({ log }: { log: HandLog }) {
+  const [open, setOpen] = useState(true);
+  const id = useId();
   return (
     <>
       <Line center>
-        <span>HAND LOG</span>
+        <span className="whitespace-pre-wrap">
+          HAND LOG{"  "}
+          <TextButton aria-expanded={open} aria-controls={id} aria-label={open ? "Hide the hand log" : "Show the hand log"} onClick={() => setOpen((o) => !o)}>
+            {open ? "[HIDE]" : "[SHOW]"}
+          </TextButton>
+        </span>
       </Line>
-      {log.rows.length === 0 ? (
-        <Line>
-          <span className="text-muted">NO HANDS YET</span>
-        </Line>
-      ) : (
-        log.rows.map((r) => (
-          <Line key={r.key}>
-            <span className="whitespace-pre-wrap">
-              <span className="text-muted">{stamp(r.t).padEnd(10)}</span>
-              {r.text}
-            </span>
+      <div id={id} className="contents" hidden={!open}>
+        {!open ? null : log.rows.length === 0 ? (
+          <Line>
+            <span className="text-muted">NO HANDS YET</span>
           </Line>
-        ))
-      )}
+        ) : (
+          log.rows.map((r) => (
+            <Line key={r.key}>
+              <span className="whitespace-pre-wrap">
+                <span className="text-muted">{stamp(r.t).padEnd(10)}</span>
+                {r.text}
+              </span>
+            </Line>
+          ))
+        )}
+      </div>
     </>
   );
 }
