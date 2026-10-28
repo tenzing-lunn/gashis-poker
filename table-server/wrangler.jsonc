@@ -7,7 +7,7 @@
   "vars": {
     // Comma-separated browser origins allowed to use the server, e.g. the Vercel URL.
     // `npm run dev` also allows http://localhost:3000 (DEV_ORIGINS, see package.json); deploys do not.
-    "ALLOWED_ORIGIN": ""
+    "ALLOWED_ORIGIN": "https://gashis-poker.vercel.app"
   },
   "durable_objects": {
     "bindings": [{ "name": "TABLES", "class_name": "PokerTable" }]

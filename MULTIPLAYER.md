@@ -49,6 +49,13 @@ from `DEV_ORIGINS` (local) or `ALLOWED_ORIGIN` (deployed).
 
 ## Deploy
 
+Live now: site `https://gashis-poker.vercel.app` (Vercel project `gashis-poker`), table server
+`https://gashis-poker-tables.10zinglunn.workers.dev`. To ship changes: `cd table-server && npx wrangler deploy`
+for the server, `vercel deploy --prod` from the root for the site (`.vercelignore` keeps `.claude/`,
+`table-server/` and `oracle/` out of the upload).
+
+First-time setup, for reference:
+
 1. Deploy the table server: `cd table-server && npx wrangler login && npm run deploy`. Note the URL it
    prints (`https://gashis-poker-tables.<account>.workers.dev`).
 2. Allow the site's origin on the server: set `ALLOWED_ORIGIN` to the Vercel URL (comma-separate several,
