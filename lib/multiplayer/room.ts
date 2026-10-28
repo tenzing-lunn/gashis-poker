@@ -38,6 +38,7 @@ import {
   sanitizeName,
   type ClientMessage,
   type ErrorCode,
+  type FinalRow,
   type HandResultPublic,
   type PublicAction,
   type PublicHand,
@@ -104,6 +105,40 @@ interface Player {
   timeouts: number;
   /** Stood up or removed mid-hand: acts check/fold automatically and leaves when the hand ends. */
   leaving: boolean;
+  /** Chips bought in so far: the first buy-in and every rebuy (the table's final net is stack minus this). */
+  buyIns: number;
+  /** Bots: the human this bot stands in for (it plays their chips), or null. */
+  replaces: string | null;
+  /** Bots: the human was away when replaced, so they get the seat back on returning. */
+  reclaimable: boolean;
+  /** What happens when the seat frees (see unseat); null for a plain stand. */
+  exit: Exit | null;
+}
+
+/**
+ * Why a seat is being given up. `leave` / `remove`: the human left or the host took them out; the seat
+ * remembers their chips for a bot. `bot`: the host put a bot in with their chips. `reclaim` (bots): the
+ * human it stands in for came back and takes the seat at the end of the hand.
+ */
+type Exit = { kind: "leave" } | { kind: "remove"; away: boolean } | { kind: "bot"; persona: PersonaId; away: boolean } | { kind: "reclaim" };
+
+/**
+ * A seat someone gave up with chips, kept for a bot the host may put in with those chips. `away`: they left,
+ * or were away when the host took them out, so they get the seat back from that bot on returning; false when
+ * the host took them out while they were at the table.
+ */
+interface Vacated {
+  id: string;
+  away: boolean;
+}
+
+/** A bot that left the table, kept for the final results. */
+interface RetiredBot {
+  name: string;
+  /** The human it stood in for (its result counts as theirs), or null. */
+  replaces: string | null;
+  stack: number;
+  buyIns: number;
 }
 
 interface HandRecord {
@@ -141,6 +176,12 @@ export interface RoomSnapshot {
   nextHandAt: number | null;
   /** Missing in older snapshots. */
   idleSince?: number | null;
+  /** Missing in older snapshots. */
+  /** Older snapshots of this branch kept only the player id (counted as `away`). */
+  vacated?: (Vacated | string | null)[];
+  retired?: RetiredBot[];
+  ending?: boolean;
+  ended?: { rows: FinalRow[] } | null;
 }
 
 /** Set while `restore` constructs a room, so the constructor leaves scheduling to restore. */
@@ -160,6 +201,12 @@ export class TableRoom {
   private hand: HandRecord | null = null;
   private lastResult: HandResultPublic | null = null;
   private nextHandAt: number | null = null;
+  /** Per seat: the human who left it (or was taken out) with chips a bot can take over. */
+  private vacated: (Vacated | null)[];
+  private retired: RetiredBot[] = [];
+  /** The host ended the table: it closes when no hand is running. */
+  private ending = false;
+  private ended: { rows: FinalRow[] } | null = null;
   /** Since when the table has had no connection, epoch ms; null while anyone is connected. */
   private idleSince: number | null;
   /**
@@ -185,6 +232,7 @@ export class TableRoom {
       throw new Error(`A table has ${MIN_TABLE_SEATS}-${MAX_TABLE_SEATS} seats, got ${n}`);
     }
     this.seats = new Array(n).fill(null);
+    this.vacated = new Array(n).fill(null);
     this.idleSince = deps.now();
     // Starting from the clock keeps `seq` increasing even across a restore that lost a few un-persisted
     // pongs (see restore): the clock advances far faster than messages are sent.
@@ -296,7 +344,10 @@ export class TableRoom {
     this.flush();
   }
 
-  /** The table sat empty for `idleMs` and is over: the platform should delete everything it stored. */
+  /**
+   * The table is over (it sat empty for `idleMs`, or the host ended it): the platform should delete
+   * everything it stored.
+   */
   get closed(): boolean {
     return this.isClosed;
   }
@@ -327,6 +378,10 @@ export class TableRoom {
       lastResult: this.lastResult,
       nextHandAt: this.nextHandAt,
       idleSince: this.idleSince,
+      vacated: this.vacated,
+      retired: this.retired,
+      ending: this.ending,
+      ended: this.ended,
     });
   }
 
@@ -344,7 +399,21 @@ export class TableRoom {
     // Version 1 snapshots may lack these times: count from the restore rather than compute NaN deadlines.
     const time = (t: number | undefined): number => (typeof t === "number" && Number.isFinite(t) ? t : now);
     room.seq = Math.max(s.seq, now);
-    room.players = new Map(s.players.map((p) => [p.id, { ...p, lastSeen: time(p.lastSeen), seatedAt: time(p.seatedAt) }]));
+    room.players = new Map(
+      s.players.map((p) => [
+        p.id,
+        {
+          ...p,
+          lastSeen: time(p.lastSeen),
+          seatedAt: time(p.seatedAt),
+          // Older snapshots lack these: count one buy-in for anyone holding chips.
+          buyIns: p.buyIns ?? (p.stack > 0 || p.seat !== null ? s.config.startingStack : 0),
+          replaces: p.replaces ?? null,
+          reclaimable: p.reclaimable ?? false,
+          exit: p.exit ?? null,
+        },
+      ]),
+    );
     room.seats = s.seats;
     room.conns = new Map(s.conns.map((c) => [c.id, { playerId: c.playerId, openedAt: time(c.openedAt), times: [] }]));
     room.started = s.started;
@@ -355,6 +424,12 @@ export class TableRoom {
     room.lastResult = s.lastResult;
     room.nextHandAt = s.nextHandAt;
     room.idleSince = s.idleSince !== undefined ? s.idleSince : room.conns.size === 0 ? now : null;
+    room.vacated = (s.vacated ?? new Array(s.config.seats).fill(null)).map((v) => (typeof v === "string" ? { id: v, away: true } : v));
+    room.retired = s.retired ?? [];
+    room.ending = s.ending ?? false;
+    room.ended = s.ended ?? null;
+    // Saved between the last state and the wipe: finish the close.
+    if (room.ended) room.isClosed = true;
     room.persistPending = false;
     room.schedule();
     return room;
@@ -374,7 +449,7 @@ export class TableRoom {
       const p = pid ? this.players.get(pid) : undefined;
       if (!p) return null;
       const e = engineSeatOf(seat);
-      return {
+      const info: SeatInfo = {
         playerId: p.id,
         name: p.name,
         kind: p.kind,
@@ -385,6 +460,14 @@ export class TableRoom {
         inHand: live && e >= 0,
         leaving: p.leaving,
       };
+      const stood = p.replaces ? this.players.get(p.replaces) : undefined;
+      if (stood) {
+        info.replaces = stood.name;
+        info.replacesId = stood.id;
+        if (p.reclaimable) info.reclaimable = true;
+        if (p.exit?.kind === "reclaim") info.reclaiming = true;
+      }
+      return info;
     });
     const toAct = live ? h.seats[seatToAct(h.state)!] : null;
     const toActPlayer = toAct !== null ? this.playerAt(toAct) : undefined;
@@ -407,6 +490,12 @@ export class TableRoom {
       nextHandAt: this.nextHandAt,
       lastResult: this.lastResult,
       serverNow: this.deps.now(),
+      ending: this.ending,
+      ended: this.ended,
+      vacated: this.vacated.map((v) => {
+        const p = v ? this.players.get(v.id) : undefined;
+        return p && p.seat === null && p.stack > 0 ? { name: p.name, stack: p.stack } : null;
+      }),
     };
   }
 
@@ -440,6 +529,14 @@ export class TableRoom {
         return this.removeBot(connId, player, msg.seat);
       case "start":
         return this.start(connId, player);
+      case "leave":
+        return this.leave(player);
+      case "replaceWithBot":
+        return this.replaceWithBot(connId, player, msg.seat, msg.persona);
+      case "removePlayer":
+        return this.removePlayer(connId, player, msg.seat);
+      case "endTable":
+        return this.endTable(connId, player);
     }
   }
 
@@ -463,6 +560,10 @@ export class TableRoom {
     }
     if (player) {
       if (name && !this.nameTaken(name, player)) player.name = name;
+      // Back after a bot took the seat while they were away: they get it back (or keep it, if the bot has
+      // not sat down yet).
+      if (player.seat !== null) this.cancelPendingBot(player);
+      else this.reclaim(player);
     } else {
       if (!name) {
         this.error(connId, "bad_name", "Nickname must be 1-16 characters");
@@ -489,6 +590,10 @@ export class TableRoom {
         sittingOut: false,
         timeouts: 0,
         leaving: false,
+        buyIns: 0,
+        replaces: null,
+        reclaimable: false,
+        exit: null,
       };
       this.players.set(player.id, player);
       this.hostId ??= player.id;
@@ -512,15 +617,29 @@ export class TableRoom {
     if (seat >= this.config.seats) return this.error(connId, "bad_seat", `Seats are 0-${this.config.seats - 1}`);
     if (player.seat === seat) {
       if (!player.sittingOut && !player.leaving) return this.error(connId, "already_seated", "Already in that seat");
+      // Back before the bot the host put in while they were away sat down: they keep the seat.
+      const back = player.exit?.kind === "bot" && player.exit.away;
+      if (player.exit && player.exit.kind !== "leave" && !back) return this.error(connId, "bad_seat", "The host took you out of this seat");
       // Sitting in again at one's own seat: back from sitting out, or cancelling a stand.
       player.sittingOut = false;
       player.leaving = false;
+      player.exit = null;
       player.timeouts = 0;
       this.changed();
       this.tryDeal();
       return;
     }
     if (player.seat !== null) return this.error(connId, "already_seated", "Stand up first");
+    // A bot standing in for this player since they went away holds their chips: that seat is theirs again,
+    // and they don't buy in fresh at another one.
+    const standIn = this.reclaimableBotFor(player);
+    if (standIn) {
+      if (standIn.seat === seat && this.reclaim(player, seat)) return this.tryDeal();
+      return this.error(connId, "bad_seat", `Your chips are in S${standIn.seat! + 1}: sit there to take them back`);
+    }
+    // A bot the host put in while this player was present plays their chips: no second stack.
+    const holder = this.botHolding(player);
+    if (holder) return this.error(connId, "bad_seat", `The host gave your chips to the bot in S${holder.seat! + 1}`);
     if (this.seats[seat] !== null) return this.error(connId, "seat_taken", "That seat is taken");
     this.seatPlayer(player, seat);
     this.tryDeal();
@@ -553,6 +672,15 @@ export class TableRoom {
     if (!this.isHost(player)) return this.error(connId, "not_host", "Only the host can add bots");
     if (seat >= this.config.seats) return this.error(connId, "bad_seat", `Seats are 0-${this.config.seats - 1}`);
     if (this.seats[seat] !== null) return this.error(connId, "seat_taken", "That seat is taken");
+    // A seat someone left with chips: the bot plays those chips for them.
+    const v = this.vacated[seat];
+    const left = v ? this.players.get(v.id) : undefined;
+    if (v && left && left.seat === null && left.stack > 0) this.seatBotFor(left, seat, persona, v.away);
+    else this.seatPlayer(this.newBot(persona), seat);
+    this.tryDeal();
+  }
+
+  private newBot(persona: PersonaId): Player {
     const bot: Player = {
       id: this.randomHex(2),
       token: "",
@@ -566,10 +694,71 @@ export class TableRoom {
       sittingOut: false,
       timeouts: 0,
       leaving: false,
+      buyIns: 0,
+      replaces: null,
+      reclaimable: false,
+      exit: null,
     };
     this.players.set(bot.id, bot);
+    return bot;
+  }
+
+  /** A bot takes `human`'s chips into `seat` (free now) and stands in for them; `away`: they may reclaim it. */
+  private seatBotFor(human: Player, seat: number, persona: PersonaId, away: boolean): void {
+    const bot = this.newBot(persona);
+    bot.stack = human.stack;
+    human.stack = 0;
+    bot.replaces = human.id;
+    bot.reclaimable = away;
     this.seatPlayer(bot, seat);
-    this.tryDeal();
+  }
+
+  /**
+   * `human` is back (or sits at `onlySeat`) while a bot they may reclaim holds their seat: the bot leaves at
+   * the end of the hand it is in, or now, and the human sits there with its chips. False when there is none.
+   */
+  private reclaim(human: Player, onlySeat?: number): boolean {
+    if (human.kind !== "human" || human.seat !== null) return false;
+    const bot = this.reclaimableBotFor(human);
+    if (!bot || (onlySeat !== undefined && bot.seat !== onlySeat)) return false;
+    const h = this.hand;
+    if (h && !h.state.complete && h.seats.includes(bot.seat!)) {
+      // The bot plays out this hand (it doesn't fold it for leaving); nextHand swaps them.
+      bot.exit = { kind: "reclaim" };
+      this.changed();
+    } else {
+      this.swapBack(bot, human);
+    }
+    return true;
+  }
+
+  /** The seated bot playing `human`'s chips that they may take back, if any. */
+  private reclaimableBotFor(human: Player): Player | undefined {
+    for (const b of this.players.values()) if (b.kind === "bot" && b.replaces === human.id && b.reclaimable && b.seat !== null) return b;
+    return undefined;
+  }
+
+  /** Any seated bot playing `human`'s chips, reclaimable or not. */
+  private botHolding(human: Player): Player | undefined {
+    for (const b of this.players.values()) if (b.kind === "bot" && b.replaces === human.id && b.seat !== null) return b;
+    return undefined;
+  }
+
+  /** `player` is back while still in the seat a bot was to take over (they were away): the bot never sits. */
+  private cancelPendingBot(player: Player): void {
+    if (player.exit?.kind !== "bot" || !player.exit.away) return;
+    player.exit = null;
+    player.leaving = false;
+    this.changed();
+  }
+
+  private swapBack(bot: Player, human: Player): void {
+    const seat = bot.seat!;
+    this.seats[seat] = null;
+    this.players.delete(bot.id);
+    human.stack += bot.stack;
+    human.buyIns += bot.buyIns;
+    this.seatPlayer(human, seat);
   }
 
   private removeBot(connId: string, player: Player, seat: number): void {
@@ -577,6 +766,67 @@ export class TableRoom {
     const bot = seat < this.config.seats ? this.playerAt(seat) : undefined;
     if (!bot || bot.kind !== "bot") return this.error(connId, "bad_seat", "No bot in that seat");
     this.leaveSeat(bot);
+  }
+
+  /** Stands the player up for good (after the hand if dealt in); a host who leaves hands the role on at once. */
+  private leave(player: Player): void {
+    if (player.seat !== null) {
+      player.exit = { kind: "leave" };
+      this.leaveSeat(player);
+    }
+    if (this.isHost(player)) this.passHost(player);
+  }
+
+  private hostTarget(connId: string, player: Player, seat: number, what: string): Player | null {
+    if (!this.isHost(player)) {
+      this.error(connId, "not_host", `Only the host can ${what}`);
+      return null;
+    }
+    const target = seat < this.config.seats ? this.playerAt(seat) : undefined;
+    if (!target) {
+      this.error(connId, "bad_seat", "Nobody sits there");
+      return null;
+    }
+    if (target.kind !== "human") {
+      this.error(connId, "not_human", "That seat holds a bot");
+      return null;
+    }
+    if (target === player) {
+      this.error(connId, "bad_seat", "Use LEAVE for your own seat");
+      return null;
+    }
+    return target;
+  }
+
+  private replaceWithBot(connId: string, player: Player, seat: number, persona: PersonaId): void {
+    const target = this.hostTarget(connId, player, seat, "put a bot in");
+    if (!target) return;
+    // Away (gone, sitting out or on the way out): they get the seat back when they return. A player taken out
+    // while at the table does not.
+    target.exit = { kind: "bot", persona, away: this.isAway(target) };
+    this.leaveSeat(target);
+    this.tryDeal();
+  }
+
+  private removePlayer(connId: string, player: Player, seat: number): void {
+    const target = this.hostTarget(connId, player, seat, "remove a player");
+    if (!target) return;
+    target.exit = { kind: "remove", away: this.isAway(target) };
+    this.leaveSeat(target);
+  }
+
+  /** Gone, sitting out or on the way out: a player the host replaces then may take the seat back. */
+  private isAway(p: Player): boolean {
+    return !this.isConnected(p.id) || p.sittingOut || p.leaving;
+  }
+
+  private endTable(connId: string, player: Player): void {
+    if (!this.isHost(player)) return this.error(connId, "not_host", "Only the host can end the table");
+    if (this.ending) return;
+    this.ending = true;
+    this.changed();
+    const h = this.hand;
+    if (!h || h.state.complete) this.endNow();
   }
 
   private start(connId: string, player: Player): void {
@@ -595,11 +845,23 @@ export class TableRoom {
     player.seat = seat;
     player.seatedAt = this.deps.now();
     // Re-sitting keeps the chips the player stood up with; only a busted (or new) player buys in fresh.
-    if (player.stack <= 0) player.stack = this.config.startingStack;
+    if (player.stack <= 0) this.buyIn(player);
     player.sittingOut = false;
     player.timeouts = 0;
     player.leaving = false;
+    player.exit = null;
+    this.vacated[seat] = null;
+    if (player.kind === "human") {
+      // Their chips go where they sit: no seat keeps them for a bot, and no bot hands a seat back to them.
+      this.vacated = this.vacated.map((v) => (v?.id === player.id ? null : v));
+      for (const b of this.players.values()) if (b.replaces === player.id && b.exit?.kind === "reclaim") b.exit = null;
+    }
     this.changed();
+  }
+
+  private buyIn(player: Player): void {
+    player.stack = this.config.startingStack;
+    player.buyIns += this.config.startingStack;
   }
 
   /**
@@ -619,13 +881,38 @@ export class TableRoom {
   }
 
   private unseat(player: Player): void {
-    if (player.seat !== null) this.seats[player.seat] = null;
+    const seat = player.seat;
+    const exit = player.exit;
+    if (seat !== null) this.seats[seat] = null;
     player.seat = null;
     player.leaving = false;
     player.sittingOut = false;
     player.timeouts = 0;
-    if (player.kind === "bot") this.players.delete(player.id);
+    player.exit = null;
+    if (player.kind === "bot") {
+      this.players.delete(player.id);
+      if (seat !== null) this.retireBot(player, seat);
+    } else if (seat !== null && exit?.kind === "bot") {
+      this.seatBotFor(player, seat, exit.persona, exit.away);
+    } else if (seat !== null && exit && player.stack > 0) {
+      this.vacated[seat] = { id: player.id, away: exit.kind === "leave" || (exit.kind === "remove" && exit.away) };
+    }
     this.changed();
+  }
+
+  /**
+   * A bot leaves the table. One that stood in for a human who is not seated hands the chips back to them
+   * (and the seat remembers them for another bot); any other is kept for the final results.
+   */
+  private retireBot(bot: Player, seat: number): void {
+    const human = bot.replaces ? this.players.get(bot.replaces) : undefined;
+    if (human && human.seat === null) {
+      human.stack += bot.stack;
+      human.buyIns += bot.buyIns;
+      if (human.stack > 0) this.vacated[seat] = { id: human.id, away: bot.reclaimable };
+    } else {
+      this.retired.push({ name: bot.name, replaces: human ? human.id : null, stack: bot.stack, buyIns: bot.buyIns });
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -694,8 +981,11 @@ export class TableRoom {
     }
   }
 
-  /** The seat on the clock does `action`. Throws IllegalActionError (state unchanged) if it isn't legal. */
-  private applyHandAction(action: Action, auto: boolean): void {
+  /**
+   * The seat on the clock does `action`. Throws IllegalActionError (state unchanged) if it isn't legal.
+   * `timedOut`: the server acts because the player's turn clock ran out.
+   */
+  private applyHandAction(action: Action, auto: boolean, timedOut = false): void {
     const h = this.hand!;
     const before = h.state.events.length;
     const next = applyAction(h.state, action);
@@ -712,6 +1002,7 @@ export class TableRoom {
         allIn: ev.allIn,
       };
       if (auto) pa.auto = true;
+      if (timedOut) pa.timedOut = true;
       h.actions.push(pa);
     }
     this.changed();
@@ -746,7 +1037,7 @@ export class TableRoom {
     }
     p.timeouts += 1;
     if (p.timeouts >= this.config.maxTimeouts) p.sittingOut = true;
-    this.applyHandAction(this.autoAction(), true);
+    this.applyHandAction(this.autoAction(), true, true);
   }
 
   private finishHand(): void {
@@ -780,11 +1071,56 @@ export class TableRoom {
     for (const p of [...this.players.values()]) {
       if (p.seat === null) continue;
       if (p.leaving) this.unseat(p);
-      else if (p.stack <= 0) p.stack = this.config.startingStack; // play money: automatic rebuy
+      else if (p.exit?.kind === "reclaim") {
+        const human = p.replaces ? this.players.get(p.replaces) : undefined;
+        if (human && human.seat === null) this.swapBack(p, human);
+        else p.exit = null;
+      } else if (p.stack <= 0) this.buyIn(p); // play money: automatic rebuy
     }
     this.hand = null;
     this.changed();
+    if (this.ending) return this.endNow();
     this.tryDeal();
+  }
+
+  /** Everyone's chips and net, merging a bot that stood in for a human into that human's row. */
+  private finalRows(): FinalRow[] {
+    const extra = new Map<string, { stack: number; buyIns: number }>();
+    const standsIn = (replaces: string | null): replaces is string => replaces !== null && this.players.has(replaces);
+    const add = (id: string, stack: number, buyIns: number) => {
+      const e = extra.get(id) ?? { stack: 0, buyIns: 0 };
+      extra.set(id, { stack: e.stack + stack, buyIns: e.buyIns + buyIns });
+    };
+    for (const p of this.players.values()) if (p.kind === "bot" && standsIn(p.replaces)) add(p.replaces, p.stack, p.buyIns);
+    for (const r of this.retired) if (standsIn(r.replaces)) add(r.replaces, r.stack, r.buyIns);
+    const rows: FinalRow[] = [];
+    for (const p of this.players.values()) {
+      if (p.kind === "human") {
+        const e = extra.get(p.id);
+        const buyIns = p.buyIns + (e?.buyIns ?? 0);
+        if (buyIns === 0) continue; // only watched
+        const stack = p.stack + (e?.stack ?? 0);
+        rows.push({ name: p.name, kind: "human", stack, net: stack - buyIns });
+      } else if (!standsIn(p.replaces)) {
+        rows.push({ name: p.name, kind: "bot", stack: p.stack, net: p.stack - p.buyIns });
+      }
+    }
+    for (const r of this.retired) if (!standsIn(r.replaces)) rows.push({ name: r.name, kind: "bot", stack: r.stack, net: r.stack - r.buyIns });
+    return rows.sort((a, b) => b.stack - a.stack);
+  }
+
+  /** Ends the table (no hand running): everyone gets the final state, every socket closes, `closed` turns true. */
+  private endNow(): void {
+    this.ended = { rows: this.finalRows() };
+    this.nextHandAt = null;
+    if (this.hand) this.hand.turnDue = null;
+    this.changed();
+    this.broadcast();
+    for (const id of [...this.conns.keys()]) this.deps.close(id, 4002, "Table ended");
+    this.conns.clear();
+    this.isClosed = true;
+    this.alarmAt = null;
+    this.deps.setAlarm(null);
   }
 
   // -------------------------------------------------------------------------
@@ -818,12 +1154,16 @@ export class TableRoom {
 
   private flush(): void {
     this.checkHost();
+    this.broadcast();
+    this.schedule();
+  }
+
+  private broadcast(): void {
     if (this.broadcastPending) {
       this.broadcastPending = false;
       const state = this.publicState();
       for (const [id, c] of this.conns) if (c.playerId) this.sendTo(id, { type: "state", state });
     }
-    this.schedule();
   }
 
   private schedule(): void {
@@ -918,11 +1258,12 @@ export class TableRoom {
     this.deps.close(connId, 4001, "Table full");
   }
 
-  /** Drops the record of the watcher who has been gone longest (their token stops working). */
+  /** Drops the record of the watcher who never bought in and has been gone longest (their token stops working). */
   private forgetIdlePlayer(): boolean {
     let oldest: Player | undefined;
     for (const p of this.players.values()) {
-      if (p.kind !== "human" || p.seat !== null || p.id === this.hostId || this.isConnected(p.id)) continue;
+      // Anyone who bought in stays: their chips (or a bot's standing in for them) count in the final results.
+      if (p.kind !== "human" || p.seat !== null || p.id === this.hostId || p.buyIns > 0 || this.isConnected(p.id)) continue;
       if (!oldest || p.lastSeen < oldest.lastSeen) oldest = p;
     }
     if (!oldest) return false;
@@ -942,9 +1283,14 @@ export class TableRoom {
   private checkHost(): void {
     const due = this.hostDeadline();
     if (due === null || this.deps.now() < due) return;
+    this.passHost(this.hostId ? this.players.get(this.hostId) : undefined);
+  }
+
+  /** Hands the host role from `from` to the longest-seated connected human, if there is one. */
+  private passHost(from: Player | undefined): void {
     let next: Player | undefined;
     for (const p of this.players.values()) {
-      if (p.kind !== "human" || p.seat === null || p.leaving || p.id === this.hostId || !this.isConnected(p.id)) continue;
+      if (p.kind !== "human" || p.seat === null || p.leaving || p === from || p.id === this.hostId || !this.isConnected(p.id)) continue;
       if (!next || p.seatedAt < next.seatedAt) next = p;
     }
     if (!next) return;

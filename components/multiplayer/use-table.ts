@@ -24,6 +24,8 @@ export interface TableView {
   /** When a click last could not be sent because the socket was not open. */
   notSentAt: number | null;
   log: HandLog;
+  /** The host ended the table and the server closed the connection for good (results in `state.ended`). */
+  ended: boolean;
 }
 
 const initialView = (): TableView => ({
@@ -37,6 +39,7 @@ const initialView = (): TableView => ({
   error: null,
   notSentAt: null,
   log: emptyLog(),
+  ended: false,
 });
 
 export interface TableActions {
@@ -46,6 +49,11 @@ export interface TableActions {
   addBot(seat: number, persona: PersonaId): void;
   removeBot(seat: number): void;
   start(): void;
+  /** Leave the table for good (the host may put a bot in with your chips). */
+  leave(): void;
+  replaceWithBot(seat: number, persona: PersonaId): void;
+  removePlayer(seat: number): void;
+  endTable(): void;
 }
 
 /**
@@ -75,6 +83,8 @@ export function useTable(
         setView((v) => ({ ...v, rttMs: e.rttMs, clockOffsetMs: client.clockOffsetMs }));
       } else if (e.type === "rejected") {
         rejectedRef.current(e.code, e.message);
+      } else if (e.type === "ended") {
+        setView((v) => ({ ...v, ended: true }));
       } else {
         const msg = e.msg;
         if (msg.type === "welcome") {
@@ -119,6 +129,10 @@ export function useTable(
       addBot: (seat, persona) => send((c) => c.sendAddBot(seat, persona)),
       removeBot: (seat) => send((c) => c.sendRemoveBot(seat)),
       start: () => send((c) => c.sendStart()),
+      leave: () => send((c) => c.sendLeave()),
+      replaceWithBot: (seat, persona) => send((c) => c.sendReplaceWithBot(seat, persona)),
+      removePlayer: (seat) => send((c) => c.sendRemovePlayer(seat)),
+      endTable: () => send((c) => c.sendEndTable()),
     };
   }, []);
 

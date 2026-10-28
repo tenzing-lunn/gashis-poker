@@ -6,7 +6,7 @@
 import { fmt, padHand, rankText, suitGlyph } from "@/components/table/model";
 import type { PublicAction, TableState } from "@/lib/multiplayer/protocol";
 import { parseCard } from "@/lib/poker/cards";
-import { seatSources } from "./model";
+import { seatSources, timedOutText } from "./model";
 
 export interface LogRow {
   key: string;
@@ -39,6 +39,7 @@ const cardText = (c: string) => {
 };
 
 export function actionWords(a: PublicAction, name: (seat: number) => string): string {
+  if (a.timedOut) return `${name(a.seat)} ${timedOutText(a)}`;
   let w: string;
   if (a.action === "fold") w = "FOLD";
   else if (a.action === "check") w = "CHECK";

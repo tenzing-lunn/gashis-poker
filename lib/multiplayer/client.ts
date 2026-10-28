@@ -22,7 +22,9 @@ export type TableClientEvent =
   | { type: "status"; status: ConnectionStatus }
   | { type: "latency"; rttMs: number }
   /** Final: the client has stopped (e.g. ask for another nickname and connect again). */
-  | { type: "rejected"; code: RejectCode; message: string };
+  | { type: "rejected"; code: RejectCode; message: string }
+  /** Final: the host ended the table (the last `state` carries the results); the client has stopped. */
+  | { type: "ended" };
 
 /**
  * Why the client stopped: a join error from the server, or `origin_refused` (403), `no_such_table`
@@ -32,6 +34,9 @@ export type RejectCode = ErrorCode | "origin_refused" | "no_such_table" | "unrea
 
 /** Consecutive attempts that never opened before giving up, unless a socket has opened before. */
 export const MAX_FAILED_OPENS = 6;
+
+/** WebSocket close code the server uses when the host ends the table. */
+export const TABLE_ENDED_CLOSE = 4002;
 
 /** Errors in reply to `join` that a retry would only repeat. */
 const FATAL_JOIN_ERRORS: ReadonlySet<ErrorCode> = new Set(["name_taken", "bad_name", "malformed", "table_full"]);
@@ -58,6 +63,14 @@ export interface TableClient {
   sendAddBot(seat: number, persona: PersonaId): boolean;
   sendRemoveBot(seat: number): boolean;
   sendStart(): boolean;
+  /** Leave the table (stand up for good; the host may put a bot in with your chips). */
+  sendLeave(): boolean;
+  /** Host: a bot takes over this human's seat and chips. */
+  sendReplaceWithBot(seat: number, persona: PersonaId): boolean;
+  /** Host: this human stands up and watches. */
+  sendRemovePlayer(seat: number): boolean;
+  /** Host: end the table after the hand in progress. */
+  sendEndTable(): boolean;
   ping(): boolean;
   /** Closes for good (no reconnect). */
   close(): void;
@@ -241,7 +254,7 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
       pingTimer = setInterval(ping, pingEvery);
     };
     socket.onmessage = (ev) => onMessage(ev.data);
-    socket.onclose = () => {
+    socket.onclose = (ev) => {
       if (ws !== socket) return;
       ws = null;
       if (pingTimer) clearInterval(pingTimer);
@@ -249,6 +262,11 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
       pending.clear();
       setStatus("closed");
       if (closedByUser) return;
+      if (ev.code === TABLE_ENDED_CLOSE) {
+        stop();
+        emit({ type: "ended" });
+        return;
+      }
       const retry = () => {
         if (closedByUser) return;
         // Backoff: 0.25s, 0.5s, 1s, ... capped at 8s, with jitter.
@@ -302,6 +320,10 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
     sendAddBot: (seat, persona) => raw({ type: "addBot", seat, persona }),
     sendRemoveBot: (seat) => raw({ type: "removeBot", seat }),
     sendStart: () => raw({ type: "start" }),
+    sendLeave: () => raw({ type: "leave" }),
+    sendReplaceWithBot: (seat, persona) => raw({ type: "replaceWithBot", seat, persona }),
+    sendRemovePlayer: (seat) => raw({ type: "removePlayer", seat }),
+    sendEndTable: () => raw({ type: "endTable" }),
     ping,
     close: stop,
   };

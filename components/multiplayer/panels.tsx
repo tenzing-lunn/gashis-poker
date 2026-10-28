@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { BoxButton, Legend, Line, TextButton, Tx } from "@/components/doc";
-import { TableHeader } from "@/components/table";
-import { fmt } from "@/components/table/model";
+import { fmt, signed } from "@/components/table/model";
 import { PERSONA_IDS, PERSONAS, type PersonaId } from "@/lib/bots/personas";
-import type { TableState } from "@/lib/multiplayer/protocol";
+import type { FinalRow, TableState } from "@/lib/multiplayer/protocol";
 import { stamp, type HandLog } from "./log";
 import { cycleNext, seatedCount } from "./model";
 import type { TableActions } from "./use-table";
@@ -44,73 +43,131 @@ export function CycleButton<T extends string>({
   );
 }
 
-/** The table header; before the first deal the hand line says what the table is waiting for. */
-export function LiveHeader({ waiting, ...props }: ComponentProps<typeof TableHeader> & { waiting: string }) {
-  const { model, title, mode, right } = props;
-  if (model.handNo > 0) return <TableHeader {...props} />;
-  return (
-    <>
-      <Line center gap>
-        <span>{title}</span>
-      </Line>
-      <Line className="table-head">
-        <span className="pre">{mode}</span>
-        {right ? <span>{right}</span> : null}
-      </Line>
-      <Line className="hand-line">
-        <span>{waiting}</span>
-        <span>
-          BLINDS {model.smallBlind}/{model.bigBlind}
-        </span>
-      </Line>
-    </>
-  );
-}
+/** A line whose left side gives way (ellipsis) so the buttons on the right stay on the same line at 375px. */
+const ROW_LINE = "flex-nowrap!";
+const ROW_LEFT = "min-w-0 truncate";
 
-/** Host only: put bots in empty seats and take them out again. */
-export function HostPanel({ state, names, actions }: { state: TableState; names: string[]; actions: TableActions }) {
-  const [persona, setPersona] = useState<Record<number, PersonaId>>({});
+/**
+ * Host only: every seat but the host's own. A bot can take a player's seat and chips (`[BOT IN]`; if the
+ * player was away they get it back on returning), a player can be taken out (`[REMOVE]`, they watch), bots
+ * come and go, and a seat someone left keeps their chips for the next bot. One style picker serves all.
+ */
+export function HostPanel({
+  state,
+  names,
+  heroSeat,
+  actions,
+}: {
+  state: TableState;
+  names: string[];
+  heroSeat: number | null;
+  actions: TableActions;
+}) {
+  const [persona, setPersona] = useState<PersonaId>("tag");
+  const style = personaText(persona);
   return (
     <>
       <Line center>
-        <span>BOTS (HOST)</span>
+        <span>SEATS (HOST)</span>
+      </Line>
+      <Line>
+        <span>BOT STYLE</span>
+        <CycleButton options={PERSONA_IDS} value={persona} text={personaText} label="Style of the next bot" onChange={setPersona} />
       </Line>
       {state.seats.map((s, i) => {
-        if (s && s.kind === "human") return null;
+        if (i === heroSeat) return null;
         const label = `S${i + 1}`;
+        if (s && s.kind === "human") {
+          return (
+            <Line key={i} className={ROW_LINE}>
+              <span className={ROW_LEFT}>
+                {label} {names[i]}
+                {s.connected ? null : (
+                  <>
+                    {" "}
+                    <span aria-hidden="true">○</span>
+                    <span className="sr-only">, away</span>
+                  </>
+                )}
+                {s.leaving ? " LEAVING" : s.sittingOut ? " OUT" : ""}
+              </span>
+              <span className="shrink-0 whitespace-pre">
+                <TextButton onClick={() => actions.replaceWithBot(i, persona)} aria-label={`Put a ${style} bot in for ${names[i]}, with their chips`}>
+                  [BOT IN]
+                </TextButton>
+                {"  "}
+                <TextButton onClick={() => actions.removePlayer(i)} aria-label={`Take ${names[i]} out of seat ${i + 1}`} disabled={s.leaving}>
+                  [REMOVE]
+                </TextButton>
+              </span>
+            </Line>
+          );
+        }
         if (s) {
           return (
-            <Line key={i}>
-              <span>
-                {label} {names[i]} (BOT)
+            <Line key={i} className={ROW_LINE}>
+              <span className={ROW_LEFT}>
+                {label} {names[i]}
+                {s.replaces ? ` (FOR ${s.replaces.toUpperCase()})` : " (BOT)"}
                 {s.leaving ? " LEAVING" : ""}
               </span>
-              <TextButton onClick={() => actions.removeBot(i)} aria-label={`Remove the bot in seat ${i + 1}`} disabled={s.leaving}>
+              <TextButton
+                className="shrink-0"
+                onClick={() => actions.removeBot(i)}
+                aria-label={`Remove the bot in seat ${i + 1}`}
+                disabled={s.leaving}
+              >
                 [REMOVE]
               </TextButton>
             </Line>
           );
         }
-        const p = persona[i] ?? "tag";
+        const left = state.vacated[i];
         return (
-          <Line key={i}>
-            <span>{label} EMPTY</span>
-            <span className="whitespace-pre-wrap">
-              <CycleButton
-                options={PERSONA_IDS}
-                value={p}
-                text={personaText}
-                label={`Bot for seat ${i + 1}`}
-                onChange={(next) => setPersona((m) => ({ ...m, [i]: next }))}
-              />
-              {"  "}
-              <TextButton onClick={() => actions.addBot(i, p)} aria-label={`Add a ${personaText(p)} bot in seat ${i + 1}`}>
-                [+ BOT]
-              </TextButton>
-            </span>
+          <Line key={i} className={ROW_LINE}>
+            <span className={ROW_LEFT}>{left ? `${label} ${left.name.toUpperCase()} LEFT ${fmt(left.stack)}` : `${label} EMPTY`}</span>
+            <TextButton
+              className="shrink-0"
+              onClick={() => actions.addBot(i, persona)}
+              aria-label={
+                left
+                  ? `Put a ${style} bot in seat ${i + 1} with the ${fmt(left.stack)} chips ${left.name} left`
+                  : `Add a ${style} bot in seat ${i + 1}`
+              }
+            >
+              [+ BOT]
+            </TextButton>
           </Line>
         );
       })}
+    </>
+  );
+}
+
+/** The final chips once the host ended the table: one record row per player, net in green / red. */
+export function FinalRows({ rows }: { rows: FinalRow[] }) {
+  return (
+    <>
+      <Tx className={ROW} label="PLAYER" value="CHIPS  NET" />
+      {rows.map((r, k) => (
+        <Tx
+          key={k}
+          className={ROW}
+          label={`${r.name.toUpperCase()}${r.kind === "bot" ? " (BOT)" : ""}`}
+          value={
+            <>
+              {fmt(r.stack)}
+              {"  "}
+              <span className={r.net > 0 ? "text-green" : r.net < 0 ? "text-red" : undefined}>{r.net === 0 ? "0" : signed(r.net)}</span>
+            </>
+          }
+        />
+      ))}
+      {rows.length === 0 ? (
+        <Line>
+          <span className="text-muted">NOBODY PLAYED</span>
+        </Line>
+      ) : null}
     </>
   );
 }
@@ -146,7 +203,7 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /** `[COPY CODE]` that flashes `[COPIED]` / `[COPY FAILED]` for 2 s, announced politely. */
-function CopyButton({ text, label, what }: { text: string; label: string; what: string }) {
+function CopyButton({ text, label, short, what }: { text: string; label: string; short?: string; what: string }) {
   const [result, setResult] = useState<"ok" | "failed" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -163,10 +220,38 @@ function CopyButton({ text, label, what }: { text: string; label: string; what: 
     });
   return (
     <>
-      <TextButton onClick={copy}>{result === "ok" ? "[COPIED]" : result === "failed" ? "[COPY FAILED]" : `[${label}]`}</TextButton>
+      <TextButton onClick={copy} aria-label={result === null ? `Copy ${what.toLowerCase()}` : undefined}>
+        {result === "ok" ? (
+          <Narrow full="[COPIED]" short={short ? "[DONE]" : "[COPIED]"} />
+        ) : result === "failed" ? (
+          <Narrow full="[COPY FAILED]" short={short ? "[FAIL]" : "[COPY FAILED]"} />
+        ) : (
+          <Narrow full={`[${label}]`} short={`[${short ?? label}]`} />
+        )}
+      </TextButton>
       <span className="sr-only" aria-live="polite">
         {result === "ok" ? `${what} copied` : result === "failed" ? `Could not copy the ${what.toLowerCase()}` : ""}
       </span>
+    </>
+  );
+}
+
+/** Under 680px the short form (the code bar must stay one line at 375px), else the full one. */
+function Narrow({ full, short }: { full: string; short: string }) {
+  return (
+    <>
+      <span className="max-[679px]:hidden">{full}</span>
+      <span className="hidden max-[679px]:inline">{short}</span>
+    </>
+  );
+}
+
+/** Two spaces between text buttons, one on a phone. */
+function Gap() {
+  return (
+    <>
+      {" "}
+      <span className="max-[679px]:hidden"> </span>
     </>
   );
 }
@@ -185,27 +270,53 @@ export function TableBar({
   state,
   isHost,
   onStart,
+  onLeave,
+  onEnd,
 }: {
   code: string;
   url: string;
   state: TableState;
   isHost: boolean;
   onStart: () => void;
+  onLeave: () => void;
+  onEnd: () => void;
 }) {
   const seated = seatedCount(state);
   const ready = seated >= 2;
+  // Ending is for everyone, so it asks again (as solo's NEW SESSION does); moving away cancels.
+  const [confirmEnd, setConfirmEnd] = useState(false);
   // Unique per mount: Next keeps earlier table pages in the DOM, hidden.
   const whyId = useId();
   return (
     <>
       <Line>
         <span>
-          CODE <span className="inv">{code}</span>
+          <span className="max-[679px]:sr-only">CODE </span>
+          <span className="inv">{code}</span>
         </span>
+        {/* On a phone the link alone is copied (the code is on screen to read out) and the gaps are single. */}
         <span className="whitespace-pre-wrap">
-          <CopyButton text={code} label="COPY CODE" what="Code" />
-          {"  "}
-          <CopyButton text={url} label="COPY LINK" what="Link" />
+          <span className="max-[679px]:hidden">
+            <CopyButton text={code} label="COPY CODE" what="Code" />
+            {"  "}
+          </span>
+          <CopyButton text={url} label="COPY LINK" short="LINK" what="Link" />
+          <Gap />
+          <TextButton onClick={onLeave} aria-label="Leave the table">
+            [LEAVE]
+          </TextButton>
+          {isHost && !state.ending ? (
+            <>
+              <Gap />
+              <TextButton
+                onClick={() => (confirmEnd ? onEnd() : setConfirmEnd(true))}
+                onBlur={() => setConfirmEnd(false)}
+                aria-label={confirmEnd ? "Confirm: end the table for everyone" : "End the table for everyone"}
+              >
+                {confirmEnd ? <Narrow full="[CONFIRM — ENDS FOR EVERYONE]" short="[END?]" /> : <Narrow full="[END TABLE]" short="[END]" />}
+              </TextButton>
+            </>
+          ) : null}
         </span>
       </Line>
       {state.started ? null : (
@@ -302,27 +413,39 @@ export function SeatList({ state, names, heroSeat }: { state: TableState; names:
 /** Seat rows: on mobile the value column shrinks to fit the chips instead of a fixed 22ch. */
 const ROW = "whitespace-pre-wrap max-[679px]:grid-cols-[minmax(0,1fr)_auto]!";
 
-/** The last rows of the hand log, dealer-trace style: `+0.074  S2 CHECK` with muted times. */
+/**
+ * The last rows of the hand log, dealer-trace style: `+0.074  BEA CHECK` with muted times. `[HIDE]` on the
+ * heading folds the rows away.
+ */
 export function HandLogLines({ log }: { log: HandLog }) {
+  const [open, setOpen] = useState(true);
+  const id = useId();
   return (
     <>
       <Line center>
-        <span>HAND LOG</span>
+        <span className="whitespace-pre-wrap">
+          HAND LOG{"  "}
+          <TextButton aria-expanded={open} aria-controls={id} aria-label={open ? "Hide the hand log" : "Show the hand log"} onClick={() => setOpen((o) => !o)}>
+            {open ? "[HIDE]" : "[SHOW]"}
+          </TextButton>
+        </span>
       </Line>
-      {log.rows.length === 0 ? (
-        <Line>
-          <span className="text-muted">NO HANDS YET</span>
-        </Line>
-      ) : (
-        log.rows.map((r) => (
-          <Line key={r.key}>
-            <span className="whitespace-pre-wrap">
-              <span className="text-muted">{stamp(r.t).padEnd(10)}</span>
-              {r.text}
-            </span>
+      <div id={id} className="contents" hidden={!open}>
+        {!open ? null : log.rows.length === 0 ? (
+          <Line>
+            <span className="text-muted">NO HANDS YET</span>
           </Line>
-        ))
-      )}
+        ) : (
+          log.rows.map((r) => (
+            <Line key={r.key}>
+              <span className="whitespace-pre-wrap">
+                <span className="text-muted">{stamp(r.t).padEnd(10)}</span>
+                {r.text}
+              </span>
+            </Line>
+          ))
+        )}
+      </div>
     </>
   );
 }

@@ -1,15 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { Blank, BoxButton, Line, Rule, Screen, Sheet, Tag, TextButton } from "@/components/doc";
-import { ActionStrip, KeysLegend, PlayControls, PokerTable, StripLegend } from "@/components/table";
-import { clockText, heroChips, heroLegal, heroSeatOf, modelFromState, secondsLeft, waitingText } from "@/components/multiplayer/model";
-import { HandLogLines, HostPanel, LiveHeader, SeatList, TableBar } from "@/components/multiplayer/panels";
+import { ActionStrip, KeysLegend, PlayControls, PokerTable, revealTable, StatusBlock, StripLegend, TableHeader } from "@/components/table";
+import {
+  heroChips,
+  heroLegal,
+  heroSeatOf,
+  isPaused,
+  modeText,
+  modelFromState,
+  pausedText,
+  secondsLeft,
+  waitingText,
+} from "@/components/multiplayer/model";
+import { FinalRows, HandLogLines, HostPanel, SeatList, TableBar } from "@/components/multiplayer/panels";
 import { loadNickname, saveNickname } from "@/components/multiplayer/storage";
 import { useTable } from "@/components/multiplayer/use-table";
 import type { RejectCode } from "@/lib/multiplayer/client";
-import { sanitizeName } from "@/lib/multiplayer/protocol";
+import { sanitizeName, type FinalRow } from "@/lib/multiplayer/protocol";
 
 const noSubscribe = () => () => {};
 const pageOrigin = () => window.location.origin;
@@ -124,7 +135,7 @@ function TableGone({ title, missing, onRetry }: { title: ReactNode; missing: boo
       <Line as="p">
         <span>
           {missing
-            ? "NO TABLE WITH THIS CODE. IT MAY BE MISTYPED, OR THE TABLE CLOSED AFTER 2 HOURS WITH NOBODY AT IT."
+            ? "NO TABLE WITH THIS CODE. IT MAY BE MISTYPED, OR THE TABLE WAS CLOSED (BY ITS HOST, OR AFTER 2 HOURS WITH NOBODY AT IT)."
             : "IT MAY BE DOWN, OR THIS DEVICE IS OFFLINE. TRY AGAIN IN A MOMENT."}
         </span>
       </Line>
@@ -139,6 +150,32 @@ function TableGone({ title, missing, onRetry }: { title: ReactNode; missing: boo
           ) : (
             <TextButton onClick={onRetry}>[RETRY]</TextButton>
           )}
+        </span>
+      </Line>
+      <Blank />
+    </Sheet>
+  );
+}
+
+/** The host ended the table: everyone's final chips, then where to go next. */
+function TableEnded({ title, rows }: { title: ReactNode; rows: FinalRow[] | null }) {
+  return (
+    <Sheet className="flex-1">
+      <Blank />
+      {title}
+      <Blank />
+      <Line>
+        <Tag role="status">TABLE ENDED BY THE HOST</Tag>
+      </Line>
+      <Blank />
+      {rows ? <FinalRows rows={rows} /> : null}
+      <Blank />
+      <Line>
+        <span className="flex flex-wrap items-baseline gap-[2ch]">
+          <BoxButton href="/play/friends" filled>
+            NEW TABLE →
+          </BoxButton>
+          <Link href="/play/friends">JOIN ANOTHER CODE →</Link>
         </span>
       </Line>
       <Blank />
@@ -195,7 +232,23 @@ function NicknameForm({ initial, error, onJoin }: { initial: string; error: stri
 }
 
 const SCREEN_ID = "live-table";
+/** A note never wraps: it is cut with an ellipsis instead (see LiveTable). */
+const NOTE = "inline-block min-w-0 max-w-full truncate align-bottom";
 const pageUrl = () => window.location.href.split(/[?#]/)[0];
+/** Prefixed to the tab title while it is this player's decision, for a tab in the background. */
+const TURN_PREFIX = "● YOUR TURN · ";
+
+/** Prefixes the document title while `on`, and puts it back after. */
+function useTurnTitle(on: boolean): void {
+  useEffect(() => {
+    if (!on) return;
+    const base = document.title.startsWith(TURN_PREFIX) ? document.title.slice(TURN_PREFIX.length) : document.title;
+    document.title = TURN_PREFIX + base;
+    return () => {
+      if (document.title.startsWith(TURN_PREFIX)) document.title = document.title.slice(TURN_PREFIX.length);
+    };
+  }, [on]);
+}
 
 function LiveTable({
   tableId,
@@ -208,6 +261,7 @@ function LiveTable({
   title: ReactNode;
   onRejected: (code: RejectCode, message: string) => void;
 }) {
+  const router = useRouter();
   const { view, actions } = useTable(tableId, name, onRejected);
   const { state, playerId } = view;
   const inviteUrl = useSyncExternalStore(noSubscribe, pageUrl, () => `/play/t/${tableId}`);
@@ -222,6 +276,7 @@ function LiveTable({
   const chips = state ? heroChips(state, playerId) : { bet: 0, stack: 0 };
   const me = heroSeat !== null ? state!.seats[heroSeat] : null;
   const isHost = !!state && !!playerId && state.hostId === playerId;
+  useTurnTitle(!!legal);
 
   // Turn clock: ticks while someone human is on the clock (hidden while reconnecting: it may be stale).
   const deadline = online ? (state?.deadline ?? null) : null;
@@ -236,37 +291,31 @@ function LiveTable({
       clearTimeout(first);
     };
   }, [deadline]);
-  const turnSecs = state ? Math.min(Math.ceil(state.config.turnMs / 1000), secondsLeft(deadline, now, view.clockOffsetMs) ?? 0) : 0;
+  const turnSecs =
+    state && deadline !== null ? Math.min(Math.ceil(state.config.turnMs / 1000), secondsLeft(deadline, now, view.clockOffsetMs) ?? 0) : null;
 
-  // Server errors, and clicks that could not be sent, show for a few seconds next to the controls.
+  // Server errors, and clicks that could not be sent, show for a few seconds in the line under the status.
   const showError = useRecent(view.error?.at ?? null, 6000);
   const error = showError ? view.error : null;
   const notSent = useRecent(view.notSentAt, 4000) && !online;
 
-  // The first time a hand reaches this seated player, bring the controls on screen once: on a short
-  // window the action buttons can sit just under the fold, with the clock already running.
-  const dealtIn = !!me && !!state?.started && !!state.hand;
-  const scrolled = useRef(false);
+  // Controls only for a seated player while hands are dealt: none before the first deal or while paused.
+  const controls = !!me && !!state?.started && !!state.hand && !isPaused(state);
+  // The first time the controls appear for this seated player, bring the table band into view once (the
+  // controls do it again on each of the player's own decisions).
+  const revealed = useRef(false);
   useEffect(() => {
-    if (!dealtIn || scrolled.current) return;
-    scrolled.current = true;
-    document.getElementById(SCREEN_ID)?.querySelector(".controls-dock")?.scrollIntoView({ block: "nearest" });
-  }, [dealtIn]);
+    if (!controls || revealed.current) return;
+    const band = document.getElementById(SCREEN_ID);
+    if (!band?.querySelector(".controls-dock")) return;
+    revealed.current = true;
+    revealTable(band);
+  }, [controls]);
 
-  // Only the connection state is a live region; the round trip changes every ping and stays plain text.
+  // The connection only (DESIGN.md §6): no round-trip time, so the header never jitters.
   const conn = (
-    <span className="whitespace-pre-wrap">
-      <span role="status">
-        <span aria-hidden="true">{online ? "●" : "○"}</span>{" "}
-        {online ? "CONNECTED" : view.everOpen ? "RECONNECTING…" : "CONNECTING…"}
-      </span>
-      {online && view.rttMs !== null ? `  ${Math.round(view.rttMs)} MS` : ""}
-    </span>
-  );
-  const right = (
-    <span className="whitespace-pre-wrap">
-      {deadline !== null ? <span className={turnSecs <= 5 ? "text-amber" : undefined}>{clockText(turnSecs)}    </span> : null}
-      {conn}
+    <span role="status">
+      <span aria-hidden="true">{online ? "●" : "○"}</span> {online ? "CONNECTED" : view.everOpen ? "RECONNECTING…" : "CONNECTING…"}
     </span>
   );
 
@@ -285,88 +334,143 @@ function LiveTable({
     );
   }
 
+  if (state.ended || view.ended) return <TableEnded title={title} rows={state.ended?.rows ?? null} />;
+
   const hand = state.hand;
-  const toAct = model.toAct;
-  const status = !online
-    ? "CONTROLS PAUSED UNTIL RECONNECTED"
-    : !state.started
-    ? isHost
-      ? "SEATED — PRESS START ABOVE WHEN FRIENDS ARE IN"
-      : "SEATED — WAITING FOR THE HOST TO START"
-    : !hand
-      ? "WAITING FOR TWO PLAYERS"
-      : hand.complete
-        ? "NEXT HAND…"
-        : legal
-          ? "YOUR TURN"
-          : toAct !== null
-            ? `${model.seats[toAct].name} TO ACT`
-            : "";
-  const names = model.seats.map((s) => s.name);
+  const paused = isPaused(state);
   const freeSeat = state.seats.findIndex((s) => s === null);
-  const playing = state.started && !!hand;
+  // A bot playing this watcher's chips since they went away: they may take that seat back.
+  const standIn = heroSeat === null && playerId ? state.seats.findIndex((s) => s?.replacesId === playerId && s.reclaimable) : -1;
+  // A bot the host put in for this watcher while they were present: it holds their chips, so no seat for them.
+  const holder = heroSeat === null && playerId ? state.seats.findIndex((s) => s?.replacesId === playerId && !s.reclaimable) : -1;
+
+  // The status line's words when nobody is on the clock and no result is up.
+  const idle =
+    heroSeat === null
+      ? standIn >= 0
+        ? `A BOT HAS YOUR CHIPS (S${standIn + 1})`
+        : holder >= 0
+          ? `WATCHING — THE HOST GAVE YOUR CHIPS TO S${holder + 1}`
+          : freeSeat >= 0
+            ? "WATCHING"
+            : "WATCHING — EVERY SEAT IS TAKEN"
+      : !state.started
+        ? isHost
+          ? "SEATED — PRESS START ABOVE WHEN FRIENDS ARE IN"
+          : "SEATED — WAITING FOR THE HOST TO START"
+        : paused
+          ? "PAUSED"
+          : "NEXT HAND…";
+  const action =
+    heroSeat === null ? (
+      standIn >= 0 ? (
+        state.seats[standIn]!.reclaiming ? (
+          <span>BACK IN NEXT HAND</span>
+        ) : (
+          <TextButton onClick={() => actions.sit(standIn)} aria-label={`Take seat ${standIn + 1} back from the bot`}>
+            [TAKE SEAT BACK]
+          </TextButton>
+        )
+      ) : freeSeat >= 0 && holder < 0 ? (
+        <TextButton onClick={() => actions.sit(freeSeat)} aria-label={`Sit in seat ${freeSeat + 1}, the first free seat`}>
+          [SIT]
+        </TextButton>
+      ) : null
+    ) : me!.leaving ? (
+      <TextButton onClick={() => actions.sit(heroSeat)} aria-label="Stay in your seat">
+        [STAY]
+      </TextButton>
+    ) : (
+      <span className="whitespace-pre-wrap">
+        {me!.sittingOut ? (
+          <>
+            <TextButton onClick={() => actions.sit(heroSeat)}>[SIT BACK IN]</TextButton>
+            {"  "}
+          </>
+        ) : null}
+        <TextButton onClick={actions.stand}>[STAND]</TextButton>
+      </span>
+    );
+  const status = (
+    <StatusBlock model={model} heroTurn={!!legal} toCall={legal?.callAmount} seconds={turnSecs} idle={idle} action={action} />
+  );
+
+  // One line under the status (or under the controls, in place of the keys) carries whatever needs saying
+  // now, so a message never adds or removes a row. Worded to fit one line at 375px; anything longer (a
+  // server error) is cut with an ellipsis, the whole text still read out.
+  const note = notSent ? (
+    <Tag role="alert" className={NOTE}>
+      NOT CONNECTED — NOT SENT
+    </Tag>
+  ) : error ? (
+    <Tag role="alert" className={NOTE}>
+      {error.message.toUpperCase()}
+    </Tag>
+  ) : !online ? (
+    <span className={`text-muted ${NOTE}`}>OFFLINE — CONTROLS PAUSED</span>
+  ) : state.ending ? (
+    <Tag className={NOTE}>TABLE ENDS AFTER THIS HAND</Tag>
+  ) : me?.sittingOut ? (
+    <Tag className={NOTE}>SITTING OUT AFTER 2 TIMEOUTS</Tag>
+  ) : me?.leaving ? (
+    <span className={`text-muted ${NOTE}`}>LEAVING AFTER THIS HAND</span>
+  ) : paused ? (
+    <span className={`text-muted ${NOTE}`}>{pausedText(state)}</span>
+  ) : null;
+  const names = model.seats.map((s) => s.name);
 
   return (
     <Sheet className="flex-1">
       <Blank />
       {title}
       <Blank />
-      <TableBar code={tableId} url={inviteUrl} state={state} isHost={isHost} onStart={actions.start} />
+      <TableBar
+        code={tableId}
+        url={inviteUrl}
+        state={state}
+        isHost={isHost}
+        onStart={actions.start}
+        onLeave={() => {
+          actions.leave();
+          router.push("/play/friends");
+        }}
+        onEnd={actions.endTable}
+      />
       <Rule />
       <Screen id={SCREEN_ID} aria-label="Table with friends">
-        <LiveHeader
-          model={model}
-          title={`TABLE ${tableId}`}
-          mode={`LIVE  ${model.seated}/${model.capacity} SEATED`}
-          right={right}
-          waiting={waitingText(state, isHost)}
-        />
+        <TableHeader model={model} title={`TABLE ${tableId}`} mode={modeText(state)} right={conn} waiting={waitingText(state, isHost)} />
         <PokerTable
           model={model}
           label={`Table ${tableId}, ${model.seated} of ${model.capacity} seats taken`}
-          onSit={heroSeat === null ? actions.sit : undefined}
+          onSit={heroSeat === null && standIn < 0 && holder < 0 ? actions.sit : undefined}
         />
-        <Line>
-          <span>{heroSeat === null ? (freeSeat >= 0 ? "WATCHING" : "WATCHING — EVERY SEAT IS TAKEN") : status}</span>
-          {heroSeat === null && freeSeat >= 0 ? (
-            <TextButton onClick={() => actions.sit(freeSeat)} aria-label={`Sit in seat ${freeSeat + 1}, the first free seat`}>
-              [SIT]
-            </TextButton>
-          ) : null}
-          {me ? (
-            <span className="whitespace-pre-wrap">
-              {me.leaving ? (
-                <>
-                  LEAVING AFTER THIS HAND{"  "}
-                  <TextButton onClick={() => actions.sit(heroSeat!)}>[STAY]</TextButton>
-                </>
-              ) : (
-                <>
-                  {me.sittingOut ? (
-                    <>
-                      SITTING OUT{"  "}
-                      <TextButton onClick={() => actions.sit(heroSeat!)}>[SIT BACK IN]</TextButton>
-                      {"  "}
-                    </>
-                  ) : null}
-                  <TextButton onClick={actions.stand}>[STAND]</TextButton>
-                </>
-              )}
-            </span>
-          ) : null}
-        </Line>
-        {/* Watchers have nothing to act with, and nobody before the first deal: no dead controls. */}
-        {me && playing ? <PlayControls legal={legal} pot={model.pot} heroBet={chips.bet} stack={chips.stack} onAct={actions.act} /> : null}
-        {notSent ? (
-          <Line>
-            <Tag role="alert">NOT CONNECTED — NOT SENT</Tag>
-          </Line>
-        ) : error ? (
-          <Line>
-            <Tag role="alert">{error.message.toUpperCase()}</Tag>
-          </Line>
-        ) : null}
-        {me && playing ? <KeysLegend /> : null}
+        {controls ? (
+          <>
+            <PlayControls
+              legal={legal}
+              pot={model.pot}
+              heroBet={chips.bet}
+              stack={chips.stack}
+              onAct={actions.act}
+              decisionKey={hand ? `${hand.handNo}:${hand.actions.length}` : undefined}
+              status={status}
+            />
+            {note ? (
+              <Line className="legend">{note}</Line>
+            ) : (
+              <>
+                <KeysLegend />
+                {/* Mobile hides the keys line: an empty line keeps the slot, so a note never adds a row. */}
+                <div className="l hidden! max-[679px]:flex!" aria-hidden="true" />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {status}
+            <Line>{note}</Line>
+          </>
+        )}
         <Line center gap>
           <span>ACTION</span>
         </Line>
@@ -374,15 +478,15 @@ function LiveTable({
         <StripLegend />
       </Screen>
       <Blank />
+      <HandLogLines log={view.log} />
+      <Blank />
       {isHost ? (
         <>
-          <HostPanel state={state} names={names} actions={actions} />
+          <HostPanel state={state} names={names} heroSeat={heroSeat} actions={actions} />
           <Blank />
         </>
       ) : null}
       <SeatList state={state} names={names} heroSeat={heroSeat} />
-      <Blank />
-      <HandLogLines log={view.log} />
       <Blank />
     </Sheet>
   );

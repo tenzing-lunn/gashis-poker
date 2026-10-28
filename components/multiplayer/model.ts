@@ -16,7 +16,7 @@ import {
 } from "@/components/table/model";
 import { botNames } from "@/components/table/names";
 import type { Street } from "@/lib/engine/engine";
-import type { CardText, PublicHand, PublicLegal, TableState } from "@/lib/multiplayer/protocol";
+import type { CardText, PublicAction, PublicHand, PublicLegal, TableState } from "@/lib/multiplayer/protocol";
 import { parseCard, type Card } from "@/lib/poker/cards";
 
 /** This player's cards for one hand, as the server sent them. */
@@ -37,13 +37,22 @@ export function heroSeatOf(state: TableState, playerId: string | null): number |
   return i >= 0 ? i : null;
 }
 
-/** Seat names: humans by their (uppercased) handle; bots by persona, a second TAG becoming TAG-2. */
+/**
+ * Seat names: humans by their (uppercased) handle; bots by persona, a second TAG becoming TAG-2. A human
+ * with no open connection is `away`.
+ */
 export function seatSources(state: TableState): (SeatSource | null)[] {
   const bots = botNames(state.seats.map((s) => (s && s.kind === "bot" ? s.persona : null)));
-  return state.seats.map((s, i) =>
-    s ? { name: s.kind === "bot" && s.persona ? bots[i] : s.name.toUpperCase(), kind: s.kind } : null,
-  );
+  return state.seats.map((s, i) => {
+    if (!s) return null;
+    const src: SeatSource = { name: s.kind === "bot" && s.persona ? bots[i] : s.name.toUpperCase(), kind: s.kind };
+    if (s.kind === "human" && !s.connected) src.away = true;
+    return src;
+  });
 }
+
+/** `TIMED OUT → FOLD`: an action the server took because the player's clock ran out. */
+export const timedOutText = (a: PublicAction): string => `TIMED OUT → ${a.action === "check" ? "CHECK" : "FOLD"}`;
 
 const cards = (xs: readonly CardText[]): Card[] => xs.map(parseCard);
 
@@ -160,14 +169,38 @@ export function modelFromState(state: TableState, hole: HoleMsg | null, playerId
     // Waiting after earlier hands: keep the count, the last hand is over.
     if (state.handNo > 0) model = { ...model, handNo: state.handNo, street: "over" };
   }
+  // A seat's last action in this hand, when its clock ran out (`TIMED OUT → FOLD` does not fit the seat).
+  const actions = input ? state.hand!.actions : [];
+  const lastOf = (seat: number) => actions.findLast((a) => a.seat === seat);
   // Seats sitting out (and not in this hand) are drawn muted with a word on their action line.
   const seats = model.seats.map((s) => {
     const info = state.seats[s.seat];
     const dealtIn = input?.inHand[s.seat] ?? false;
-    if (!info || dealtIn || (!info.sittingOut && !info.leaving)) return s;
+    if (dealtIn) {
+      const last = lastOf(s.seat);
+      if (last?.timedOut && s.lastAction === (last.action === "check" ? "CHECK" : "FOLD")) {
+        return { ...s, lastAction: `${s.lastAction} (TIME)` };
+      }
+      return s;
+    }
+    if (!info) return s;
+    // Sat down after this hand was dealt: in from the next one (the shared model would say SITTING OUT).
+    if (!info.sittingOut && !info.leaving) return input ? { ...s, out: true, lastAction: "NEXT HAND" } : s;
     return { ...s, out: true, lastAction: info.leaving ? "LEAVING" : "SITTING OUT" };
   });
-  return { ...model, seats };
+  // The strip's marks are each seat's blinds, actions and wins in order: name the timed-out actions.
+  const rows = model.strip.rows.map((row) => {
+    const mine = actions.filter((a) => a.seat === row.seat);
+    if (!mine.some((a) => a.timedOut)) return row;
+    let k = 0;
+    const marks = row.marks.map((m) => {
+      if (m.letter === "b" || m.letter === "W") return m;
+      const a = mine[k++];
+      return a?.timedOut ? { ...m, text: timedOutText(a) } : m;
+    });
+    return { ...row, marks };
+  });
+  return { ...model, seats, strip: { ...model.strip, rows } };
 }
 
 /** What the hero may do now, or null when it is not their decision. */
@@ -192,10 +225,6 @@ export function secondsLeft(deadline: number | null, localNow: number, clockOffs
   return Math.max(0, Math.ceil((deadline - (localNow + clockOffsetMs)) / 1000));
 }
 
-/** `TIME 00:14`. */
-export const clockText = (secs: number): string =>
-  `TIME ${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
-
 /** The option after `value` in a cycling control, wrapping to the first. */
 export function cycleNext<T>(options: readonly T[], value: T): T {
   const i = options.indexOf(value);
@@ -213,3 +242,33 @@ export function waitingText(state: TableState, isHost: boolean): string {
 
 /** Seats taken, by humans or bots. */
 export const seatedCount = (state: TableState): number => state.seats.filter(Boolean).length;
+
+/** Seats in play (seated, neither sitting out nor leaving), and seats sitting out. */
+export function seatCounts(state: TableState): { playing: number; out: number } {
+  let playing = 0;
+  let out = 0;
+  for (const s of state.seats) {
+    if (!s) continue;
+    if (s.sittingOut) out++;
+    else if (!s.leaving) playing++;
+  }
+  return { playing, out };
+}
+
+/** Started, but no hand is running and none is coming: too few players in, or nobody human here. */
+export const isPaused = (state: TableState): boolean =>
+  state.started && (!state.hand || state.hand.complete) && state.nextHandAt === null;
+
+/** The header's mode: `LIVE  4/6 IN`, `PAUSED  1/6 IN, 2 OUT`, `WAITING  1/6 IN` before the start. */
+export function modeText(state: TableState): string {
+  const { playing, out } = seatCounts(state);
+  const head = !state.started ? "WAITING" : isPaused(state) ? "PAUSED" : "LIVE";
+  return `${head}  ${playing}/${state.config.seats} IN${out > 0 ? `, ${out} OUT` : ""}`;
+}
+
+/** Why a started table is paused (see isPaused), for the note line; short enough for one line at 375px. */
+export function pausedText(state: TableState): string {
+  const { playing, out } = seatCounts(state);
+  if (playing < 2) return `NEED A SECOND PLAYER${out === 0 ? "" : ` · ${out} OUT`}`;
+  return "WAITING FOR A PLAYER TO RETURN";
+}

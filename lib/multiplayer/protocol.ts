@@ -24,6 +24,14 @@ export type ClientMessage =
   | { type: "addBot"; seat: number; persona: PersonaId }
   | { type: "removeBot"; seat: number }
   | { type: "start" }
+  /** Leave the table: stand up (after the hand if dealt in) and let the host put a bot in with these chips. */
+  | { type: "leave" }
+  /** Host: a bot takes this human's seat and chips (after the hand if they are dealt in). */
+  | { type: "replaceWithBot"; seat: number; persona: PersonaId }
+  /** Host: this human stands up (after the hand if dealt in) and watches. */
+  | { type: "removePlayer"; seat: number }
+  /** Host: the table ends after the hand in progress; everyone gets the final chips, then it closes. */
+  | { type: "endTable" }
   | { type: "ping"; id?: number };
 
 export const PERSONA_ID_LIST: readonly PersonaId[] = ["nit", "tag", "lag", "station", "maniac", "micro"];
@@ -79,6 +87,16 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "stand" };
     case "start":
       return { type: "start" };
+    case "leave":
+      return { type: "leave" };
+    case "endTable":
+      return { type: "endTable" };
+    case "replaceWithBot":
+      return isSeat(x.seat) && PERSONA_ID_LIST.includes(x.persona as PersonaId)
+        ? { type: "replaceWithBot", seat: x.seat, persona: x.persona as PersonaId }
+        : null;
+    case "removePlayer":
+      return isSeat(x.seat) ? { type: "removePlayer", seat: x.seat } : null;
     case "act": {
       const action = parseAction(x.action);
       return isInt(x.handNo) && action ? { type: "act", handNo: x.handNo, action } : null;
@@ -135,6 +153,24 @@ export interface SeatInfo {
   inHand: boolean;
   /** Stood up (or removed) during a hand; the seat frees when the hand ends. */
   leaving: boolean;
+  /** A bot standing in for this human (by name), who gets the seat back on returning if they were away. */
+  replaces?: string;
+  /** That human's playerId (so they can tell it is their chips). */
+  replacesId?: string;
+  /** They may take the seat back from this bot. */
+  reclaimable?: boolean;
+  /** They are back: the bot hands the seat over when this hand ends. */
+  reclaiming?: boolean;
+}
+
+/** One player's chips when the table ended. */
+export interface FinalRow {
+  name: string;
+  kind: "human" | "bot";
+  /** Chips at the end (a human's include those of a bot that stood in for them). */
+  stack: number;
+  /** `stack` minus every buy-in and rebuy. */
+  net: number;
 }
 
 export interface PublicAction {
@@ -148,6 +184,8 @@ export interface PublicAction {
   allIn: boolean;
   /** Set when the server acted for the player (turn clock ran out, sitting out or leaving). */
   auto?: boolean;
+  /** Set (with `auto`) only when the player's turn clock ran out. */
+  timedOut?: true;
 }
 
 export interface PublicLegal {
@@ -214,6 +252,15 @@ export interface TableState {
   lastResult: HandResultPublic | null;
   /** Server time when this snapshot was made, for clock-offset estimates. */
   serverNow: number;
+  /** The host ended the table; it closes after the hand in progress. */
+  ending: boolean;
+  /** Set on the last state before the table closes: everyone's final chips. */
+  ended: { rows: FinalRow[] } | null;
+  /**
+   * Per seat: the human who left it empty and the chips they left with, so the host can put a bot in with
+   * those chips (`addBot` there takes them). Null where nobody left.
+   */
+  vacated: ({ name: string; stack: number } | null)[];
 }
 
 export type ErrorCode =
@@ -233,6 +280,7 @@ export type ErrorCode =
   | "stale_hand"
   | "not_your_turn"
   | "illegal_action"
+  | "not_human"
   | "table_full";
 
 export type ServerMessageBody =

@@ -3,7 +3,20 @@ import { TableRoom, type RoomDeps } from "@/lib/multiplayer/room";
 import type { ServerMessage, TableState } from "@/lib/multiplayer/protocol";
 import { createRng, parseCard } from "@/lib/poker/cards";
 import { emptyLog, updateLog } from "./log";
-import { clockText, cycleNext, heroLegal, heroSeatOf, modelFromState, secondsLeft, tableInputFromState, waitingText, type HoleMsg } from "./model";
+import {
+  cycleNext,
+  heroLegal,
+  heroSeatOf,
+  isPaused,
+  modeText,
+  modelFromState,
+  pausedText,
+  seatSources,
+  secondsLeft,
+  tableInputFromState,
+  waitingText,
+  type HoleMsg,
+} from "./model";
 
 const T0 = 1_800_000_000_000;
 
@@ -222,6 +235,16 @@ describe("modelFromState", () => {
     expect(m.seats[4].kind).toBe("empty");
   });
 
+  it("says NEXT HAND, not SITTING OUT, for a player who sat down after the hand was dealt", () => {
+    const t = fourHanded();
+    t.send("a", { type: "start" });
+    expect(t.state.hand && !t.state.hand.complete).toBe(true);
+    t.join("c", "Cy");
+    t.send("c", { type: "sit", seat: 4 });
+    const m = modelFromState(t.state, null, null);
+    expect(m.seats[4]).toMatchObject({ out: true, lastAction: "NEXT HAND" });
+  });
+
   it("marks a player sitting out once the next hand deals without them", () => {
     const t = fourHanded();
     play(t, 2);
@@ -241,8 +264,47 @@ describe("modelFromState", () => {
     const m = modelFromState(b.state!, null, b.playerId);
     expect(m.seats[2].out).toBe(true);
     expect(m.seats[2].lastAction).toBe("SITTING OUT");
+    expect(modeText(b.state!)).toBe("LIVE  3/5 IN, 1 OUT");
     expect(m.seats[2].holeCards).toBeNull();
     expect(heroLegal(b.state!, b.playerId)).toBeNull();
+  });
+});
+
+describe("timeouts and away seats", () => {
+  it("names a run-out clock on the seat, in the strip and in the log", () => {
+    const t = fourHanded();
+    t.send("a", { type: "start" });
+    let log = emptyLog();
+    t.onState = (conn, state) => {
+      if (conn === "a") log = updateLog(log, state, 0);
+    };
+    // Ana plays; Ben never acts, so his clock runs out.
+    for (let guard = 0; guard < 2000 && !t.state.hand?.actions.some((x) => x.timedOut); guard++) {
+      const s = t.state;
+      if (s.toAct === 0 && s.hand?.legal && !s.hand.complete) {
+        t.send("a", { type: "act", handNo: s.hand.handNo, action: s.hand.legal.canCheck ? { type: "check" } : { type: "call" } });
+      } else t.fire();
+    }
+    const s = t.state;
+    const timed = s.hand!.actions.find((x) => x.timedOut)!;
+    expect(timed.seat).toBe(2);
+    const word = timed.action === "check" ? "CHECK" : "FOLD";
+    const a = t.conns.get("a")!;
+    const m = modelFromState(a.state!, null, a.playerId);
+    const lastBen = s.hand!.actions.filter((x) => x.seat === 2).at(-1)!;
+    if (lastBen === timed && m.seats[2].lastAction !== "") expect(m.seats[2].lastAction).toBe(`${word} (TIME)`);
+    const marks = m.strip.rows.find((r) => r.seat === 2)!.marks;
+    expect(marks.some((x) => x.text === `TIMED OUT → ${word}`)).toBe(true);
+    expect(log.rows.some((r) => r.text === `BEN TIMED OUT → ${word}`)).toBe(true);
+  });
+
+  it("marks a human with no open connection away, never a bot", () => {
+    const t = fourHanded();
+    t.room.onClose("b");
+    const src = seatSources(t.state);
+    expect(src[2]).toMatchObject({ name: "BEN", away: true });
+    expect(src[0]!.away).toBeUndefined();
+    expect(src[1]!.away).toBeUndefined();
   });
 });
 
@@ -272,8 +334,6 @@ describe("turn clock", () => {
     // Local clock 1 s behind the server.
     expect(secondsLeft(20_000, 5_500, 1_000)).toBe(14);
     expect(secondsLeft(20_000, 30_000, 0)).toBe(0);
-    expect(clockText(14)).toBe("TIME 00:14");
-    expect(clockText(75)).toBe("TIME 01:15");
   });
 });
 
@@ -349,5 +409,21 @@ describe("waitingText", () => {
     expect(t.state.started).toBe(true);
     expect(t.state.hand).toBeNull();
     expect(waitingText(t.state, true)).toBe("WAITING FOR PLAYERS");
+  });
+
+  it("counts players in and out, and says why a started table is paused", () => {
+    const t = new Table(4);
+    t.join("a", "Ana");
+    t.join("b", "Ben");
+    t.send("a", { type: "sit", seat: 0 });
+    expect(modeText(t.state)).toBe("WAITING  1/4 IN");
+    expect(isPaused(t.state)).toBe(false);
+    t.send("a", { type: "start" });
+    expect(isPaused(t.state)).toBe(true);
+    expect(modeText(t.state)).toBe("PAUSED  1/4 IN");
+    expect(pausedText(t.state)).toBe("NEED A SECOND PLAYER");
+    t.send("b", { type: "sit", seat: 1 });
+    expect(isPaused(t.state)).toBe(false);
+    expect(modeText(t.state)).toBe("LIVE  2/4 IN");
   });
 });
