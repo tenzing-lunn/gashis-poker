@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRng, formatCard, type Rng } from "../poker/cards";
 import type { Action } from "../engine/engine";
 import type { ServerMessage, TableState } from "./protocol";
-import { MAX_CONNECTIONS, parseSeatsParam, TableRoom, type RoomConfig, type RoomDeps } from "./room";
+import { DEFAULT_ROOM_CONFIG, MAX_CONNECTIONS, parseSeatsParam, TableRoom, type RoomConfig, type RoomDeps } from "./room";
 import { connectTable, type TableClientEvent } from "./client";
 
 const T0 = 1_800_000_000_000;
@@ -13,6 +13,8 @@ type Sent = { conn: string; msg: ServerMessage };
 class Harness {
   t: number;
   alarm: number | null = null;
+  /** How many times the room called setAlarm. */
+  alarmSets = 0;
   calls = 0;
   /** Fault injection: the random() call that brings `calls` to this number throws. */
   throwAt: number | null = null;
@@ -55,7 +57,10 @@ class Harness {
       this.closed.push(conn);
       this.closeCodes.set(conn, code);
     },
-    setAlarm: (at) => (this.alarm = at),
+    setAlarm: (at) => {
+      this.alarm = at;
+      this.alarmSets++;
+    },
     random: () => this.random(),
   };
 
@@ -390,10 +395,11 @@ describe("TableRoom", () => {
     h.send("a", { type: "removeBot", seat: 1 });
     for (let i = 0; i < 100 && h.state("a").seats[1]; i++) step(h, { a: 0 });
     expect(h.state("a").seats[1]).toBeNull();
-    // Alone at the table: no hand, no alarm.
-    for (let i = 0; i < 10 && h.alarm !== null; i++) h.fire();
+    // Alone at the table: no hand, and no alarm but the idle backstop hours away.
+    const backstop = DEFAULT_ROOM_CONFIG.idleMs / 2;
+    for (let i = 0; i < 10 && h.alarm !== null && h.alarm < h.t + backstop; i++) h.fire();
     expect(h.state("a").hand).toBeNull();
-    expect(h.alarm).toBeNull();
+    expect(h.alarm).toBeGreaterThan(h.t + backstop);
   });
 
   it("keeps a folded player's seat reserved until the hand ends", () => {
@@ -881,8 +887,8 @@ describe("TableRoom hardening", () => {
     h.advance(30_000);
     h.connect("a");
     h.send("a", { type: "join", name: "Alice", sit: true });
-    // Only the join deadline was due, and the join cleared it: no alarm at all while someone is here.
-    expect(h.alarm).toBeNull();
+    // While someone is here only the backstop wake-up is due, idleMs after they connected.
+    expect(h.alarm).toBe(T0 + 30_000 + 60_000);
     h.advance(10 * 60_000);
     expect(h.room.closed).toBe(false);
     const closedAt = h.t;
@@ -902,6 +908,36 @@ describe("TableRoom hardening", () => {
     h.advance(15_000);
     expect(h.room.closed).toBe(false);
     expect(h.alarm).toBe(T0 + 59_000 + 15_000 + 60_000);
+  });
+
+  it("wakes up while connected so sockets lost without a close event start the idle clock", () => {
+    const h = new Harness(28, { idleMs: 60_000 });
+    h.connect("a");
+    h.send("a", { type: "join", name: "Alice", sit: true });
+    expect(h.alarm).not.toBeNull();
+    expect(h.alarm!).toBeLessThanOrEqual(h.t + 60_000);
+    // Still connected when it fires: it only moves another idleMs out.
+    h.advance(h.alarm! - h.t);
+    expect(h.room.closed).toBe(false);
+    expect(h.alarm).toBe(h.t + 60_000);
+    // The platform finds no socket really open (e.g. after a deploy): the idle clock starts now.
+    h.advance(h.alarm! - h.t);
+    h.room.syncConnections([]);
+    const since = h.t;
+    expect(h.room.serialize().idleSince).toBe(since);
+    h.advance(since + 60_000 - 1 - h.t);
+    expect(h.room.closed).toBe(false);
+    h.advance(1);
+    expect(h.room.closed).toBe(true);
+  });
+
+  it("asks for exactly one alarm when restored", () => {
+    const h = new Harness(29, { idleMs: 60_000 });
+    h.connect("a");
+    h.send("a", { type: "join", name: "Alice", sit: true });
+    const r = new Harness(29, {}, { snapshot: h.room.serialize(), t: h.t + 1_000, calls: h.calls });
+    expect(r.alarmSets).toBe(1);
+    expect(r.alarm).toBe(r.t + 60_000);
   });
 
   it("keeps the idle clock across serialize() -> restore()", () => {

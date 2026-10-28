@@ -170,6 +170,9 @@ export interface RoomSnapshot {
   idleSince?: number | null;
 }
 
+/** Set while `restore` constructs a room, so the constructor leaves scheduling to restore. */
+let restoring = false;
+
 export class TableRoom {
   private readonly deps: RoomDeps;
   private config: RoomConfig;
@@ -186,6 +189,12 @@ export class TableRoom {
   private nextHandAt: number | null = null;
   /** Since when the table has had no connection, epoch ms; null while anyone is connected. */
   private idleSince: number | null;
+  /**
+   * While anyone is connected: a wake-up idleMs out (not persisted), so that sockets lost without a close
+   * event (a deploy restarts the object) are noticed. The platform's constructor then syncs connections
+   * with the sockets that are really open, and the idle clock starts.
+   */
+  private backstopAt: number | null = null;
   private isClosed = false;
 
   private broadcastPending = false;
@@ -208,7 +217,8 @@ export class TableRoom {
     // pongs (see restore): the clock advances far faster than messages are sent.
     this.seq = deps.now();
     this.persistPending = true;
-    this.schedule(); // the idle deadline of a table nobody has opened yet
+    // The idle deadline of a table nobody has opened yet (restore schedules once it is filled in).
+    if (!restoring) this.schedule();
   }
 
   // -------------------------------------------------------------------------
@@ -273,6 +283,7 @@ export class TableRoom {
       this.alarmAt = null;
       return;
     }
+    if (this.backstopAt !== null && this.deps.now() >= this.backstopAt) this.backstopAt = this.deps.now() + this.config.idleMs;
     let ok = false;
     try {
       for (let guard = 0; guard < 1000; guard++) {
@@ -349,7 +360,13 @@ export class TableRoom {
   static restore(snapshot: RoomSnapshot, deps: RoomDeps): TableRoom {
     if (snapshot.v !== 1 && snapshot.v !== 2) throw new Error(`Unknown room snapshot version ${String(snapshot.v)}`);
     const s = structuredCloneJson(snapshot);
-    const room = new TableRoom(deps, s.config);
+    restoring = true;
+    let room: TableRoom;
+    try {
+      room = new TableRoom(deps, s.config);
+    } finally {
+      restoring = false;
+    }
     const now = deps.now();
     // Version 1 snapshots may lack these times: count from the restore rather than compute NaN deadlines.
     const time = (t: number | undefined): number => (typeof t === "number" && Number.isFinite(t) ? t : now);
@@ -848,7 +865,10 @@ export class TableRoom {
     }
     const h = this.hand;
     const dues: number[] = [];
+    if (this.conns.size === 0) this.backstopAt = null;
+    else this.backstopAt ??= this.deps.now() + this.config.idleMs;
     if (this.idleSince !== null) dues.push(this.idleSince + this.config.idleMs);
+    if (this.backstopAt !== null) dues.push(this.backstopAt);
     const game = h && !h.state.complete && h.turnDue !== null ? h.turnDue : this.nextHandAt;
     if (game !== null) dues.push(game);
     for (const c of this.conns.values()) if (c.playerId === null) dues.push(c.openedAt + JOIN_TIMEOUT_MS);

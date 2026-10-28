@@ -31,9 +31,17 @@ export function randomTableCode(random: () => number): string {
   return code;
 }
 
+/** Every code `claimFreshCode` drew was already held by a live table. */
+export class NoFreeCodeError extends Error {
+  constructor(readonly tries: number) {
+    super(`No free table code after ${tries} tries`);
+    this.name = "NoFreeCodeError";
+  }
+}
+
 /**
  * Draws codes until `tryClaim` accepts one (it refuses a code a live table already holds) and returns it.
- * Throws after `maxTries` refusals.
+ * Throws a NoFreeCodeError after `maxTries` refusals; an error thrown by `tryClaim` propagates as is.
  */
 export async function claimFreshCode(
   tryClaim: (code: string) => Promise<boolean>,
@@ -44,5 +52,5 @@ export async function claimFreshCode(
     const code = randomTableCode(random);
     if (await tryClaim(code)) return code;
   }
-  throw new Error(`No free table code after ${maxTries} tries`);
+  throw new NoFreeCodeError(maxTries);
 }

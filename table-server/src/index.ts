@@ -10,7 +10,7 @@
 // Only browsers on the origins in ALLOWED_ORIGIN (plus DEV_ORIGINS, which `npm run dev` sets to
 // http://localhost:3000) may create tables or open sockets.
 
-import { claimFreshCode, isTableCode } from "../../lib/multiplayer/code";
+import { claimFreshCode, isTableCode, NoFreeCodeError } from "../../lib/multiplayer/code";
 import { parseSeatsParam } from "../../lib/multiplayer/room";
 import type { Env } from "./table";
 
@@ -61,8 +61,12 @@ export default {
       let code: string;
       try {
         code = await claimFreshCode((c) => env.TABLES.get(env.TABLES.idFromName(c)).init({ seats }), random);
-      } catch {
-        return Response.json({ error: "no free table code; try again" }, { status: 503, headers: cors });
+      } catch (e) {
+        if (e instanceof NoFreeCodeError) {
+          return Response.json({ error: "no free table code; try again" }, { status: 503, headers: cors });
+        }
+        console.error("creating a table failed", e);
+        return Response.json({ error: "could not create a table" }, { status: 500, headers: cors });
       }
       return Response.json({ tableId: code }, { headers: { ...cors, "Cache-Control": "no-store" } });
     }

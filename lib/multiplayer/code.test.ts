@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claimFreshCode, isTableCode, normalizeTableCode, randomTableCode, TABLE_CODE_ALPHABET, TABLE_CODE_LENGTH } from "./code";
+import { claimFreshCode, isTableCode, NoFreeCodeError, normalizeTableCode, randomTableCode, TABLE_CODE_ALPHABET, TABLE_CODE_LENGTH } from "./code";
 
 /** A deterministic uint32 source (xorshift32). */
 function rng(seed = 1): () => number {
@@ -79,7 +79,18 @@ describe("claimFreshCode", () => {
         calls++;
         return false;
       }, rng(3), 5),
-    ).rejects.toThrow(/No free table code/);
+    ).rejects.toBeInstanceOf(NoFreeCodeError);
     expect(calls).toBe(5);
+  });
+  it("passes an error from the claim through unchanged, without trying another code", async () => {
+    const boom = new Error("object overloaded");
+    let calls = 0;
+    await expect(
+      claimFreshCode(async () => {
+        calls++;
+        throw boom;
+      }, rng(4)),
+    ).rejects.toBe(boom);
+    expect(calls).toBe(1);
   });
 });
