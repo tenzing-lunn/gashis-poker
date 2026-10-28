@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
 import { BoxButton, Legend, Line, TextButton, Tx } from "@/components/doc";
 import { TableHeader } from "@/components/table";
 import { fmt } from "@/components/table/model";
@@ -194,6 +194,8 @@ export function TableBar({
 }) {
   const seated = seatedCount(state);
   const ready = seated >= 2;
+  // Unique per mount: Next keeps earlier table pages in the DOM, hidden.
+  const whyId = useId();
   return (
     <>
       <Line>
@@ -213,13 +215,13 @@ export function TableBar({
           </Line>
           {isHost ? (
             <Line>
-              <span id="start-why">
+              <span id={whyId}>
                 {seated}/{state.config.seats} SEATED — {ready ? "READY WHEN EVERYONE IS IN" : "WAITING FOR A FRIEND, OR ADD A BOT BELOW"}
               </span>
               <BoxButton
                 filled={ready}
                 aria-disabled={ready ? undefined : true}
-                aria-describedby="start-why"
+                aria-describedby={whyId}
                 className={DISABLED_LOOK}
                 onClick={ready ? onStart : undefined}
               >
