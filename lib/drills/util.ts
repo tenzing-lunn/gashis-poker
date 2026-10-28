@@ -3,7 +3,7 @@
 
 import { FULL_DECK, RANK_CHARS, formatCard, shuffle, type Card, type Rng } from "../poker/cards";
 import { parseRange } from "../poker/range";
-import type { Difficulty } from "./types";
+import type { Answer, Difficulty, Fact, Mistake } from "./types";
 
 export const pick = <T>(rng: Rng, items: readonly T[]): T => items[rng.int(items.length)];
 
@@ -42,6 +42,48 @@ export const num = (x: number): string => String(x);
 
 /** Display rounding for explanations and expected answers (the stored answer stays exact). */
 export const round = (x: number, digits = 2): string => String(Number(x.toFixed(digits)));
+
+/** Percent for messages: "33.33%". */
+export const pct = (x: number): string => `${round(x)}%`;
+
+/** A bb amount for facts: "12.5 bb". */
+export const bb = (x: number): string => `${num(x)} bb`;
+
+export const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** The pot-odds formula, spelled out. */
+export const POT_ODDS = "BET / (POT + BET + YOUR CALL)";
+
+/** Plain-text prompt: one "Label: value" line per fact, then the question. */
+export const promptOf = (facts: readonly Fact[], ask: string): string =>
+  [...facts.map((f) => `${f.label}: ${f.value}`), ask].join("\n");
+
+/**
+ * True when two answers can't be told apart at this tolerance: their bands touch, or one rounded to an
+ * integer (moved up to 0.5) lands in the other's band.
+ */
+export const indistinct = (a: Answer, b: Answer, tolerance: number): boolean =>
+  typeof a === "number" && typeof b === "number"
+    ? Math.abs(a - b) <= tolerance + Math.max(tolerance, 0.5) + 1e-9
+    : a === b;
+
+/**
+ * Turns [value, message] candidates into mistakes with the question's tolerance. A candidate too close to
+ * the answer is dropped, and so is every candidate it is indistinct from, as is any candidate indistinct
+ * from one with a different message: typing a candidate's value (even rounded) never gets another
+ * formula's message. Callers give candidates they know coincide one shared message ("…X or Y…") to keep them.
+ */
+export function mistakesOf(
+  answer: Answer,
+  tolerance: number,
+  candidates: readonly (readonly [Answer, string])[],
+): Mistake[] {
+  const valid = candidates.filter(([v]) => typeof v !== "number" || Number.isFinite(v));
+  const near = (a: Answer, b: Answer) => indistinct(a, b, tolerance);
+  return valid
+    .filter(([v, msg]) => valid.every(([w, other]) => !near(v, w) || (other === msg && !near(w, answer))))
+    .map(([value, message]) => ({ value, tolerance, message }));
+}
 
 export const BET_FRACTIONS = [0.25, 0.33, 0.5, 0.66, 0.75, 1, 1.25, 1.5, 2] as const;
 
