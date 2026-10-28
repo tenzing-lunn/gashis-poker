@@ -10,7 +10,7 @@
 // model only through showdown reveals (engine `showdown` events, or `revealed` passed in).
 
 import type { ActionKind, HandEvent, HandState, Street } from "@/lib/engine/engine";
-import type { PublicView } from "@/lib/bots/view";
+import { seatPositions, type PublicView } from "@/lib/bots/view";
 import type { Card } from "@/lib/poker/cards";
 import { handCategory } from "@/lib/poker/evaluator";
 
@@ -34,18 +34,30 @@ export interface SeatModel {
   kind: SeatKind;
   /** Chips behind. */
   stack: number;
-  /** Share of the chips at the table, in %; null (not dealt in yet) renders `--`. */
+  /** Stack depth in big blinds (`stack / bigBlind`); null for an empty seat. Drawn by `seatMeta`. */
+  bbDepth: number | null;
+  /** Share of the chips at the table, in % (drawn only as the bar); null for an empty seat. */
   metaPct: number | null;
   /** 0..1, fill of the stack bar: the same share as `metaPct`. */
   barFraction: number;
-  /** `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`, a winner's net `+408` / `-1,200`, or "" for nothing yet this street. */
+  /**
+   * The `.act` line: `CALL 100`, `SB 50`, `RAISE TO 300`, `FOLD`, "" for nothing yet this street; at hand end
+   * a showdown hand in its seat form (`TWO PAIR`, `STR FLUSH`) or `WINS` for an uncontested winner.
+   */
   lastAction: string;
-  /** A winner's net result for the hand (drawn green/red), else null. */
+  /** Net result for the hand of a winner or a showdown loser (drawn green/red on the meta line), else null. */
   net: number | null;
+  /** Hand shown at showdown (`TWO PAIR`), else null. */
+  category: string | null;
   holeCards: HoleCards;
   /** True when face-up cards were revealed at showdown (drawn with the flip animation). */
   revealed: boolean;
   isButton: boolean;
+  /**
+   * Position this hand (`BTN`, `SB`, `BB`, `UTG`, `HJ`, `CO`…), counted over the seats dealt in; null before the
+   * first deal and for a seat not dealt in.
+   */
+  position: string | null;
   /** On the clock. */
   turn: boolean;
   /** Won (part of) a pot. */
@@ -53,6 +65,8 @@ export interface SeatModel {
   /** Folded, sitting out, or an empty seat. */
   out: boolean;
   isHero: boolean;
+  /** The player is disconnected (multiplayer; solo never sets it): `○` after the name, `AWAY` on an empty `.act`. */
+  away: boolean;
 }
 
 export type StripLetter = "b" | "X" | "C" | "B" | "R" | "A" | "F" | "W";
@@ -64,6 +78,8 @@ export interface StripMark {
   at: number;
   /** Street the mark belongs to (`showdown` for W). */
   street: TableStreet;
+  /** The action in words, for a tooltip: `RAISE TO 500`, `SB 50`, `WINS 1,200`. */
+  text?: string;
 }
 
 export interface StripRow {
@@ -90,6 +106,39 @@ export interface StripModel {
   now: number;
 }
 
+/** One winner of a finished hand. */
+export interface ResultWinner {
+  seat: number;
+  label: string;
+  name: string;
+  /** Chips awarded (all pots this seat won). */
+  amount: number;
+  /** Net result for the hand, when the starting stacks are known. */
+  net: number | null;
+  /** Hand shown at showdown, else null. */
+  category: string | null;
+  isHero: boolean;
+}
+
+/** How a finished hand ended, for the status line (`YOU WIN 3,516 WITH TWO PAIR`). */
+export interface HandResult {
+  winners: ResultWinner[];
+  /** One pot was shared by more than one seat. */
+  split: boolean;
+  showdown: boolean;
+  /** The hero's net result for the hand; null without a dealt-in hero or starting stacks. */
+  heroNet: number | null;
+  /** One line in CAPS. */
+  text: string;
+  /**
+   * The same in the narrow form the mobile status line uses (seat labels, seat hand names):
+   * `YOU WIN 3,516 · TWO PAIR`, `S4 WINS 400 · STRAIGHT · YOU -100` (the hero's net), `S2 WINS 150 · OTHERS FOLDED`.
+   * When that would take more than two status lines (`STATUS_CHARS`), the hero's net goes, then the hand names
+   * (both are on the seats); who won and how much always stay.
+   */
+  short: string;
+}
+
 export interface TableModel {
   handNo: number;
   smallBlind: number;
@@ -111,6 +160,8 @@ export interface TableModel {
   strip: StripModel;
   /** One sentence on the latest event, for a polite live region. */
   lastEvent: string;
+  /** Who won what, once the hand is complete; null while it runs. */
+  result: HandResult | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +170,8 @@ export interface TableModel {
 export interface SeatSource {
   name: string;
   kind: "human" | "bot";
+  /** Disconnected (multiplayer). Default false. */
+  away?: boolean;
 }
 
 /** One step of the hand in time order. Seats are table seats. */
@@ -126,8 +179,11 @@ export type TimelineEvent =
   | { kind: "blind"; seat: number; blind: "small" | "big"; amount: number; allIn: boolean }
   | { kind: "action"; seat: number; street: Street; action: ActionKind; to: number; allIn: boolean }
   | { kind: "deal"; street: Street }
-  /** The hand is over; W goes to these seats. */
-  | { kind: "end"; winners: { seat: number; amount: number }[] };
+  /**
+   * The hand is over; W goes to these seats. `pot` (0 = main pot) groups the shares of one pot; without it
+   * winners whose amounts are within an odd chip of each other are read as one split pot.
+   */
+  | { kind: "end"; winners: { seat: number; amount: number; pot?: number }[] };
 
 export interface TableInput {
   handNo: number;
@@ -190,6 +246,104 @@ const SUIT_WORD = ["clubs", "diamonds", "hearts", "spades"];
 export const rankText = (c: Card): string => RANK_TEXT[c >> 2];
 export const suitGlyph = (c: Card): string => SUIT_GLYPH[c & 3];
 export const cardWords = (c: Card): string => `${RANK_WORD[c >> 2]} of ${SUIT_WORD[c & 3]}`;
+
+/** Stack depth: `100 BB` (whole BBs from 10 up, one decimal below, `0 BB` for none). Rounded down. */
+export function bbText(depth: number): string {
+  if (depth <= 0) return "0 BB";
+  if (depth >= 10) return `${fmt(Math.floor(depth))} BB`;
+  return `${(Math.floor(depth * 10) / 10).toFixed(1)} BB`;
+}
+
+/** `12,345` → `12.3K`, `10,000` → `10K`, `1,234,567` → `1.2M` (rounded down); below 10,000 as `fmt`. */
+function compact(n: number): string {
+  const a = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  // One decimal below 100 units, none when it is `.0`.
+  const cut = (x: number, unit: string) => `${sign}${x >= 100 ? Math.floor(x) : Math.floor(x * 10) / 10}${unit}`;
+  if (a < 10_000) return `${sign}${fmt(a)}`;
+  if (a < 1_000_000) return cut(a / 1000, "K");
+  return cut(a / 1_000_000, "M");
+}
+
+/** Seat width in characters: 14ch on the wide figure, 12ch on the tall (mobile) one (DESIGN.md §4.2, §4.7). */
+export const SEAT_CHARS = { wide: 14, tall: 12 } as const;
+
+/**
+ * The mobile status line (DESIGN.md §4.7): 13px text at 375px holds 39 characters a line, and the action at its
+ * right (`[NEXT HAND →]`, 14ch, after a 2ch gap) shares the last line with the words. A result takes two lines at most.
+ */
+export const STATUS_CHARS = { line: 39, action: 16, lines: 2 } as const;
+
+/**
+ * Lines `text` takes wrapped at its spaces in `width` characters, with `reserve` characters kept free at the
+ * end of the last line (else the reserve goes on a line of its own).
+ */
+export function wrappedLines(text: string, width: number, reserve = 0): number {
+  let lines = 1;
+  let at = 0;
+  for (const word of text.split(" ")) {
+    if (at > 0 && at + 1 + word.length > width) {
+      lines++;
+      at = 0;
+    }
+    at += (at > 0 ? 1 : 0) + word.length;
+  }
+  return at + reserve > width ? lines + 1 : lines;
+}
+
+/**
+ * The `.meta` line fitted to `width` characters: the stack, then its depth in big blinds, or at hand end
+ * the seat's net result (`21,750  +1,783`). `tail` is drawn green/red when it is a net result.
+ */
+export function seatMeta(s: SeatModel, width: number): { head: string; tail: string } {
+  if (s.kind === "empty") return { head: "--", tail: "" };
+  const net = s.net !== null;
+  const tail = net ? signed(s.net!) : s.bbDepth === null ? "" : bbText(s.bbDepth);
+  const tailShort = net ? (s.net! < 0 ? compact(s.net!) : `+${compact(s.net!)}`) : tail.replace(" BB", "BB");
+  const stack = fmt(s.stack);
+  const options = [
+    [`${stack}  `, tail],
+    [`${stack} `, tail],
+    [`${stack} `, tailShort],
+    [`${compact(s.stack)} `, tail],
+    [`${compact(s.stack)} `, tailShort],
+  ];
+  for (const [head, t] of options) if (head.length + t.length <= width) return { head, tail: t };
+  return { head: compact(s.stack).slice(0, width), tail: "" };
+}
+
+const SEAT_CATEGORY: Record<string, string> = {
+  "STRAIGHT FLUSH": "STR FLUSH",
+};
+/** A showdown hand short enough for the seat's `.act` line (12 characters at most). */
+export const seatCategory = (category: string): string => (SEAT_CATEGORY[category] ?? category).slice(0, SEAT_CHARS.tall);
+
+/**
+ * The `.act` line fitted to `width` characters: `RAISE TO 10,000` reads `RAISE 10,000` in the 14ch seat, then the
+ * amount goes compact (`ALL-IN 12.3K`), then the verb to its strip letter (`R 123K`). The seat's screen-reader
+ * sentence keeps the full text.
+ */
+export function seatAct(text: string, width: number): string {
+  if (text.length <= width) return text;
+  const m = /^(.+) ([\d,]+)$/.exec(text);
+  if (!m) return text.slice(0, width);
+  const verb = m[1] === "RAISE TO" ? "RAISE" : m[1];
+  const n = compact(Number(m[2].replace(/,/g, "")));
+  const options = [`${verb} ${m[2]}`, `${verb} ${n}`, `${verb[0]} ${m[2]}`, `${verb[0]} ${n}`];
+  return options.find((t) => t.length <= width) ?? options[3].slice(0, width);
+}
+
+const CATEGORY_PHRASE: Record<string, string> = {
+  PAIR: "A PAIR",
+  TRIPS: "THREE OF A KIND",
+  STRAIGHT: "A STRAIGHT",
+  FLUSH: "A FLUSH",
+  "FULL HOUSE": "A FULL HOUSE",
+  QUADS: "FOUR OF A KIND",
+  "STRAIGHT FLUSH": "A STRAIGHT FLUSH",
+};
+/** The full hand name for the result line: `A STRAIGHT`, `THREE OF A KIND`, `TWO PAIR`. */
+export const categoryPhrase = (category: string): string => CATEGORY_PHRASE[category] ?? category;
 
 function actionText(e: Extract<TimelineEvent, { kind: "action" }>): string {
   if (e.action === "fold") return "FOLD";
@@ -287,7 +441,7 @@ export function buildModel(input: TableInput): TableModel {
   const { timeline } = input;
   const last = new Array<string>(n).fill("");
   const lastStreet = new Array<Street | null>(n).fill(null);
-  let winners: { seat: number; amount: number }[] = [];
+  let winners: { seat: number; amount: number; pot?: number }[] = [];
   let awarded = 0;
   for (const e of timeline) {
     if (e.kind === "blind") {
@@ -303,6 +457,7 @@ export function buildModel(input: TableInput): TableModel {
   }
   const won = new Map<number, number>();
   for (const w of winners) won.set(w.seat, (won.get(w.seat) ?? 0) + w.amount);
+  const positions = dealtPositions(input);
 
   // Once the hand is over the pot is already in the winners' stacks.
   const chips = input.stacks.map((s, i) => (input.seats[i] ? s + (input.complete ? 0 : input.committed[i]) : 0));
@@ -317,26 +472,33 @@ export function buildModel(input: TableInput): TableModel {
         name: "EMPTY",
         kind: "empty",
         stack: 0,
+        bbDepth: null,
         metaPct: null,
         barFraction: 0,
         lastAction: "",
         net: null,
+        category: null,
         holeCards: null,
         revealed: false,
         isButton: false,
+        position: null,
         turn: false,
         win: false,
         out: true,
         isHero: false,
+        away: false,
       };
     }
     const folded = input.folded[i];
-    const net = input.complete && won.has(i) ? (input.startingStacks ? input.stacks[i] - input.startingStacks[i] : won.get(i)!) : null;
-    const metaPct = totalChips > 0 && input.holeCards[i] !== null ? Math.round((100 * chips[i]) / totalChips) : null;
+    const category = input.complete && !folded ? input.categories[i] || null : null;
+    const startNet = input.startingStacks ? input.stacks[i] - input.startingStacks[i] : null;
+    // Winners and showdown losers show their net result; without starting stacks a winner shows `+` its winnings.
+    const net = !input.complete ? null : won.has(i) ? (startNet ?? won.get(i)!) : category !== null ? startNet : null;
+    const metaPct = totalChips > 0 ? Math.round((100 * chips[i]) / totalChips) : null;
     let lastAction = "";
-    if (net !== null) lastAction = signed(net);
-    else if (folded) lastAction = "FOLD";
-    else if (input.complete && input.categories[i]) lastAction = input.categories[i]!;
+    if (folded) lastAction = "FOLD";
+    else if (category !== null) lastAction = seatCategory(category);
+    else if (input.complete && won.has(i)) lastAction = "WINS";
     else if (!input.complete && lastStreet[i] === input.street) lastAction = last[i];
     else if (!input.inHand[i] && input.handNo > 0) lastAction = "SITTING OUT";
     return {
@@ -345,17 +507,21 @@ export function buildModel(input: TableInput): TableModel {
       name: src.name,
       kind: src.kind,
       stack: input.stacks[i],
+      bbDepth: input.bigBlind > 0 ? input.stacks[i] / input.bigBlind : null,
       metaPct,
       barFraction: (metaPct ?? 0) / 100,
       lastAction,
       net,
+      category,
       holeCards: input.holeCards[i],
       revealed: input.revealed[i],
       isButton: input.button === i,
+      position: positions[i],
       turn: !input.complete && input.toAct === i,
       win: input.complete && won.has(i),
       out: folded || (!input.inHand[i] && input.handNo > 0),
       isHero: input.heroSeat === i,
+      away: !!src.away,
     };
   });
 
@@ -376,6 +542,125 @@ export function buildModel(input: TableInput): TableModel {
     capacity: n,
     strip: buildStrip(input, seats),
     lastEvent: describe(timeline[timeline.length - 1], seats),
+    result: input.complete && winners.length > 0 ? buildResult(input, seats, won, winners) : null,
+  };
+}
+
+/**
+ * Each seat's position this hand: `seatPositions` over the seats dealt in, in table order from the button
+ * (multiplayer skips empty and sitting-out seats). Null before the first deal and for seats not dealt in.
+ * Based on `inHand`, not on who is seated now: a player who leaves is unseated at hand end while the
+ * finished hand is still shown, and the others keep their labels (the empty seat is never labelled).
+ */
+export function dealtPositions(input: Pick<TableInput, "seats" | "inHand" | "button" | "handNo">): (string | null)[] {
+  const n = input.seats.length;
+  const out = new Array<string | null>(n).fill(null);
+  if (input.handNo <= 0 || input.button === null) return out;
+  const dealt = (i: number) => input.inHand[i];
+  // From the button (or, should it not be dealt in, the last dealt-in seat before it) clockwise.
+  let from = input.button;
+  for (let k = 0; k < n && !dealt(from); k++) from = (from - 1 + n) % n;
+  const order: number[] = [];
+  for (let k = 0; k < n; k++) if (dealt((from + k) % n)) order.push((from + k) % n);
+  if (order.length < 2 || order.length > 9) return out; // seatPositions names 2-9 seats
+  seatPositions(order.length, 0).forEach((p, k) => (out[order[k]] = p));
+  return out;
+}
+
+/**
+ * The result line: `YOU WIN 3,516 WITH TWO PAIR`, `S4 STATION WINS 400 WITH A STRAIGHT · YOU LOSE 100`,
+ * `S2 LAG WINS 150 · EVERYONE ELSE FOLDED`, `SPLIT POT: S2 LAG AND S4 BEA EACH WIN 375`,
+ * `SPLIT POT: YOU, S3 LAG AND S4 NIT SHARE 350 WITH A STRAIGHT FLUSH` (odd chips), and a hero who won a
+ * side pot but lost overall: `S2 NIT WINS 2,400 WITH A PAIR · YOU WIN 400 WITH A PAIR · YOU NET -600`.
+ */
+function buildResult(
+  input: TableInput,
+  seats: SeatModel[],
+  won: Map<number, number>,
+  awards: readonly { seat: number; amount: number; pot?: number }[],
+): HandResult {
+  const winners: ResultWinner[] = [...won]
+    .sort((a, b) => a[0] - b[0])
+    .map(([seat, amount]) => {
+      const s = seats[seat];
+      return { seat, label: s.label, name: s.name, amount, net: s.net, category: s.category, isHero: s.isHero };
+    });
+  const hero = input.heroSeat;
+  const heroNet =
+    hero !== null && input.startingStacks && input.inHand[hero] && input.seats[hero] ? input.stacks[hero] - input.startingStacks[hero] : null;
+  const who = (w: ResultWinner) => (w.isHero ? "YOU" : `${w.label} ${w.name}`);
+  const withHand = (c: string | null) => (c ? ` WITH ${categoryPhrase(c)}` : "");
+
+  // Who shared what: pots won by the same seats are one part (`B WINS` main and side pot once).
+  const parts = new Map<string, Map<number, number>>();
+  const add = (key: string, seat: number, amount: number) => {
+    const part = parts.get(key) ?? new Map<number, number>();
+    part.set(seat, (part.get(seat) ?? 0) + amount);
+    parts.set(key, part);
+  };
+  if (awards.every((a) => a.pot !== undefined)) {
+    const byPot = new Map<number, number[]>();
+    for (const a of awards) byPot.set(a.pot!, [...(byPot.get(a.pot!) ?? []), a.seat]);
+    for (const a of awards) add(byPot.get(a.pot!)!.sort((x, y) => x - y).join(","), a.seat, a.amount);
+  } else {
+    // No pot index: shares within an odd chip of each other (n winners, at most n - 1 apart) are one split pot.
+    const amounts = winners.map((w) => w.amount);
+    const shared = winners.length > 1 && Math.max(...amounts) - Math.min(...amounts) <= winners.length - 1;
+    for (const w of winners) add(shared ? "all" : String(w.seat), w.seat, w.amount);
+  }
+  const byMinSeat = [...parts.values()].sort((a, b) => Math.min(...a.keys()) - Math.min(...b.keys()));
+
+  const split = byMinSeat.some((p) => p.size > 1);
+  // The narrow form (mobile): seat labels, the seat's hand name, `S2, S4 WIN 375 EACH`.
+  const tag = (w: ResultWinner) => (w.isHero ? "YOU" : w.label);
+  const seatHand = (c: string | null) => (c ? ` · ${seatCategory(c)}` : "");
+  const lines: string[] = [];
+  // Each part with and without its hand name; the hero's net goes last.
+  const short: { won: string; hand: string }[] = [];
+  let shortNet = "";
+  for (const p of byMinSeat) {
+    const ws = [...p].sort((a, b) => a[0] - b[0]).map(([seat, amount]) => ({ ...winners.find((w) => w.seat === seat)!, amount }));
+    if (ws.length === 1) {
+      const won = `${ws[0].isHero ? "WIN" : "WINS"} ${fmt(ws[0].amount)}`;
+      lines.push(`${who(ws[0])} ${won}${withHand(ws[0].category)}`);
+      short.push({ won: `${tag(ws[0])} ${won}`, hand: seatHand(ws[0].category) });
+      continue;
+    }
+    const names = ws.map(who);
+    const list = `${names.slice(0, -1).join(", ")} AND ${names[names.length - 1]}`;
+    const same = ws.every((w) => w.category === ws[0].category);
+    const hand = same ? withHand(ws[0].category) : "";
+    const tags = ws.map(tag).join(", ");
+    if (ws.every((w) => w.amount === ws[0].amount)) {
+      lines.push(`SPLIT POT: ${list} EACH WIN ${fmt(ws[0].amount)}${hand}`);
+      short.push({ won: `${tags} WIN ${fmt(ws[0].amount)} EACH`, hand: same ? seatHand(ws[0].category) : "" });
+    } else {
+      const total = fmt(ws.reduce((t, w) => t + w.amount, 0));
+      lines.push(`SPLIT POT: ${list} SHARE ${total}${hand}`);
+      short.push({ won: `${tags} SHARE ${total}`, hand: same ? seatHand(ws[0].category) : "" });
+    }
+  }
+  if (!input.showdown) {
+    lines.push("EVERYONE ELSE FOLDED");
+    short.push({ won: "OTHERS FOLDED", hand: "" });
+  } else if (hero !== null && heroNet !== null && heroNet < 0) {
+    // A hero who won a side pot can still be down on the hand.
+    if (won.has(hero)) lines.push(`YOU NET ${signed(heroNet)}`);
+    else if (seats[hero]?.category) lines.push(`YOU LOSE ${fmt(-heroNet)}`);
+    if (won.has(hero) || seats[hero]?.category) shortNet = ` · YOU ${signed(heroNet)}`;
+  }
+  // Two status lines at most on mobile: the hero's net goes first, then the hand names (both are on the seats).
+  const withHands = short.map((p) => p.won + p.hand).join(" · ");
+  const forms = [withHands + shortNet, withHands, short.map((p) => p.won).join(" · ")];
+  const fits = (t: string) => wrappedLines(t, STATUS_CHARS.line, STATUS_CHARS.action) <= STATUS_CHARS.lines;
+
+  return {
+    winners,
+    split,
+    showdown: input.showdown,
+    heroNet,
+    text: lines.join(" · "),
+    short: forms.find(fits) ?? forms[forms.length - 1],
   };
 }
 
@@ -393,7 +678,7 @@ const NEXT_STREETS: Record<Street, Street[]> = {
  * a projection of the ticks still to come, whose street labels are drawn muted.
  */
 function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
-  type Tick = { j: number; seat: number; letter: StripLetter; street: TableStreet };
+  type Tick = { j: number; seat: number; letter: StripLetter; street: TableStreet; text: string };
   const marks: Tick[] = [];
   const labels: { label: StripLabelText; j: number }[] = [];
   let j = 0;
@@ -408,20 +693,22 @@ function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
   };
   for (const e of input.timeline) {
     if (e.kind === "blind") {
-      marks.push({ j: ++j, seat: e.seat, letter: "b", street: "preflop" });
+      marks.push({ j: ++j, seat: e.seat, letter: "b", street: "preflop", text: `${e.blind === "small" ? "SB" : "BB"} ${fmt(e.amount)}` });
       continue;
     }
     placePre();
     if (e.kind === "action") {
       street = e.street;
-      marks.push({ j: ++j, seat: e.seat, letter: letterFor(e)!, street });
+      marks.push({ j: ++j, seat: e.seat, letter: letterFor(e)!, street, text: actionText(e) });
       if (e.action === "fold") foldAt.set(e.seat, j);
     } else if (e.kind === "deal") {
       street = e.street;
       labels.push({ label: LABEL_OF[e.street], j: ++j });
     } else {
       labels.push({ label: "SHOW", j: ++j });
-      for (const w of e.winners) if (!marks.some((m) => m.j === j && m.seat === w.seat)) marks.push({ j, seat: w.seat, letter: "W", street: "showdown" });
+      const amounts = new Map<number, number>();
+      for (const w of e.winners) amounts.set(w.seat, (amounts.get(w.seat) ?? 0) + w.amount);
+      for (const [seat, amount] of amounts) marks.push({ j, seat, letter: "W", street: "showdown", text: `WINS ${fmt(amount)}` });
     }
   }
   placePre();
@@ -449,7 +736,7 @@ function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
       label: s.label,
       name: s.name,
       out: s.out,
-      marks: marks.filter((m) => m.seat === s.seat).map((m) => ({ letter: m.letter, at: at(m.j), street: m.street })),
+      marks: marks.filter((m) => m.seat === s.seat).map((m) => ({ letter: m.letter, at: at(m.j), street: m.street, text: m.text })),
       lineTo: foldAt.has(s.seat) ? at(foldAt.get(s.seat)!) : now,
     }));
   return {
@@ -465,15 +752,25 @@ function buildStrip(input: TableInput, seats: SeatModel[]): StripModel {
 /**
  * Street labels drawn as their initial (`F T R S`): both neighbours of a gap narrower than half of each
  * label plus a space, as on the reference (an all-in runout puts FLOP TURN RIVER SHOW one tick apart).
- * `trackPx` is the width the `at` fractions span, `chPx` one character.
+ * `trackPx` is the width the `at` fractions span, `chPx` one character. A label is measured where it is
+ * drawn (`stripLeft`): a full word is kept inside the track, so `SHOW` at the very end sits half its width
+ * further in; an initial sits on its tick. Shortening only narrows a label and moves it out to its tick (away
+ * from its neighbour), so a pair with room as full words keeps it once either is shortened.
  */
 export function shortLabels(labels: readonly { label: string; at: number }[], trackPx: number, chPx: number): boolean[] {
   const short = labels.map(() => false);
   for (let t = 1; t < labels.length; t++) {
-    const room = (labels[t].at - labels[t - 1].at) * trackPx;
+    const room = labelCenter(labels[t], false, trackPx, chPx) - labelCenter(labels[t - 1], false, trackPx, chPx);
     if (room < ((labels[t].label.length + labels[t - 1].label.length) / 2 + 1) * chPx) short[t] = short[t - 1] = true;
   }
   return short;
+}
+
+/** Where a street label's center is drawn, in px from the start of the track (as `stripLeft` places it). */
+export function labelCenter(l: { label: string; at: number }, short: boolean, trackPx: number, chPx: number): number {
+  if (short || l.label.length <= 1) return l.at * trackPx;
+  const half = (l.label.length / 2 + 0.3) * chPx;
+  return Math.min(Math.max(l.at * trackPx, half), trackPx - half);
 }
 
 function describe(e: TimelineEvent | undefined, seats: SeatModel[]): string {
@@ -497,7 +794,7 @@ function describe(e: TimelineEvent | undefined, seats: SeatModel[]): string {
 /** Engine events to timeline events, with engine seats mapped to table seats. */
 export function timelineFromEvents(events: readonly HandEvent[], tableSeat: (s: number) => number = (s) => s): TimelineEvent[] {
   const out: TimelineEvent[] = [];
-  let winners: { seat: number; amount: number }[] | null = null;
+  let winners: { seat: number; amount: number; pot: number }[] | null = null;
   for (const e of events) {
     switch (e.type) {
       case "blind":
@@ -511,7 +808,7 @@ export function timelineFromEvents(events: readonly HandEvent[], tableSeat: (s: 
         break;
       case "award":
         winners ??= [];
-        e.winners.forEach((w, k) => winners!.push({ seat: tableSeat(w), amount: e.shares[k] }));
+        e.winners.forEach((w, k) => winners!.push({ seat: tableSeat(w), amount: e.shares[k], pot: e.pot }));
         break;
       default:
         break;

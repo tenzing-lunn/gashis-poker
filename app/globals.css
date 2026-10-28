@@ -330,6 +330,13 @@ input.u {
   padding: 0;
   min-width: 0;
   width: 100%;
+  /* the underline hangs into the next line's top half-leading, so the line stays 27px (a textarea n × 27px) */
+  margin-bottom: -1px;
+}
+
+/* a select ignores line-height: same line box and hanging underline as an input */
+.field select {
+  height: calc(var(--lh) * 1em + 1px);
 }
 
 /* range textareas grow with their content instead of scrolling inside two lines */
@@ -450,7 +457,9 @@ input.u:focus-visible {
   outline-offset: 2px;
 }
 
+/* the inverted box stays inside the measure, like every other .inv */
 .site-nav a[aria-current="page"] {
+  margin: 0;
   background: var(--ink);
   color: var(--paper);
 }
@@ -660,8 +669,10 @@ input.u:focus-visible {
   gap: 3px;
 }
 
-/* The webfont has no suit glyphs: name monospace faces that do, ahead of next/font's wide fallback. */
-.table-fig .cd i {
+/* The webfont has no suit glyphs (nor the away ring ○): name monospace faces that do, ahead of next/font's wide
+   fallback. */
+.table-fig .cd i,
+.table-fig .seat .who .away {
   font-family: ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;
 }
 
@@ -687,13 +698,59 @@ input.u:focus-visible {
   min-height: 37px;
 }
 
+/* `S3 MICRO-2 CO`: label, name, position. The name gives way (ellipsis) so the line never leaves the seat; a
+   `-2` suffix stays whole (`STAT…-2`). A disconnected player gets `○` after the name. */
 .table-fig .seat .who {
-  padding: 0 0.6ch;
+  display: flex;
+  max-width: 100%;
+  column-gap: 1ch;
+  padding: 0 0.5ch;
   white-space: nowrap;
+}
+
+.table-fig .seat .who .id {
+  display: flex;
+  column-gap: 1ch;
+  min-width: 0;
+}
+
+.table-fig .seat .who .name {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.table-fig .seat .who .name .base {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-fig .seat .who .name .sfx,
+.table-fig .seat .who .away,
+.table-fig .seat .who .pos {
+  flex: none;
+}
+
+/* a bot's `S3 MICRO` opens its sheet: same text, the §3.4 hover outline */
+.table-fig .seat .who button.id {
+  position: relative;
+  padding: 0;
+  text-align: left;
+}
+
+.table-fig .seat .who button.id:hover {
+  outline-color: currentColor;
 }
 
 .table-fig .seat .meta {
   white-space: pre;
+}
+
+/* the meta and act lines are fitted per seat width (seatMeta, seatAct): 14ch here, 12ch on the tall figure */
+.table-fig .seat .meta .tall,
+.table-fig .seat .act .tall {
+  display: none;
 }
 
 .table-fig .seat .bar {
@@ -724,6 +781,12 @@ input.u:focus-visible {
 .table-fig .seat.win .who {
   background: var(--ink);
   color: var(--paper);
+}
+
+/* the hero's turn: YOUR TURN on the warn highlight in place of the name; .act keeps the bet */
+.table-fig .seat.you .who {
+  background: var(--warn);
+  color: var(--on-warn);
 }
 
 .table-fig .seat.out {
@@ -793,16 +856,20 @@ input.u:focus-visible {
   background: var(--faint);
 }
 
+/* labels and letters punch the line (paper behind them, like a seat on the felt): no strike-through.
+   A full word's `left` is clamped (stripLeft) so PRE and SHOW end flush with the line, never past it; a single
+   letter stays on its tick (`.in`'s 1ch inset holds its box inside the measure). */
 .strips .track b {
   position: absolute;
   top: 0;
   transform: translateX(-50%);
+  background: var(--paper);
+  padding: 0 0.3ch;
 }
 
 .strips .track b.w {
   background: var(--ink);
   color: var(--paper);
-  padding: 0 0.3ch;
 }
 
 .strips .track b.future {
@@ -825,7 +892,58 @@ button.t.lc {
   column-gap: 2ch;
 }
 
-/* §5 Play controls */
+/* /play setup: a bot row is `[STATION ▸]  [ABOUT]  its style`. The picker has a fixed width, so [ABOUT] and the
+   note never move under the cursor as the name cycles; the note wraps within the value column (each line 27px),
+   or under the controls when the column is narrow. */
+.bot-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 2ch;
+}
+
+.bot-pick .pick {
+  flex: none;
+  width: 12ch; /* [STATION ▸] plus the button's padding */
+  margin-left: -0.5ch;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.bot-pick .note {
+  flex: 1 1 24ch;
+  min-width: 0;
+  color: var(--muted);
+}
+
+/* numeric records (the /play SESSION stats): numbers right-aligned on their last digit, in a column as wide as
+   the number, so the label keeps the line (on phones a 22ch value column left it 6ch) */
+.tx.num {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.tx.num > :last-child {
+  text-align: right;
+}
+
+/* §5 Play controls; the status line above them (status-block.tsx) */
+/* the narrow forms (`YOU WIN 3,516 · TWO PAIR`, `TO CALL 300 → NEED 38%`) are for mobile */
+.l.status .short,
+.controls-dock .short {
+  display: none;
+}
+
+/* an action that wraps under the status words still sits at the right */
+.l.status .side {
+  margin-left: auto;
+}
+
+/* the keys legend breaks between keys, never inside one */
+.legend.keys .key {
+  white-space: nowrap;
+}
+
+.l.status .cols,
 .controls-dock .cols,
 .controls-dock .presets {
   display: inline-flex;
@@ -849,16 +967,25 @@ button.t.lc {
   border-color: var(--faint);
 }
 
-.controls-dock .raise .range {
+/* the range and an error share one slot as wide as the longest error (--slot), so an error never reflows the line */
+.controls-dock .raise .slot {
+  display: inline-block;
+  width: var(--slot);
   margin-left: 1ch;
+  white-space: nowrap;
+}
+
+.controls-dock .apply {
+  white-space: nowrap;
+}
+
+.controls-dock .raise .range {
   color: var(--muted);
 }
 
-.controls-dock .raise .tag {
-  margin-left: 1ch;
-}
-
 /* aria-disabled, not disabled: the control keeps focus after an action */
+.apply[aria-disabled="true"],
+button.t[aria-disabled="true"],
 .controls-dock .apply[aria-disabled="true"],
 .controls-dock button.t[aria-disabled="true"] {
   color: var(--muted);
@@ -877,9 +1004,10 @@ button.t.lc {
   outline-offset: 2px;
 }
 
+/* 681-860px: 2/1 but never under 368px tall (the seat boxes need it), so 800x600 holds header to controls */
 @media (min-width: 680px) and (max-width: 860px) {
   .table-fig {
-    aspect-ratio: 5 / 3;
+    min-height: 368px;
   }
 }
 
@@ -907,6 +1035,16 @@ button.t.lc {
   .table-fig .seat .hole {
     gap: 3px;
     min-height: 28px;
+  }
+
+  .table-fig .seat .meta .wide,
+  .table-fig .seat .act .wide {
+    display: none;
+  }
+
+  .table-fig .seat .meta .tall,
+  .table-fig .seat .act .tall {
+    display: inline;
   }
 
   .table-fig .cd {
@@ -952,8 +1090,25 @@ button.t.lc {
     display: inline;
   }
 
+  .table-fig .seat:not(.open) .who .name {
+    display: none;
+  }
+
   .table-fig .seat.open .short {
     display: none;
+  }
+
+  /* tapped open: the full name, past the seat edge if it must, on the paper so the felt line doesn't cross it */
+  .table-fig .seat.open .who {
+    max-width: none;
+  }
+
+  .table-fig .seat.open:not(.turn, .win) .who {
+    background: var(--paper);
+  }
+
+  .table-fig .seat.open .who .name {
+    overflow: visible;
   }
 
   .strips .strip .name {
@@ -965,7 +1120,6 @@ button.t.lc {
   }
 
   /* 24px minimum targets (WCAG 2.5.8) without growing the line */
-  .controls-dock button.t,
   .table-head button.t,
   .table-fig button.t {
     min-height: 24px;
@@ -973,13 +1127,101 @@ button.t.lc {
     vertical-align: middle;
   }
 
+  /* the seat name button keeps the line height; its 24px target is an invisible extension */
+  .table-fig .seat .who button.id {
+    min-height: 0;
+    margin-block: 0;
+  }
+
+  .table-fig .seat .who button.id::after {
+    content: "";
+    position: absolute;
+    inset: -6px -0.5ch;
+  }
+
+  /* The dock: 13px text on 27px lines, one row each: status (a result may take two), price,
+     FOLD CALL, RAISE TO + field + range, presets. Boxes and toggles are 25px tall with 1px clear above and below,
+     so rows never touch and every target is at least 24px. Sticky at the bottom; revealTable scrolls to where it
+     sits in the flow, so on the hero's turn it is under the hero's seat, not over it. */
   .controls-dock {
+    --lh: calc(27 / 13);
     font-size: 13px;
+    line-height: var(--lh);
     position: sticky;
     bottom: 0;
     z-index: 2;
     background: var(--paper);
     box-shadow: 0 -1px 0 var(--faint);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .controls-dock .apply {
+    line-height: 23px;
+    margin-block: 1px;
+  }
+
+  .controls-dock button.t {
+    line-height: 25px;
+    margin-block: 1px;
+  }
+
+  /* the raise field's underline stays inside its row, clear of the presets under it */
+  .controls-dock .raise input.u {
+    line-height: 25px;
+    margin-block: 1px 0;
+  }
+
+  .controls-dock .controls > .cols,
+  .controls-dock .raise {
+    flex: 1 1 100%;
+  }
+
+  .controls-dock .raise .slot {
+    width: auto;
+  }
+
+  /* the narrow forms: the price fits one line at 375px; the status words wrap (a result takes two lines at most,
+     STATUS_CHARS in model.ts), never cut, and the action floats at the right of their last line, or under it */
+  .l.status .full,
+  .controls-dock .full {
+    display: none;
+  }
+
+  .l.status .short,
+  .controls-dock .short {
+    display: inline;
+  }
+
+  .l.status {
+    display: flow-root;
+  }
+
+  .l.status .cols {
+    display: inline;
+  }
+
+  .l.status .words + * {
+    margin-left: 2ch;
+  }
+
+  .l.status .side {
+    float: right;
+    margin-left: 2ch;
+  }
+
+  .controls-dock .price {
+    flex-wrap: nowrap;
+  }
+
+  .controls-dock .price > :first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .controls-dock .price > :last-child {
+    flex: none;
   }
 }
 
@@ -1000,6 +1242,108 @@ button.t.lc {
 
   .strips .track .ln.future {
     background: GrayText;
+  }
+}
+
+/* ==========================================================================
+   Bot info sheet (components/table/bot-sheet.tsx)
+   Tokens only, so it follows the band it is mounted in (paper or .screen).
+   ========================================================================== */
+
+/* label column + text that wraps under itself (STYLE, TO BEAT IT, opening rows) */
+.bot-sheet .l.kv {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr);
+  column-gap: 2ch;
+}
+
+/* muted acronyms and side notes; spacing in the text is kept */
+.bot-sheet .ac {
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* stats: plain-words label with its muted acronym, then the number, right-aligned */
+.bot-sheet .tx.st {
+  grid-template-columns: minmax(0, 1fr) 5ch;
+}
+
+.bot-sheet .tx.st > :last-child {
+  text-align: right;
+}
+
+/* padded numbers keep their alignment */
+.bot-sheet .v {
+  white-space: pre;
+}
+
+/* opening ranges stay on one line; the full range is in the title */
+.bot-sheet .rg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the dialog: a sheet of the current band with a 1px ink edge, no shadow */
+dialog.bot-sheet-dialog {
+  box-sizing: border-box;
+  width: calc(72ch + 88px);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: calc(var(--lh) * 0.5em) 24px calc(var(--lh) * 0.5em) 64px;
+  overflow-y: auto;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  /* reset whatever it inherits from where it is mounted (e.g. 11px seat text) */
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: var(--lh);
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+}
+
+/* its lines number from 1 (reset on the inner block so the page's numbering is untouched) */
+dialog.bot-sheet-dialog > .bot-sheet {
+  counter-reset: ln;
+}
+
+dialog.bot-sheet-dialog::backdrop {
+  background: color-mix(in srgb, var(--paper) 80%, transparent);
+}
+
+@media (max-width: 679px) {
+  /* full width, docked to the bottom */
+  dialog.bot-sheet-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100dvh;
+    margin: auto 0 0;
+    padding-left: 40px;
+    padding-right: 16px;
+    border-width: 1px 0 0;
+  }
+
+  /* text rows: the label runs inline before its sentence instead of taking a column */
+  .bot-sheet .l.kv:not(.op) {
+    display: block;
+  }
+
+  .bot-sheet .l.kv:not(.op) > :first-child {
+    margin-right: 2ch;
+  }
+
+  .bot-sheet .l.kv.op {
+    grid-template-columns: 8ch minmax(0, 1fr);
+  }
+}
+
+@media (forced-colors: active) {
+  dialog.bot-sheet-dialog {
+    border-color: CanvasText;
   }
 }
 
