@@ -16,7 +16,8 @@ export type CardText = string;
 // Client -> server
 
 export type ClientMessage =
-  | { type: "join"; name: string; token?: string }
+  /** `sit`: a new player takes the lowest free seat at once (ignored when the token reclaims a player). */
+  | { type: "join"; name: string; token?: string; sit?: boolean }
   | { type: "sit"; seat: number }
   | { type: "stand" }
   | { type: "act"; handNo: number; action: Action }
@@ -67,7 +68,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "join": {
       if (typeof x.name !== "string" || x.name.length > 200) return null;
       if (x.token !== undefined && (typeof x.token !== "string" || x.token.length > 100)) return null;
-      return x.token === undefined ? { type: "join", name: x.name } : { type: "join", name: x.name, token: x.token };
+      if (x.sit !== undefined && typeof x.sit !== "boolean") return null;
+      const join: Extract<ClientMessage, { type: "join" }> = x.token === undefined ? { type: "join", name: x.name } : { type: "join", name: x.name, token: x.token };
+      if (x.sit === true) join.sit = true;
+      return join;
     }
     case "sit":
       return isSeat(x.seat) ? { type: "sit", seat: x.seat } : null;

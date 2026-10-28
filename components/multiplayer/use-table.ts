@@ -66,7 +66,7 @@ export function useTable(
   });
 
   useEffect(() => {
-    const client = connectTable(TABLE_SERVER_URL, tableId, { name, token: loadToken(tableId) });
+    const client = connectTable(TABLE_SERVER_URL, tableId, { name, token: loadToken(tableId), sit: true });
     clientRef.current = client;
     const off = client.on((e) => {
       if (e.type === "status") {

@@ -64,7 +64,7 @@ export default function FriendsClient() {
   const join = (e: FormEvent) => {
     e.preventDefault();
     const id = parseTableId(link);
-    if (!id) return setLinkError("PASTE A TABLE LINK OR ITS 64-CHARACTER ID");
+    if (!id) return setLinkError("TYPE THE 6-LETTER CODE OR PASTE THE TABLE LINK");
     const name = sanitizeName(nickname);
     if (name) saveNickname(name);
     router.push(`/play/t/${id}`);
@@ -132,7 +132,7 @@ export default function FriendsClient() {
       </Line>
       <form onSubmit={join} noValidate aria-label="Join a table">
         <div className="l field">
-          <label htmlFor="table-link">LINK OR TABLE ID</label>
+          <label htmlFor="table-link">CODE OR LINK</label>
           <span className="flex items-baseline gap-[2ch]">
             <input
               id="table-link"

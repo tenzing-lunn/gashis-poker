@@ -6,7 +6,10 @@
 // - After every event the room's snapshot is written to SQLite if anything changed, so hibernation or
 //   eviction never loses the hand. Outgoing messages are held by the output gate until that write is
 //   durable.
-// - The single alarm is multiplexed by the room (turn clock, bot think time, next deal).
+// - The single alarm is multiplexed by the room (turn clock, bot think time, next deal, idle close).
+// - The worker reaches the object by table code (`idFromName`), so any request for a well-formed code
+//   wakes an object. One that was never created stores nothing, and answers 404. A table that sat empty
+//   for 2 hours wipes its storage the same way, which frees its code.
 
 import { DurableObject } from "cloudflare:workers";
 import { MAX_TABLE_SEATS, MIN_TABLE_SEATS, TableRoom, type RoomDeps, type RoomSnapshot } from "../../lib/multiplayer/room";
@@ -55,8 +58,9 @@ export class PokerTable extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS room (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)");
-    const row = ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id = 1").toArray()[0];
+    // Only read: creating the schema here would store something for every code anyone tries.
+    const exists = ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'room'").toArray().length > 0;
+    const row = exists ? ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id = 1").toArray()[0] : undefined;
     if (row) {
       this.room = TableRoom.restore(JSON.parse(row.data) as RoomSnapshot, this.deps);
       const live = ctx.getWebSockets().map((ws) => (ws.deserializeAttachment() as Attachment | null)?.connId);
@@ -65,12 +69,13 @@ export class PokerTable extends DurableObject<Env> {
     }
   }
 
-  /** Called once by the worker right after `newUniqueId()`. */
-  async init(options: { seats: number }): Promise<void> {
-    if (this.room) return;
+  /** Called by the worker for a freshly drawn code. False when a live table already holds the code. */
+  async init(options: { seats: number }): Promise<boolean> {
+    if (this.room) return false;
     const seats = Math.min(MAX_TABLE_SEATS, Math.max(MIN_TABLE_SEATS, Math.floor(options.seats)));
     this.room = new TableRoom(this.deps, { seats });
     this.save();
+    return true;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -124,6 +129,12 @@ export class PokerTable extends DurableObject<Env> {
     } finally {
       this.save();
     }
+    if (this.room.closed) {
+      // Empty for too long: forget the table entirely, so its code answers 404 and can be drawn again.
+      this.room = null;
+      await this.ctx.storage.deleteAlarm();
+      await this.ctx.storage.deleteAll();
+    }
   }
 
   private disconnect(ws: WebSocket): void {
@@ -139,6 +150,7 @@ export class PokerTable extends DurableObject<Env> {
 
   private save(): void {
     if (!this.room || !this.room.consumeDirty()) return;
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS room (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)");
     this.ctx.storage.sql.exec("INSERT OR REPLACE INTO room (id, data) VALUES (1, ?)", JSON.stringify(this.room.serialize()));
   }
 }

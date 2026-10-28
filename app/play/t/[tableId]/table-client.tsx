@@ -5,7 +5,7 @@ import { Blank, BoxButton, Line, Rule, Screen, Sheet, Tag, TextButton } from "@/
 import { ActionStrip, KeysLegend, PlayControls, PokerTable, StripLegend } from "@/components/table";
 import { clockText, heroChips, heroLegal, heroSeatOf, modelFromState, secondsLeft, waitingText } from "@/components/multiplayer/model";
 import { HandLogLines, HostPanel, InviteLine, LiveHeader, SeatList } from "@/components/multiplayer/panels";
-import { loadNickname, saveNickname, shortTableId } from "@/components/multiplayer/storage";
+import { loadNickname, saveNickname } from "@/components/multiplayer/storage";
 import { useTable } from "@/components/multiplayer/use-table";
 import type { RejectCode } from "@/lib/multiplayer/client";
 import { sanitizeName } from "@/lib/multiplayer/protocol";
@@ -51,7 +51,7 @@ export default function TableClient({ tableId }: { tableId: string }) {
 
   const title = (
     <Line as="h1">
-      <span className="inv">PLAY WITH FRIENDS: TABLE {shortTableId(tableId)}</span>
+      <span className="inv">PLAY WITH FRIENDS: TABLE {tableId}</span>
     </Line>
   );
   if (stored === undefined && chosen === null) {
@@ -123,7 +123,7 @@ function TableGone({ title, missing, onRetry }: { title: ReactNode; missing: boo
       <Line as="p">
         <span>
           {missing
-            ? "THE LINK IS WRONG, OR THE TABLE IS GONE. OPEN A NEW ONE AND SEND THAT LINK."
+            ? "NO TABLE WITH THIS CODE. IT MAY BE MISTYPED, OR THE TABLE CLOSED AFTER 2 HOURS WITH NOBODY AT IT."
             : "IT MAY BE DOWN, OR THIS DEVICE IS OFFLINE. TRY AGAIN IN A MOMENT."}
         </span>
       </Line>
@@ -302,14 +302,14 @@ function LiveTable({
       <Screen aria-label="Table with friends">
         <LiveHeader
           model={model}
-          title={`TABLE ${shortTableId(tableId)}`}
+          title={`TABLE ${tableId}`}
           mode={`LIVE  ${model.seated}/${model.capacity} SEATED`}
           right={right}
           waiting={waitingText(state, isHost)}
         />
         <PokerTable
           model={model}
-          label={`Table ${shortTableId(tableId)}, ${model.seated} of ${model.capacity} seats taken`}
+          label={`Table ${tableId}, ${model.seated} of ${model.capacity} seats taken`}
           onSit={heroSeat === null ? actions.sit : undefined}
         />
         <Line>

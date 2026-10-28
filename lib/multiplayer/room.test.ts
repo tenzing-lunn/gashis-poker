@@ -824,6 +824,103 @@ describe("TableRoom hardening", () => {
     expect(fireFailing()).toBe(1_000);
   });
 
+  it("seats a new player who joins with sit in the lowest free seat, and leaves them watching when full", () => {
+    const h = new Harness(21, { seats: 3 });
+    for (const c of ["a", "b", "c", "d"]) h.connect(c);
+    h.send("a", { type: "join", name: "Alice", sit: true });
+    expect(h.lastOf("a", "welcome")?.you.seat).toBe(0);
+    h.send("b", { type: "join", name: "Bob", sit: true });
+    expect(h.lastOf("b", "welcome")?.you.seat).toBe(1);
+    h.send("a", { type: "addBot", seat: 2, persona: "tag" });
+    h.send("c", { type: "join", name: "Carol", sit: true });
+    expect(h.lastOf("c", "welcome")?.you.seat).toBeNull();
+    expect(h.lastOf("c", "error")).toBeUndefined();
+    expect(h.state("c").seats.map((s) => s?.name)).toEqual(["Alice", "Bob", "TAG"]);
+    // Without sit nobody is seated (the default stays as before).
+    h.send("d", { type: "join", name: "Dan" });
+    expect(h.lastOf("d", "welcome")?.you.seat).toBeNull();
+  });
+
+  it("does not reseat a returning player who stood, even when they rejoin with sit", () => {
+    const h = new Harness(22, { seats: 4 });
+    h.connect("a");
+    h.send("a", { type: "join", name: "Alice", sit: true });
+    const token = h.lastOf("a", "welcome")!.you.token;
+    h.send("a", { type: "stand" });
+    h.close("a");
+    h.connect("a2");
+    h.send("a2", { type: "join", name: "Alice", token, sit: true });
+    expect(h.lastOf("a2", "welcome")?.you.seat).toBeNull();
+    expect(h.state("a2").seats.every((s) => s === null)).toBe(true);
+  });
+
+  it("refuses a join whose sit is not a boolean", () => {
+    const h = new Harness(23);
+    h.connect("a");
+    h.send("a", { type: "join", name: "Alice", sit: "yes" });
+    expect(h.lastOf("a", "error")?.code).toBe("malformed");
+    expect(h.lastOf("a", "welcome")).toBeUndefined();
+  });
+
+  it("closes a table nobody has connected to for idleMs", () => {
+    const h = new Harness(24, { idleMs: 60_000 });
+    expect(h.alarm).toBe(T0 + 60_000);
+    expect(h.room.closed).toBe(false);
+    h.advance(59_999);
+    expect(h.room.closed).toBe(false);
+    h.advance(1);
+    expect(h.room.closed).toBe(true);
+    expect(h.alarm).toBeNull();
+    // A closed room asks for nothing more.
+    h.room.onAlarm();
+    expect(h.alarm).toBeNull();
+  });
+
+  it("stops the idle clock while anyone is connected and restarts it when the last one leaves", () => {
+    const h = new Harness(25, { idleMs: 60_000 });
+    h.advance(30_000);
+    h.connect("a");
+    h.send("a", { type: "join", name: "Alice", sit: true });
+    // Only the join deadline was due, and the join cleared it: no alarm at all while someone is here.
+    expect(h.alarm).toBeNull();
+    h.advance(10 * 60_000);
+    expect(h.room.closed).toBe(false);
+    const closedAt = h.t;
+    h.close("a");
+    // The host hand-over (30 s) is due first; the idle close comes idleMs after the last one left.
+    h.advance(59_999);
+    expect(h.room.closed).toBe(false);
+    expect(h.alarm).toBe(closedAt + 60_000);
+    h.advance(1);
+    expect(h.room.closed).toBe(true);
+  });
+
+  it("does not close while an unjoined socket is open", () => {
+    const h = new Harness(27, { idleMs: 60_000 });
+    h.advance(59_000);
+    h.connect("b"); // closed by the join timeout 15 s later, which restarts the idle clock
+    h.advance(15_000);
+    expect(h.room.closed).toBe(false);
+    expect(h.alarm).toBe(T0 + 59_000 + 15_000 + 60_000);
+  });
+
+  it("keeps the idle clock across serialize() -> restore()", () => {
+    const h = new Harness(26, { idleMs: 60_000 });
+    h.connect("a");
+    h.send("a", { type: "join", name: "Alice" });
+    h.advance(5_000);
+    h.close("a");
+    const since = h.t;
+    h.advance(20_000);
+    const snap = h.room.serialize();
+    expect(snap.idleSince).toBe(since);
+    const r = new Harness(26, {}, { snapshot: snap, t: h.t, calls: h.calls });
+    r.advance(since + 60_000 - 1 - r.t);
+    expect(r.room.closed).toBe(false);
+    r.advance(1);
+    expect(r.room.closed).toBe(true);
+  });
+
   it("accepts only 2-8 as the seats parameter", () => {
     expect(parseSeatsParam(null)).toBe(6);
     for (const s of ["2", "5", "8"]) expect(parseSeatsParam(s)).toBe(Number(s));
