@@ -1,0 +1,4 @@
+# Only the small final C1 checkpoint is committed; other runs (other seeds, --out files, snapshots) stay local.
+*
+!.gitignore
+!pushfold-c1.json
