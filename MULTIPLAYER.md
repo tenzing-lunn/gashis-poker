@@ -22,6 +22,24 @@ so a friend can read it out or type it in any case (`lib/multiplayer/code.ts`). 
 - A table that has had nobody connected for 2 hours closes: its storage is wiped and the code can be
   drawn again. Its old link then says the table is gone.
 
+## Between hands: the host deals
+
+When a hand ends everyone sees its result, and the next hand waits for the **host** to send `next`
+(`[NEXT HAND]`; anyone else gets `not_host`). `state.waitingForHost` is true while the room waits on that
+click, and `state.nextHandAt` is when the hand is dealt anyway (`lib/multiplayer/config.ts`):
+
+| Host | Next hand |
+|---|---|
+| Connected and not sitting out | On the host's `next`, or `hostWaitMs` (60 s) after the hand ended, so a host who walks off can't freeze the table. |
+| Disconnected, sitting out, or none | `resultMs` (7 s, the result popup's length) after the hand ended. |
+| Drops during the wait | `resultMs` after they dropped (a page reload is back in time), never past the 60 s backstop. Back before then: waiting on them again, same backstop. |
+| Ending the table | `endTable` during the wait ends it at once. After a hand the host ended the table in, the table ends `resultMs` after it, without waiting for a click. |
+
+`next` deals through the same path as the timer (players leaving, bots handing seats back, rebuys, the end of
+the table). Sent while no hand is pending (mid-hand, or a second click) it is ignored without an error. If
+no hand can be dealt (fewer than two players in, or no connected human seated) the table pauses as before.
+The wait survives a restart of the table server: it is stored as the time the hand ended.
+
 ## Leaving, bots for players, ending
 
 | Message | Who | What |

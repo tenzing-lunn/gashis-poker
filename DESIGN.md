@@ -354,7 +354,7 @@ Not on the source page; designed to match it. Sits as `.l` lines directly under 
   `SPLIT POT: YOU, S3 LAG AND S4 NIT SHARE 350 WITH A STRAIGHT FLUSH`; main and side pots to different seats are
   listed in turn, and a hero who won a pot but is down on the hand gets `· YOU NET -600`.
 - Solo holds the result: the action slot is a filled `[NEXT HAND →]` (focused when the controls had focus; `Enter`,
-  `Space` or `N` deals). The setup row `AUTO-NEXT  [ ] DEAL THE NEXT HAND AFTER 3 S` (off by default) deals on a timer.
+  `Space` or `N` deals). The setup row `AUTO-NEXT  [ ] DEAL THE NEXT HAND AFTER 7 S` (off by default) deals on a timer.
 - **Price line:** `TO CALL 300 INTO 1,200 → NEED 20.0% EQUITY (4 TO 1)`. The pot already holds the bet faced, so the
   equity needed is call / (pot + call), module 3's B / (P + 2B), and the ratio is its pot odds (P + B) : B. When
   the call is all-in for less, the pot is only what the call contests (`contestedPot`: each seat's chips this hand

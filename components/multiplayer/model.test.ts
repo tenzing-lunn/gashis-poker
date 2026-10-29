@@ -7,10 +7,12 @@ import {
   cycleNext,
   heroLegal,
   heroSeatOf,
+  hostDealsNext,
   isPaused,
   modeText,
   modelFromState,
   pausedText,
+  reviewSeatOf,
   seatSources,
   secondsLeft,
   tableInputFromState,
@@ -39,7 +41,7 @@ class Table {
       setAlarm: (at) => (this.alarm = at),
       random: () => this.rng.nextU32(),
     };
-    this.room = new TableRoom(deps, { seats, betweenHandsMs: 1000 });
+    this.room = new TableRoom(deps, { seats, hostWaitMs: 1000, resultMs: 1000 });
   }
 
   private receive(conn: string, msg: ServerMessage) {
@@ -391,6 +393,55 @@ describe("cycleNext", () => {
     const xs = ["nit", "tag", "lag"] as const;
     expect(cycleNext(xs, "nit")).toBe("tag");
     expect(cycleNext(xs, "lag")).toBe("nit");
+  });
+});
+
+/** Starts a four-handed table and plays its first hand to the end (humans check or call, bots on alarms). */
+function firstHand(): Table {
+  const t = fourHanded();
+  t.join("c", "Cy"); // watches, never sits
+  t.send("a", { type: "start" });
+  for (let guard = 0; guard < 1000 && !t.state.hand?.complete; guard++) {
+    const h = t.state.hand!;
+    const human = t.state.toAct === 0 ? "a" : t.state.toAct === 2 ? "b" : null;
+    if (human && h.legal) t.send(human, { type: "act", handNo: h.handNo, action: h.legal.canCheck ? { type: "check" } : { type: "call" } });
+    else t.fire();
+  }
+  expect(t.state.hand?.complete).toBe(true);
+  return t;
+}
+
+describe("between hands", () => {
+  it("the popup's seat is the one held in the hand, after standing up too; none for a watcher", () => {
+    const t = firstHand();
+    const holeOf = (conn: string) => t.conns.get(conn)!.holes.get(t.state.handNo) ?? null;
+    const idOf = (conn: string) => t.conns.get(conn)!.playerId;
+    expect(reviewSeatOf(t.state, holeOf("b"), heroSeatOf(t.state, idOf("b")))).toBe(2);
+    t.send("b", { type: "stand" });
+    expect(heroSeatOf(t.state, idOf("b"))).toBeNull();
+    expect(reviewSeatOf(t.state, holeOf("b"), null)).toBe(2);
+    // A reload after the hand ended has no hole cards: the seat still held.
+    expect(reviewSeatOf(t.state, null, heroSeatOf(t.state, idOf("a")))).toBe(0);
+    expect(reviewSeatOf(t.state, holeOf("c"), heroSeatOf(t.state, idOf("c")))).toBeNull();
+    // A hole message from another hand does not count.
+    expect(reviewSeatOf(t.state, { ...holeOf("b")!, handNo: t.state.handNo - 1 }, null)).toBeNull();
+  });
+
+  it("the host deals the next hand whether seated or standing; nobody else does", () => {
+    const t = firstHand();
+    const idOf = (conn: string) => t.conns.get(conn)!.playerId;
+    expect(t.state.waitingForHost).toBe(true);
+    expect(hostDealsNext(t.state, idOf("a"))).toBe(true);
+    t.send("a", { type: "stand" });
+    expect(heroSeatOf(t.state, idOf("a"))).toBeNull();
+    expect(t.state.waitingForHost).toBe(true);
+    expect(hostDealsNext(t.state, idOf("a"))).toBe(true);
+    expect(hostDealsNext(t.state, idOf("b"))).toBe(false);
+    expect(hostDealsNext(t.state, idOf("c"))).toBe(false);
+    const n = t.state.handNo;
+    t.send("a", { type: "next" });
+    expect(t.state.handNo).toBe(n + 1);
+    expect(hostDealsNext(t.state, idOf("a"))).toBe(false);
   });
 });
 

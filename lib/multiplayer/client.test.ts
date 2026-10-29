@@ -77,18 +77,20 @@ async function settleAndRetry() {
 }
 
 describe("host and leave messages", () => {
-  it("sends leave, replaceWithBot, removePlayer and endTable", () => {
+  it("sends leave, replaceWithBot, removePlayer, endTable and next", () => {
     const { client } = connect();
     latest().open();
     expect(client.sendLeave()).toBe(true);
     expect(client.sendReplaceWithBot(2, "tag")).toBe(true);
     expect(client.sendRemovePlayer(3)).toBe(true);
     expect(client.sendEndTable()).toBe(true);
+    expect(client.sendNext()).toBe(true);
     expect(latest().sent.slice(1).map((t) => JSON.parse(t))).toEqual([
       { type: "leave" },
       { type: "replaceWithBot", seat: 2, persona: "tag" },
       { type: "removePlayer", seat: 3 },
       { type: "endTable" },
+      { type: "next" },
     ]);
   });
 });

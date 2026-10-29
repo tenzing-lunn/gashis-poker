@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRng, formatCard, type Rng } from "../poker/cards";
 import type { Action } from "../engine/engine";
-import type { ServerMessage, TableState } from "./protocol";
+import { parseClientMessage, type ServerMessage, type TableState } from "./protocol";
 import { DEFAULT_ROOM_CONFIG, MAX_CONNECTIONS, parseSeatsParam, TableRoom, type RoomConfig, type RoomDeps } from "./room";
 import { connectTable, type TableClientEvent } from "./client";
 
@@ -1245,6 +1245,219 @@ describe("TableRoom host tools: leave, bot in, remove, end", () => {
     expect(stripSeq(r.room.serialize())).toEqual(stripSeq(snap));
     expect(r.room.publicState()).toMatchObject({ ending: true, vacated: [null, null, { name: "Cid", stack: 10_000 }] });
     expect(r.room.publicState().seats[1]).toMatchObject({ kind: "bot", replaces: "Bob" });
+  });
+});
+
+describe("TableRoom between hands: the host deals", () => {
+  const WAIT = DEFAULT_ROOM_CONFIG.hostWaitMs;
+  const RESULT = DEFAULT_ROOM_CONFIG.resultMs;
+  const tokenOf = (h: Harness, conn: string) => h.lastOf(conn, "welcome")!.you.token;
+
+  /** Plays the current hand (humans act, bots on alarms) and stops the moment it is over; returns when it ended. */
+  function toHandEnd(h: Harness, humans: Record<string, number>, view = Object.keys(humans)[0]): number {
+    for (let i = 0; i < 2000; i++) {
+      if (h.state(view).hand?.complete) return h.t;
+      step(h, humans);
+    }
+    throw new Error("The hand never ended");
+  }
+
+  it("parses next and drops extra fields", () => {
+    expect(parseClientMessage({ type: "next", seat: 2 })).toEqual({ type: "next" });
+    expect(parseClientMessage('{"type":"next"}')).toEqual({ type: "next" });
+  });
+
+  it("waits for the host's next, deals at once on it, refuses a non-host and ignores next mid-hand", () => {
+    const h = setupTable(60, [{ seat: 1, persona: "station" }]);
+    const end = toHandEnd(h, { a: 0, b: 3 });
+    const no = h.state("a").handNo;
+    expect(h.state("b")).toMatchObject({ waitingForHost: true, nextHandAt: end + WAIT });
+    expect(h.alarm).toBe(end + WAIT);
+    h.advance(WAIT - 1_000);
+    expect(h.state("a").handNo).toBe(no);
+    h.send("b", { type: "next" });
+    expect(h.lastOf("b", "error")?.code).toBe("not_host");
+    expect(h.state("a").handNo).toBe(no);
+    h.send("a", { type: "next" });
+    expect(h.state("b")).toMatchObject({ handNo: no + 1, waitingForHost: false, nextHandAt: null });
+    expect(h.state("b").hand?.complete).toBe(false);
+    // A second (late) click during the new hand changes nothing and says nothing.
+    const sentBefore = h.sent.length;
+    h.send("a", { type: "next" });
+    expect(h.sent.length).toBe(sentBefore);
+    expect(h.state("a").handNo).toBe(no + 1);
+  });
+
+  it("deals at the backstop when the host never clicks", () => {
+    const h = setupTable(61, [{ seat: 1, persona: "tag" }]);
+    const end = toHandEnd(h, { a: 0, b: 3 });
+    const no = h.state("a").handNo;
+    h.advance(end + WAIT - 1 - h.t);
+    expect(h.state("a").handNo).toBe(no);
+    h.advance(1);
+    expect(h.state("a").handNo).toBe(no + 1);
+  });
+
+  it("deals the popup's length after the hand when the host is not connected", () => {
+    // The host watches, starts and goes; Bob and Carol play with a bot.
+    const h = new Harness(62, { seats: 4 });
+    for (const [c, name] of [
+      ["h", "Host"],
+      ["b", "Bob"],
+      ["c", "Carol"],
+    ]) {
+      h.connect(c);
+      h.send(c, { type: "join", name, sit: c !== "h" });
+    }
+    h.send("h", { type: "addBot", seat: 2, persona: "station" });
+    h.send("h", { type: "start" });
+    const hostId = h.state("h").hostId;
+    const left = h.t;
+    h.close("h");
+    const end = toHandEnd(h, { b: 0, c: 1 });
+    expect(end - left).toBeLessThan(30_000); // still the host: the role has not moved on
+    expect(h.state("b")).toMatchObject({ hostId, waitingForHost: false, nextHandAt: end + RESULT });
+    const no = h.state("b").handNo;
+    h.advance(RESULT - 1);
+    expect(h.state("b").handNo).toBe(no);
+    h.advance(1);
+    expect(h.state("b").handNo).toBe(no + 1);
+  });
+
+  it("deals the popup's length after the hand while the host sits out, and waits again once they sit back in", () => {
+    const h = setupTable(63, [{ seat: 1, persona: "station" }]);
+    // Alice (host) never acts: two timeouts sit her out. Stop at the end of a hand once she is out.
+    let end = 0;
+    for (let i = 0; i < 5000; i++) {
+      const st = h.state("b");
+      if (st.seats[0]!.sittingOut && st.hand?.complete) {
+        end = h.t;
+        break;
+      }
+      step(h, { b: 3 }, 0);
+    }
+    expect(end).toBeGreaterThan(0);
+    expect(h.state("b")).toMatchObject({ waitingForHost: false, nextHandAt: end + RESULT });
+    h.advance(2_000);
+    h.send("a", { type: "sit", seat: 0 });
+    expect(h.state("b")).toMatchObject({ waitingForHost: true, nextHandAt: end + WAIT });
+  });
+
+  it("falls back to the popup's length from when the host drops mid-wait, and waits again when they are back", () => {
+    const h = setupTable(64, [{ seat: 1, persona: "station" }]);
+    const end = toHandEnd(h, { a: 0, b: 3 });
+    const no = h.state("a").handNo;
+    h.advance(20_000);
+    h.close("a");
+    expect(h.state("b")).toMatchObject({ waitingForHost: false, nextHandAt: h.t + RESULT });
+    // Back within the popup's length (a page reload): waiting on the host again, same backstop.
+    h.advance(3_000);
+    h.connect("a2");
+    h.send("a2", { type: "join", name: "", token: tokenOf(h, "a") });
+    expect(h.state("b")).toMatchObject({ handNo: no, waitingForHost: true, nextHandAt: end + WAIT });
+    // Gone for good this time: dealt the popup's length later.
+    h.close("a2");
+    const gone = h.t;
+    h.advance(RESULT - 1);
+    expect(h.state("b").handNo).toBe(no);
+    h.advance(1);
+    expect(h.state("b").handNo).toBe(no + 1);
+    expect(h.t).toBe(gone + RESULT);
+  });
+
+  it("never pushes the deal past the backstop when the host drops late in the wait", () => {
+    const h = setupTable(65, [{ seat: 1, persona: "station" }]);
+    const end = toHandEnd(h, { a: 0, b: 3 });
+    h.advance(WAIT - 2_000);
+    h.close("a");
+    expect(h.state("b").nextHandAt).toBe(end + WAIT);
+  });
+
+  it("keeps the wait across serialize() -> restore(), and re-arms the alarm", () => {
+    const h = setupTable(66, [{ seat: 1, persona: "station" }]);
+    const end = toHandEnd(h, { a: 0, b: 3 });
+    const no = h.state("a").handNo;
+    const snap = JSON.parse(JSON.stringify(h.room.serialize())) as ReturnType<TableRoom["serialize"]>;
+    expect(snap.handEndedAt).toBe(end);
+    // Woken from hibernation with the sockets still open: still waiting on the host.
+    const r = new Harness(66, {}, { snapshot: snap, t: h.t + 1_000, calls: h.calls });
+    r.playerOf = new Map(h.playerOf);
+    expect(r.room.publicState()).toMatchObject({ handNo: no, waitingForHost: true, nextHandAt: end + WAIT });
+    expect(r.alarm).toBe(end + WAIT);
+    r.send("a", { type: "next" });
+    expect(r.room.publicState().handNo).toBe(no + 1);
+    // Restarted by a deploy, which drops every socket: the popup's length, then waiting again once the host is back.
+    const d = new Harness(66, {}, { snapshot: snap, t: h.t + 1_000, calls: h.calls });
+    d.room.syncConnections([]);
+    expect(d.room.publicState()).toMatchObject({ waitingForHost: false, nextHandAt: d.t + RESULT });
+    expect(d.alarm).toBe(d.t + RESULT);
+    d.connect("a2");
+    d.send("a2", { type: "join", name: "", token: tokenOf(h, "a") });
+    expect(d.room.publicState()).toMatchObject({ handNo: no, waitingForHost: true, nextHandAt: end + WAIT });
+    expect(d.alarm).toBe(end + WAIT);
+    // An older snapshot kept only nextHandAt: that is taken as the hand's end.
+    const old = { ...snap, nextHandAt: end + 3_000 } as Record<string, unknown>;
+    delete old.handEndedAt;
+    const o = new Harness(66, {}, { snapshot: old as unknown as typeof snap, t: h.t + 1_000, calls: h.calls });
+    expect(o.room.publicState()).toMatchObject({ waitingForHost: true, nextHandAt: end + 3_000 + WAIT });
+  });
+
+  it("also writes nextHandAt to the snapshot so an older build can restore it", () => {
+    const h = setupTable(67, [{ seat: 1, persona: "station" }]);
+    expect(h.state("a").hand?.complete).toBe(false);
+    expect(h.room.serialize().nextHandAt).toBeNull(); // mid-hand
+    const end = toHandEnd(h, { a: 0, b: 3 });
+    const snap = JSON.parse(JSON.stringify(h.room.serialize())) as ReturnType<TableRoom["serialize"]>;
+    expect(snap.nextHandAt).toBe(end + WAIT);
+    expect(snap.handEndedAt).toBe(end);
+  });
+
+  it("ends the table at once when the host ends it during the wait", () => {
+    const h = setupTable(67, [{ seat: 1, persona: "station" }]);
+    toHandEnd(h, { a: 0, b: 3 });
+    h.send("a", { type: "endTable" });
+    expect(h.room.closed).toBe(true);
+    expect(h.state("b").ended).not.toBeNull();
+    expect(h.closeCodes.get("b")).toBe(4002);
+  });
+
+  it("ends a table the host ended mid-hand the popup's length after that hand, without waiting for a click", () => {
+    const h = setupTable(68, [{ seat: 1, persona: "station" }]);
+    h.send("a", { type: "endTable" });
+    const end = toHandEnd(h, { a: 0, b: 3 });
+    expect(h.state("b")).toMatchObject({ ending: true, waitingForHost: false, nextHandAt: end + RESULT });
+    h.advance(RESULT - 1);
+    expect(h.room.closed).toBe(false);
+    h.advance(1);
+    expect(h.room.closed).toBe(true);
+  });
+
+  it("doesn't stall when only bots are left to play: the host's next or the backstop pauses the table", () => {
+    // The host watches; Bob plays with a bot, then drops.
+    const h = new Harness(69, { seats: 3 });
+    h.connect("h");
+    h.send("h", { type: "join", name: "Host" });
+    h.connect("b");
+    h.send("b", { type: "join", name: "Bob", sit: true });
+    h.send("h", { type: "addBot", seat: 1, persona: "station" });
+    h.send("h", { type: "start" });
+    h.close("b");
+    const end = toHandEnd(h, { h: -1 }); // nobody acts: Bob times out, the bot plays
+    const no = h.state("h").handNo;
+    expect(h.state("h")).toMatchObject({ waitingForHost: true, nextHandAt: end + WAIT });
+    // The host clicks: no hand can be dealt (no connected human seated), so the table pauses instead.
+    h.send("h", { type: "next" });
+    expect(h.state("h")).toMatchObject({ handNo: no, hand: null, waitingForHost: false, nextHandAt: null });
+    expect(h.alarm!).toBeGreaterThan(h.t + WAIT);
+    // Bob is back: dealt at once.
+    h.connect("b2");
+    h.send("b2", { type: "join", name: "", token: tokenOf(h, "b") });
+    expect(h.state("h").handNo).toBe(no + 1);
+    // Same without the click: the backstop pauses it.
+    h.close("b2");
+    const end2 = toHandEnd(h, { h: -1 });
+    h.advance(end2 + WAIT - h.t);
+    expect(h.state("h")).toMatchObject({ handNo: no + 1, hand: null, nextHandAt: null });
   });
 });
 

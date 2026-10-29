@@ -32,6 +32,8 @@ export type ClientMessage =
   | { type: "removePlayer"; seat: number }
   /** Host: the table ends after the hand in progress; everyone gets the final chips, then it closes. */
   | { type: "endTable" }
+  /** Host, between hands: deal the next hand now. Ignored at any other time. */
+  | { type: "next" }
   | { type: "ping"; id?: number };
 
 export const PERSONA_ID_LIST: readonly PersonaId[] = ["nit", "tag", "lag", "station", "maniac", "micro"];
@@ -91,6 +93,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "leave" };
     case "endTable":
       return { type: "endTable" };
+    case "next":
+      return { type: "next" };
     case "replaceWithBot":
       return isSeat(x.seat) && PERSONA_ID_LIST.includes(x.persona as PersonaId)
         ? { type: "replaceWithBot", seat: x.seat, persona: x.persona as PersonaId }
@@ -247,8 +251,13 @@ export interface TableState {
   toAct: number | null;
   /** When the clock of `toAct` runs out, epoch ms (server clock), or null for a bot. */
   deadline: number | null;
-  /** When the next hand is dealt, epoch ms, while results are shown. */
+  /**
+   * Between hands: when the next hand is dealt at the latest, epoch ms (the host's `next` may deal it sooner
+   * while `waitingForHost`). Null while a hand runs or when none is coming.
+   */
   nextHandAt: number | null;
+  /** Between hands with the host here: the next hand waits for the host's `next` (or `nextHandAt`). */
+  waitingForHost: boolean;
   lastResult: HandResultPublic | null;
   /** Server time when this snapshot was made, for clock-offset estimates. */
   serverNow: number;

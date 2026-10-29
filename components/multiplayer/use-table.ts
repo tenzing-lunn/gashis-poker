@@ -54,6 +54,8 @@ export interface TableActions {
   replaceWithBot(seat: number, persona: PersonaId): void;
   removePlayer(seat: number): void;
   endTable(): void;
+  /** Host, between hands: deal the next hand now (the server ignores it at other times). */
+  next(): void;
 }
 
 /**
@@ -133,6 +135,7 @@ export function useTable(
       replaceWithBot: (seat, persona) => send((c) => c.sendReplaceWithBot(seat, persona)),
       removePlayer: (seat) => send((c) => c.sendRemovePlayer(seat)),
       endTable: () => send((c) => c.sendEndTable()),
+      next: () => send((c) => c.sendNext()),
     };
   }, []);
 

@@ -7,6 +7,10 @@ import { CycleButton } from "@/components/multiplayer/panels";
 import {
   ActionStrip,
   BotSheetDialog,
+  HandReadLine,
+  HandReadPanel,
+  HandReadToggle,
+  heroRead,
   KeysLegend,
   PlayControls,
   PokerTable,
@@ -20,6 +24,10 @@ import {
   keepDockInFlow,
   modelFromHand,
   onScreen,
+  RESULT_MS,
+  ResultPopup,
+  useHandRead,
+  useHandReview,
 } from "@/components/table";
 import { botNames } from "@/components/table/names";
 import { BOT_COPY, MIXED_COPY } from "@/components/table/bot-profiles";
@@ -35,6 +43,7 @@ import { PERSONA_IDS, PERSONAS, type PersonaId } from "@/lib/bots/personas";
 import { chooseAction } from "@/lib/bots/policy";
 import { botView } from "@/lib/bots/view";
 import { createRng, type Rng } from "@/lib/poker/cards";
+import { reviewInputFromEngine } from "@/lib/poker/hand-review";
 
 const HERO = 0;
 const BAND_ID = "practice-table";
@@ -42,8 +51,8 @@ const SMALL_BLIND = 50;
 const BIG_BLIND = 100;
 const STACK = 10_000;
 const SEAT_CHOICES = [2, 3, 4, 5, 6, 7, 8] as const;
-/** With AUTO-NEXT on, a finished hand stays up this long before the next is dealt. */
-const AUTO_NEXT_MS = 3000;
+/** With AUTO-NEXT on, a finished hand stays up this long before the next is dealt (the result popup's length). */
+const AUTO_NEXT_MS = RESULT_MS;
 
 type PersonaChoice = PersonaId | "mixed";
 /** Per-seat bot choices, cycled by `[TAG ▸]`: a random persona, then each one. */
@@ -240,6 +249,13 @@ export default function PlayClient() {
     );
   }, [session, previewNames, seats]);
 
+  const [handReadOn, toggleHandRead] = useHandRead();
+  const read = handReadOn ? heroRead(model) : null;
+  const names = session?.names;
+  const { key: reviewKey, review } = useHandReview(
+    session && complete && names ? reviewInputFromEngine(session.hand, HERO, { ...names }) : null,
+  );
+
   const hand = session?.hand ?? null;
   const heroTurn = !!hand && !hand.complete && seatToAct(hand) === HERO;
   const legal = heroTurn ? legalActions(hand) : null;
@@ -294,7 +310,7 @@ export default function PlayClient() {
         <span>AUTO-NEXT</span>
         <span>
           <Choice type="checkbox" checked={autoNext} onChange={(e) => setAutoNext(e.target.checked)}>
-            DEAL THE NEXT HAND AFTER 3 S
+            DEAL THE NEXT HAND AFTER {AUTO_NEXT_MS / 1000} S
           </Choice>
         </span>
       </div>
@@ -342,8 +358,26 @@ export default function PlayClient() {
       <Blank />
       <Rule />
       <Screen id={BAND_ID} aria-label="Practice table">
-        <TableHeader model={model} title="PRACTICE TABLE" mode={`SOLO  ${model.capacity} SEATS`} waiting="NO HAND YET" />
-        <PokerTable model={model} label={`Practice table, ${model.seated} seats`} onSeatInfo={seatInfo} />
+        <TableHeader
+          model={model}
+          title="PRACTICE TABLE"
+          mode={`SOLO  ${model.capacity} SEATS`}
+          waiting="NO HAND YET"
+          tool={<HandReadToggle on={handReadOn} onToggle={toggleHandRead} />}
+        />
+        <PokerTable model={model} label={`Practice table, ${model.seated} seats`} onSeatInfo={seatInfo}>
+          {handReadOn ? <HandReadPanel read={read} boardLength={model.board.length} /> : null}
+          <ResultPopup
+            review={review}
+            handKey={reviewKey}
+            next={
+              <button type="button" className="apply cta" onClick={dealNext}>
+                NEXT HAND →
+              </button>
+            }
+          />
+        </PokerTable>
+        {handReadOn ? <HandReadLine read={read} /> : null}
         <PlayControls
           legal={legal}
           pot={model.pot}
