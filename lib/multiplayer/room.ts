@@ -12,6 +12,10 @@
 // bot's think delay) or the next deal after a finished hand. `onAlarm` handles whatever is due and the
 // room asks for the next alarm through `setAlarm`.
 //
+// Between hands the host deals: the next hand waits for the host's `next`, with a `hostWaitMs` backstop.
+// With no host here to click (disconnected or sitting out), it is dealt `resultMs` after the hand ended
+// instead (see nextHandDue).
+//
 // A table nobody is connected to for `idleMs` closes: `closed` turns true and the platform wipes its
 // storage, so the table code can be reused and a stale link says the table is gone.
 
@@ -173,7 +177,13 @@ export interface RoomSnapshot {
   handNo: number;
   hand: HandRecord | null;
   lastResult: HandResultPublic | null;
-  nextHandAt: number | null;
+  /** Missing in older snapshots, which kept `nextHandAt` (the deal time) instead. */
+  handEndedAt?: number | null;
+  /**
+   * When the next hand is due, or null. Older snapshots kept only this (restored as the hand's end); newer ones
+   * still write it so an older build restoring them finds a number or null. Restore prefers `handEndedAt`.
+   */
+  nextHandAt?: number | null;
   /** Missing in older snapshots. */
   idleSince?: number | null;
   /** Missing in older snapshots. */
@@ -200,7 +210,8 @@ export class TableRoom {
   private handNo = 0;
   private hand: HandRecord | null = null;
   private lastResult: HandResultPublic | null = null;
-  private nextHandAt: number | null = null;
+  /** When the last hand ended, epoch ms, while the next one is pending (see nextHandDue); else null. */
+  private handEndedAt: number | null = null;
   /** Per seat: the human who left it (or was taken out) with chips a bot can take over. */
   private vacated: (Vacated | null)[];
   private retired: RetiredBot[] = [];
@@ -310,8 +321,9 @@ export class TableRoom {
       for (let guard = 0; guard < 1000; guard++) {
         const now = this.deps.now();
         const h = this.hand;
+        const dealAt = this.nextHandDue();
         if (h && !h.state.complete && h.turnDue !== null && now >= h.turnDue) this.turnDue();
-        else if (this.nextHandAt !== null && now >= this.nextHandAt) this.nextHand();
+        else if (dealAt !== null && now >= dealAt) this.nextHand();
         else break;
       }
       const now = this.deps.now();
@@ -376,7 +388,8 @@ export class TableRoom {
       handNo: this.handNo,
       hand: this.hand,
       lastResult: this.lastResult,
-      nextHandAt: this.nextHandAt,
+      handEndedAt: this.handEndedAt,
+      nextHandAt: this.nextHandDue(),
       idleSince: this.idleSince,
       vacated: this.vacated,
       retired: this.retired,
@@ -422,7 +435,7 @@ export class TableRoom {
     room.handNo = s.handNo;
     room.hand = s.hand;
     room.lastResult = s.lastResult;
-    room.nextHandAt = s.nextHandAt;
+    room.handEndedAt = s.handEndedAt !== undefined ? s.handEndedAt : (s.nextHandAt ?? null);
     room.idleSince = s.idleSince !== undefined ? s.idleSince : room.conns.size === 0 ? now : null;
     room.vacated = (s.vacated ?? new Array(s.config.seats).fill(null)).map((v) => (typeof v === "string" ? { id: v, away: true } : v));
     room.retired = s.retired ?? [];
@@ -487,7 +500,8 @@ export class TableRoom {
       hand: h ? publicHand(h) : null,
       toAct,
       deadline: toActPlayer && toActPlayer.kind === "human" && h ? h.turnDue : null,
-      nextHandAt: this.nextHandAt,
+      nextHandAt: this.nextHandDue(),
+      waitingForHost: this.waitingForHost(),
       lastResult: this.lastResult,
       serverNow: this.deps.now(),
       ending: this.ending,
@@ -537,6 +551,8 @@ export class TableRoom {
         return this.removePlayer(connId, player, msg.seat);
       case "endTable":
         return this.endTable(connId, player);
+      case "next":
+        return this.next(connId, player);
     }
   }
 
@@ -829,6 +845,13 @@ export class TableRoom {
     if (!h || h.state.complete) this.endNow();
   }
 
+  /** Host: deals the next hand now. Ignored unless a hand has ended and the next is pending (a late or second click). */
+  private next(connId: string, player: Player): void {
+    if (!this.isHost(player)) return this.error(connId, "not_host", "Only the host can deal the next hand");
+    if (this.handEndedAt === null) return;
+    this.nextHand();
+  }
+
   private start(connId: string, player: Player): void {
     if (!this.isHost(player)) return this.error(connId, "not_host", "Only the host can start");
     if (this.started) return this.error(connId, "already_started", "Already started");
@@ -919,7 +942,7 @@ export class TableRoom {
   // Hands
 
   private tryDeal(): void {
-    if (!this.started || this.nextHandAt !== null || (this.hand && !this.hand.state.complete)) return;
+    if (!this.started || this.handEndedAt !== null || (this.hand && !this.hand.state.complete)) return;
     const n = this.config.seats;
     const eligible: number[] = [];
     let humanPresent = false;
@@ -1062,12 +1085,42 @@ export class TableRoom {
       net: r.net.map((amount, e) => ({ seat: h.seats[e], amount })),
       revealed,
     };
-    this.nextHandAt = this.deps.now() + this.config.betweenHandsMs;
+    this.handEndedAt = this.deps.now();
     this.changed();
   }
 
+  /**
+   * Between hands, the next hand waits for the host's `next` while the host is here (connected and not
+   * sitting out) and the table is not ending.
+   */
+  private waitingForHost(): boolean {
+    return this.handEndedAt !== null && !this.ending && this.hostHere();
+  }
+
+  /**
+   * When the pending next hand is dealt (unless the host's `next` comes first), epoch ms; null when none is
+   * pending. Waiting for the host: the backstop, `hostWaitMs` after the hand ended. Otherwise `resultMs` after
+   * the later of the hand's end and the host's leaving (a host who drops mid-wait gets the popup's length to
+   * come back, as on a page reload, and waits again once back), never past the backstop.
+   */
+  private nextHandDue(): number | null {
+    const end = this.handEndedAt;
+    if (end === null) return null;
+    const backstop = end + this.config.hostWaitMs;
+    if (this.waitingForHost()) return backstop;
+    const host = this.hostId ? this.players.get(this.hostId) : undefined;
+    const from = host && !this.ending ? Math.max(end, host.lastSeen) : end;
+    return Math.min(backstop, from + this.config.resultMs);
+  }
+
+  /** The host is connected and not sitting out, so someone can click NEXT. */
+  private hostHere(): boolean {
+    const host = this.hostId ? this.players.get(this.hostId) : undefined;
+    return host !== undefined && !host.sittingOut && this.isConnected(host.id);
+  }
+
   private nextHand(): void {
-    this.nextHandAt = null;
+    this.handEndedAt = null;
     for (const p of [...this.players.values()]) {
       if (p.seat === null) continue;
       if (p.leaving) this.unseat(p);
@@ -1112,7 +1165,7 @@ export class TableRoom {
   /** Ends the table (no hand running): everyone gets the final state, every socket closes, `closed` turns true. */
   private endNow(): void {
     this.ended = { rows: this.finalRows() };
-    this.nextHandAt = null;
+    this.handEndedAt = null;
     if (this.hand) this.hand.turnDue = null;
     this.changed();
     this.broadcast();
@@ -1182,7 +1235,7 @@ export class TableRoom {
     else this.backstopAt ??= this.deps.now() + this.config.idleMs;
     if (this.idleSince !== null) dues.push(this.idleSince + this.config.idleMs);
     if (this.backstopAt !== null) dues.push(this.backstopAt);
-    const game = h && !h.state.complete && h.turnDue !== null ? h.turnDue : this.nextHandAt;
+    const game = h && !h.state.complete && h.turnDue !== null ? h.turnDue : this.nextHandDue();
     if (game !== null) dues.push(game);
     for (const c of this.conns.values()) if (c.playerId === null) dues.push(c.openedAt + JOIN_TIMEOUT_MS);
     const hostDue = this.hostDeadline();

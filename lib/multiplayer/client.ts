@@ -71,6 +71,8 @@ export interface TableClient {
   sendRemovePlayer(seat: number): boolean;
   /** Host: end the table after the hand in progress. */
   sendEndTable(): boolean;
+  /** Host, between hands: deal the next hand now. */
+  sendNext(): boolean;
   ping(): boolean;
   /** Closes for good (no reconnect). */
   close(): void;
@@ -324,6 +326,7 @@ export function connectTable(baseUrl: string, tableId: string, options: ConnectO
     sendReplaceWithBot: (seat, persona) => raw({ type: "replaceWithBot", seat, persona }),
     sendRemovePlayer: (seat) => raw({ type: "removePlayer", seat }),
     sendEndTable: () => raw({ type: "endTable" }),
+    sendNext: () => raw({ type: "next" }),
     ping,
     close: stop,
   };

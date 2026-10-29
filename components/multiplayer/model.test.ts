@@ -39,7 +39,7 @@ class Table {
       setAlarm: (at) => (this.alarm = at),
       random: () => this.rng.nextU32(),
     };
-    this.room = new TableRoom(deps, { seats, betweenHandsMs: 1000 });
+    this.room = new TableRoom(deps, { seats, hostWaitMs: 1000, resultMs: 1000 });
   }
 
   private receive(conn: string, msg: ServerMessage) {
