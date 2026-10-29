@@ -14,7 +14,7 @@ import {
 } from "@/components/multiplayer/storage";
 import { createTable, CreateTableError, probeTable } from "@/lib/multiplayer/client";
 import { sanitizeName } from "@/lib/multiplayer/protocol";
-import { DEFAULT_ROOM_CONFIG } from "@/lib/multiplayer/config";
+import { DEFAULT_ROOM_CONFIG, TURN_SECOND_CHOICES } from "@/lib/multiplayer/config";
 
 const SEAT_CHOICES = [2, 3, 4, 5, 6, 7, 8] as const;
 const noSubscribe = () => () => {};
@@ -73,6 +73,7 @@ export default function FriendsClient() {
   const [checking, setChecking] = useState(false);
 
   const [seats, setSeats] = useState(6);
+  const [turnSecs, setTurnSecs] = useState<number>(TURN_SECOND_CHOICES[0]);
   const [createError, setCreateError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -134,7 +135,7 @@ export default function FriendsClient() {
     setBusy(true);
     setCreateError(null);
     try {
-      const id = await createTable(TABLE_SERVER_URL, seats);
+      const id = await createTable(TABLE_SERVER_URL, seats, turnSecs);
       router.push(`/play/t/${id}`);
     } catch (err) {
       const reason = err instanceof CreateTableError ? err.reason : "unreachable";
@@ -149,7 +150,7 @@ export default function FriendsClient() {
     }
   };
 
-  const { smallBlind, bigBlind, startingStack, turnMs } = DEFAULT_ROOM_CONFIG;
+  const { smallBlind, bigBlind, startingStack } = DEFAULT_ROOM_CONFIG;
 
   return (
     <Sheet className="flex-1">
@@ -263,10 +264,19 @@ export default function FriendsClient() {
           <span>STACK</span>
           <span>{fmt(startingStack)}</span>
         </div>
-        <div className="l field">
-          <span>TIMER</span>
-          <span>{Math.round(turnMs / 1000)} SECONDS PER MOVE</span>
-        </div>
+        <fieldset>
+          <legend className="sr-only">Seconds per move</legend>
+          <div className="l field">
+            <span aria-hidden="true">TIMER</span>
+            <span className="opts">
+              {TURN_SECOND_CHOICES.map((n) => (
+                <Choice key={n} name="turn" value={n} checked={turnSecs === n} onChange={() => setTurnSecs(n)}>
+                  {n}S
+                </Choice>
+              ))}
+            </span>
+          </div>
+        </fieldset>
         <Line gap>
           <BoxButton filled type="submit" aria-disabled={busy || undefined}>
             {busy ? "CREATING…" : "CREATE TABLE →"}

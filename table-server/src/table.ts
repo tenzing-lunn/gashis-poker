@@ -70,10 +70,10 @@ export class PokerTable extends DurableObject<Env> {
   }
 
   /** Called by the worker for a freshly drawn code. False when a live table already holds the code. */
-  async init(options: { seats: number }): Promise<boolean> {
+  async init(options: { seats: number; turnMs: number }): Promise<boolean> {
     if (this.room) return false;
     const seats = Math.min(MAX_TABLE_SEATS, Math.max(MIN_TABLE_SEATS, Math.floor(options.seats)));
-    this.room = new TableRoom(this.deps, { seats });
+    this.room = new TableRoom(this.deps, { seats, turnMs: options.turnMs });
     this.save();
     return true;
   }

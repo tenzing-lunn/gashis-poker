@@ -1,6 +1,7 @@
 // Table server entry point.
 //
-//   GET /tables/new[?seats=2..8]  -> {"tableId": "KQMXWD"}  (draws a free 6-letter code, creates its table)
+//   GET /tables/new[?seats=2..8][&turn=20|30|45|60]
+//                                 -> {"tableId": "KQMXWD"}  (draws a free 6-letter code, creates its table)
 //   GET /tables/:code/ws          -> WebSocket upgrade, forwarded to that table's Durable Object
 //                                    (403 refused origin, 404 no such table, 426 not an upgrade)
 //
@@ -11,7 +12,7 @@
 // http://localhost:3000) may create tables or open sockets.
 
 import { claimFreshCode, isTableCode, NoFreeCodeError } from "../../lib/multiplayer/code";
-import { parseSeatsParam } from "../../lib/multiplayer/room";
+import { parseSeatsParam, parseTurnParam } from "../../lib/multiplayer/room";
 import type { Env } from "./table";
 
 export { PokerTable } from "./table";
@@ -57,10 +58,14 @@ export default {
       if (seats === null) {
         return Response.json({ error: "seats must be 2-8" }, { status: 400, headers: cors });
       }
+      const turnMs = parseTurnParam(url.searchParams.get("turn"));
+      if (turnMs === null) {
+        return Response.json({ error: "turn must be 20, 30, 45 or 60" }, { status: 400, headers: cors });
+      }
       const random = () => crypto.getRandomValues(new Uint32Array(1))[0];
       let code: string;
       try {
-        code = await claimFreshCode((c) => env.TABLES.get(env.TABLES.idFromName(c)).init({ seats }), random);
+        code = await claimFreshCode((c) => env.TABLES.get(env.TABLES.idFromName(c)).init({ seats, turnMs }), random);
       } catch (e) {
         if (e instanceof NoFreeCodeError) {
           return Response.json({ error: "no free table code; try again" }, { status: 503, headers: cors });

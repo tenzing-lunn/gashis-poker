@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRng, formatCard, type Rng } from "../poker/cards";
 import type { Action } from "../engine/engine";
 import { parseClientMessage, type ServerMessage, type TableState } from "./protocol";
-import { DEFAULT_ROOM_CONFIG, MAX_CONNECTIONS, parseSeatsParam, TableRoom, type RoomConfig, type RoomDeps } from "./room";
+import { DEFAULT_ROOM_CONFIG, MAX_CONNECTIONS, parseSeatsParam, parseTurnParam, TableRoom, type RoomConfig, type RoomDeps } from "./room";
 import { connectTable, type TableClientEvent } from "./client";
 
 const T0 = 1_800_000_000_000;
@@ -973,6 +973,14 @@ describe("TableRoom hardening", () => {
     for (const s of ["2", "5", "8"]) expect(parseSeatsParam(s)).toBe(Number(s));
     for (const s of ["", "1", "9", "abc", "2.5", "-3", "1e1", "0x4", " 3", "3 ", "6.0", "06", "+6", "6e0", "\u0663"]) {
       expect(parseSeatsParam(s), JSON.stringify(s)).toBeNull();
+    }
+  });
+
+  it("accepts only 20, 30, 45 and 60 seconds as the turn parameter", () => {
+    expect(parseTurnParam(null)).toBe(20_000);
+    for (const s of ["20", "30", "45", "60"]) expect(parseTurnParam(s)).toBe(Number(s) * 1000);
+    for (const s of ["", "0", "10", "61", "120", "abc", "20.0", "020", " 30", "+45", "6e1"]) {
+      expect(parseTurnParam(s), JSON.stringify(s)).toBeNull();
     }
   });
 });
