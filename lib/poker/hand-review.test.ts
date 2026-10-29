@@ -42,6 +42,8 @@ function showdown(hands: string[], board: string, net: number[], street: Street,
 }
 
 const equityOf = (hands: string[], board: string) => exactEquity(hands, board).players[0].equity;
+/** Preflop equity is seeded Monte Carlo (20,000 trials): within 1.5 points of exact. */
+const nearExact = (equity: number, hands: string[]) => expect(Math.abs(equity - equityOf(hands, ""))).toBeLessThanOrEqual(0.015);
 
 describe("reviewHand: showdown", () => {
   it("lucky win: the river flush against aces, 27% when the chips went in on the turn", () => {
@@ -62,7 +64,7 @@ describe("reviewHand: showdown", () => {
     expect(r.headline).toBe("YOU LOST 10,000");
     expect(r.why).toBe("JOSEF'S TWO PAIR, SEVENS AND TWOS BEAT YOUR ONE PAIR, ACES");
     expect(r.verdict!.kind).toBe("BAD_BEAT");
-    expect(r.verdict!.equity).toBeCloseTo(equityOf(["AsAd", "7c2h"], ""), 12);
+    nearExact(r.verdict!.equity, ["AsAd", "7c2h"]);
     expect(r.verdict!.text).toBe(`BAD BEAT: YOU HAD ${Math.round(r.verdict!.equity * 100)}% WHEN THE CHIPS WENT IN PREFLOP`);
   });
 
@@ -77,7 +79,8 @@ describe("reviewHand: showdown", () => {
   it("coin flip: ace-king against queens preflop, lost", () => {
     const r = reviewHand(showdown(["AsKd", "QhQc"], "2c7d9hJs4c", [-500, 500], "preflop"));
     expect(r.verdict!.kind).toBe("COIN_FLIP");
-    expect(r.verdict!.text).toBe(`COIN FLIP: YOU HAD ${Math.round(equityOf(["AsKd", "QhQc"], "") * 100)}% WHEN THE CHIPS WENT IN PREFLOP`);
+    nearExact(r.verdict!.equity, ["AsKd", "QhQc"]);
+    expect(r.verdict!.text).toBe(`COIN FLIP: YOU HAD ${Math.round(r.verdict!.equity * 100)}% WHEN THE CHIPS WENT IN PREFLOP`);
   });
 
   it("as expected, ahead or behind, with the river call", () => {
@@ -89,6 +92,12 @@ describe("reviewHand: showdown", () => {
       equity: 0,
       text: "AS EXPECTED: THEY WERE AHEAD (YOU HAD 0%) WHEN THE CHIPS WENT IN ON THE RIVER",
     });
+  });
+
+  it("preflop equity is seeded Monte Carlo: the same hand reads the same every time", () => {
+    const spot = () => showdown(["AsKd", "QhQc"], "2c7d9hJs4c", [-500, 500], "preflop");
+    expect(reviewHand(spot())).toEqual(reviewHand(spot()));
+    expect(reviewHand(spot()).verdict!.equity).not.toBe(equityOf(["AsKd", "QhQc"], ""));
   });
 
   it("measures equity on the street of the last bet or call, not the last street", () => {
@@ -120,7 +129,7 @@ describe("reviewHand: showdown", () => {
     s = applyAction(s, { type: "fold" });
     const r = reviewHand(reviewInputFromEngine(s, 0, NAMES));
     expect(r.verdict!.street).toBe("preflop");
-    expect(r.verdict!.equity).toBeCloseTo(equityOf(["AsAd", "KsKd"], ""), 12);
+    nearExact(r.verdict!.equity, ["AsAd", "KsKd"]);
     expect(r.verdict!.text).toMatch(/PREFLOP$/);
   });
 
@@ -135,7 +144,7 @@ describe("reviewHand: showdown", () => {
     const r = reviewHand(reviewInputFromEngine(s, 0, NAMES));
     expect(r.headline).toBe("YOU LOST 500");
     expect(r.verdict!.street).toBe("preflop");
-    expect(r.verdict!.equity).toBeCloseTo(exactEquity(["AsAd", "KsKd", "QsQd"], "").players[0].equity, 12);
+    nearExact(r.verdict!.equity, ["AsAd", "KsKd", "QsQd"]);
     expect(r.verdict!.text).toMatch(/PREFLOP$/);
   });
 
@@ -151,7 +160,7 @@ describe("reviewHand: showdown", () => {
     expect(inp.actions.filter((a) => a.seat === 2)).toEqual([]);
     const r = reviewHand(inp);
     expect(r.verdict!.street).toBe("preflop");
-    expect(r.verdict!.equity).toBeCloseTo(exactEquity(["AsAd", "QsQd", "KsKd"], "").players[0].equity, 12);
+    nearExact(r.verdict!.equity, ["AsAd", "QsQd", "KsKd"]);
   });
 
   it("a shove matched by a raise (the raise's excess returned) puts the chips in on that street", () => {
@@ -244,9 +253,8 @@ describe("reviewHand: splits and side pots", () => {
     );
     expect(r.headline).toBe("YOU WON 400");
     expect(r.why).toBe("JOSEF'S ONE PAIR, ACES BEAT YOUR ONE PAIR, KINGS");
-    const equity = exactEquity(["KcKd", "AcAd", "QcQd"], "").players[0].equity;
-    expect(r.verdict!.equity).toBeCloseTo(equity, 12);
-    expect(r.verdict!.kind).toBe(classifyVerdict("won", Math.round(equity * 100), false));
+    nearExact(r.verdict!.equity, ["KcKd", "AcAd", "QcQd"]);
+    expect(r.verdict!.kind).toBe(classifyVerdict("won", Math.round(r.verdict!.equity * 100), false));
   });
 });
 
@@ -342,7 +350,7 @@ describe("adapters", () => {
     expect(r.headline).toBe("YOU WON 1,000");
     expect(r.why).toBe("YOUR ONE PAIR, ACES BEAT JOSEF'S ONE PAIR, KINGS");
     expect(r.verdict!.street).toBe("preflop");
-    expect(r.verdict!.equity).toBeCloseTo(equityOf(["AsAd", "KcKd"], ""), 12);
+    nearExact(r.verdict!.equity, ["AsAd", "KcKd"]);
   });
 
   it("refuses a solo hand that is not over", () => {

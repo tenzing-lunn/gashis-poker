@@ -211,6 +211,23 @@ export function heroLegal(state: TableState, playerId: string | null): PublicLeg
   return legal;
 }
 
+/**
+ * The seat the hero held in the finished hand on the table, from their hole cards for it (so standing up after
+ * the deal does not lose it; `heroSeat` when they have none, as after a reload once the hand ended), or null: no
+ * finished hand, or the hero was not dealt in (watching, sat down late).
+ */
+export function reviewSeatOf(state: TableState, hole: HoleMsg | null, heroSeat: number | null): number | null {
+  const hand = state.hand;
+  if (!hand?.complete || state.lastResult?.handNo !== hand.handNo) return null;
+  const seat = hole?.handNo === hand.handNo ? hole.seat : heroSeat;
+  return seat !== null && hand.players.some((p) => p.seat === seat) ? seat : null;
+}
+
+/** Between hands, the server waits for this player's NEXT: they are the host, seated or not. */
+export function hostDealsNext(state: TableState, playerId: string | null): boolean {
+  return !!playerId && state.hostId === playerId && !!state.hand?.complete && state.waitingForHost;
+}
+
 /** The hero's bet this street and chips behind (0 / their seat stack when not dealt in). */
 export function heroChips(state: TableState, playerId: string | null): { bet: number; stack: number } {
   const hero = heroSeatOf(state, playerId);

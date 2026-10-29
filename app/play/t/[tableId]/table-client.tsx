@@ -4,15 +4,33 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { Blank, BoxButton, Line, Rule, Screen, Sheet, Tag, TextButton } from "@/components/doc";
-import { ActionStrip, KeysLegend, PlayControls, PokerTable, revealTable, StatusBlock, StripLegend, TableHeader } from "@/components/table";
+import {
+  ActionStrip,
+  HandReadLine,
+  HandReadPanel,
+  HandReadToggle,
+  heroRead,
+  KeysLegend,
+  PlayControls,
+  PokerTable,
+  ResultPopup,
+  revealTable,
+  StatusBlock,
+  StripLegend,
+  TableHeader,
+  useHandRead,
+  useHandReview,
+} from "@/components/table";
 import {
   heroChips,
   heroLegal,
   heroSeatOf,
+  hostDealsNext,
   isPaused,
   modeText,
   modelFromState,
   pausedText,
+  reviewSeatOf,
   secondsLeft,
   waitingText,
 } from "@/components/multiplayer/model";
@@ -21,6 +39,7 @@ import { loadNickname, saveNickname } from "@/components/multiplayer/storage";
 import { useTable } from "@/components/multiplayer/use-table";
 import type { RejectCode } from "@/lib/multiplayer/client";
 import { sanitizeName, type FinalRow } from "@/lib/multiplayer/protocol";
+import { reviewInputFromPublic } from "@/lib/poker/hand-review";
 
 const noSubscribe = () => () => {};
 const pageOrigin = () => window.location.origin;
@@ -312,6 +331,20 @@ function LiveTable({
     revealTable(band);
   }, [controls]);
 
+  // Hand read (the hero's cards in a live hand), and the result popup for a finished hand the hero was dealt into:
+  // the seat they held in it (kept if they stand up) and the names as first seen in it (someone standing up after
+  // does not rename them EMPTY, nor work the review out again).
+  const [handReadOn, toggleHandRead] = useHandRead();
+  const read = handReadOn && model ? heroRead(model) : null;
+  const [handNames, setHandNames] = useState<{ handNo: number; names: Record<number, string> } | null>(null);
+  if (model && handNo > 0 && handNames?.handNo !== handNo) setHandNames({ handNo, names: { ...model.seats.map((s) => s.name) } });
+  const reviewSeat = state ? reviewSeatOf(state, hole, heroSeat) : null;
+  const { key: reviewKey, review } = useHandReview(
+    reviewSeat !== null && handNames?.handNo === handNo
+      ? reviewInputFromPublic(state!.lastResult!, state!.hand!.actions, reviewSeat, handNames.names)
+      : null,
+  );
+
   // The connection only (DESIGN.md §6): no round-trip time, so the header never jitters.
   const conn = (
     <span role="status">
@@ -361,7 +394,15 @@ function LiveTable({
         : paused
           ? "PAUSED"
           : "NEXT HAND…";
-  const action =
+  // Between hands with the host here, the next hand waits for the host's NEXT (or the server's backstop), whether
+  // the host is seated, leaving or watching.
+  const hostDeals = hostDealsNext(state, playerId);
+  const nextButton = (
+    <button type="button" className="apply cta" onClick={actions.next}>
+      NEXT HAND →
+    </button>
+  );
+  const own =
     heroSeat === null ? (
       standIn >= 0 ? (
         state.seats[standIn]!.reclaiming ? (
@@ -391,6 +432,15 @@ function LiveTable({
         <TextButton onClick={actions.stand}>[STAND]</TextButton>
       </span>
     );
+  const action = hostDeals ? (
+    <span className="whitespace-pre-wrap">
+      {nextButton}
+      {/* Phones: NEXT HAND alone, so the action still fits beside the result's last row. */}
+      {own ? <span className="max-[679px]:hidden">{"  "}{own}</span> : null}
+    </span>
+  ) : (
+    own
+  );
   const status = (
     <StatusBlock model={model} heroTurn={!!legal} toCall={legal?.callAmount} seconds={turnSecs} idle={idle} action={action} />
   );
@@ -416,6 +466,8 @@ function LiveTable({
     <span className={`text-muted ${NOTE}`}>LEAVING AFTER THIS HAND</span>
   ) : paused ? (
     <span className={`text-muted ${NOTE}`}>{pausedText(state)}</span>
+  ) : !isHost && hand?.complete && state.waitingForHost ? (
+    <span className={`text-muted ${NOTE}`}>WAITING FOR THE HOST TO DEAL</span>
   ) : null;
   const names = model.seats.map((s) => s.name);
 
@@ -438,12 +490,35 @@ function LiveTable({
       />
       <Rule />
       <Screen id={SCREEN_ID} aria-label="Table with friends">
-        <TableHeader model={model} title={`TABLE ${tableId}`} mode={modeText(state)} right={conn} waiting={waitingText(state, isHost)} />
+        <TableHeader
+          model={model}
+          title={`TABLE ${tableId}`}
+          mode={modeText(state)}
+          right={conn}
+          waiting={waitingText(state, isHost)}
+          tool={<HandReadToggle on={handReadOn} onToggle={toggleHandRead} />}
+        />
         <PokerTable
           model={model}
           label={`Table ${tableId}, ${model.seated} of ${model.capacity} seats taken`}
           onSit={heroSeat === null && standIn < 0 && holder < 0 ? actions.sit : undefined}
-        />
+        >
+          {handReadOn ? <HandReadPanel read={read} boardLength={model.board.length} /> : null}
+          <ResultPopup
+            review={review}
+            handKey={reviewKey}
+            next={
+              hostDeals ? (
+                nextButton
+              ) : !isHost && state.waitingForHost ? (
+                <span className="text-muted">WAITING FOR THE HOST TO DEAL</span>
+              ) : paused ? null : (
+                <span className="text-muted">NEXT HAND…</span>
+              )
+            }
+          />
+        </PokerTable>
+        {handReadOn && heroSeat !== null ? <HandReadLine read={read} /> : null}
         {controls ? (
           <>
             <PlayControls

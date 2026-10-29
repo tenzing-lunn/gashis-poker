@@ -33,9 +33,9 @@ TOTAL       12 OUTS  45% BY RIVER
   `1 − C(unseen−outs, 2) / C(unseen, 2)` (by the river), turn is `outs / unseen`, with unseen = 52 − 2 − board.
   These are outs against the board only, since the panel can't see anyone's cards.
 - **Wide screens:** fixed in the empty left margin, level with the table. **Narrow screens:** one line under the
-  table, above the status (`TWO PAIR · FLUSH DRAW 9 OUTS 35%`). The line keeps its slot while the panel is on, so
+  table, above the status (`TWO PAIR · 9 OUTS 35% · FLUSH DRAW`). The line keeps its slot while the panel is on, so
   rows don't jump.
-- **Toggle:** `[HAND READ: ON]` / `[OFF]` in the table header, plus the `R` key. Saved in localStorage
+- **Toggle:** `[HAND READ: ON]` / `[OFF]` in the table header, plus the `H` key (`R` is already used by the play controls). Saved in localStorage
   (try/catch, default on).
 
 ### Result popup

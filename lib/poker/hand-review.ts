@@ -11,15 +11,17 @@
 //   side pot is a loss).
 // - Verdict equity is the hero against every revealed hand on the board of the street the last chips were
 //   matched (two or more seats with chips in once uncalled chips are returned; see chipsInStreet), and never
-//   later than the street the hero went all-in, whichever pots those hands were in. Exact enumeration on every street: a heads-up
-//   preflop all-in (1.7M runouts) takes ~35-45 ms here, under the plan's 50 ms bar for falling back to Monte Carlo.
+//   later than the street the hero went all-in, whichever pots those hands were in. Exact enumeration from the flop
+//   on; preflop (1.7M runouts heads-up, ~40 ms in node and 71-77 ms in a browser, over the plan's 50 ms bar) uses
+//   Monte Carlo with a fixed seed and 20,000 trials, so the same hand always reads the same (standard error under 0.4 points).
 // - Thresholds use the whole percent shown in the text, so the label always matches the number.
 //   Precedence: BAD BEAT > LUCKY WIN > COOLER > COIN FLIP > AS EXPECTED (AHEAD / BEHIND).
 
 import type { HandState, Street } from "../engine/engine";
 import type { HandResultPublic, PublicAction } from "../multiplayer/protocol";
 import { parseCard, type Card } from "./cards";
-import { exactEquity } from "./equity";
+import { comboIndex } from "./combinatorics";
+import { exactEquity, monteCarloEquity } from "./equity";
 import { evaluate, handCategoryIndex } from "./evaluator";
 import { nameHand } from "./hand-read";
 
@@ -83,6 +85,9 @@ export interface HandReview {
 
 const fmt = (n: number): string => Math.round(n).toLocaleString("en-US");
 const BOARD_AT: Record<Street, number> = { preflop: 0, flop: 3, turn: 4, river: 5 };
+/** Preflop Monte Carlo: fixed, so a review never changes between renders or players. */
+const PREFLOP_TRIALS = 20_000;
+const PREFLOP_SEED = 1;
 /** `PREFLOP`, `ON THE FLOP`. */
 const onStreet = (s: Street): string => (s === "preflop" ? "PREFLOP" : `ON THE ${s.toUpperCase()}`);
 
@@ -164,7 +169,12 @@ function verdict(
   if (opponents.length === 0) return null;
   const street = chipsInStreet(input.actions, input.heroSeat);
   const board = input.board.slice(0, BOARD_AT[street]);
-  const equity = exactEquity([heroCards, ...opponents.map((o) => o.cards)], board).players[0].equity;
+  const hands = [heroCards, ...opponents.map((o) => o.cards)];
+  const equity = (
+    board.length === 0
+      ? monteCarloEquity(hands.map((h) => [comboIndex(h[0], h[1])]), { trials: PREFLOP_TRIALS, seed: PREFLOP_SEED })
+      : exactEquity(hands, board)
+  ).players[0].equity;
   const pct = Math.round(equity * 100);
   const when = `WHEN THE CHIPS WENT IN ${onStreet(street)}`;
   const had = `YOU HAD ${pct}% ${when}`;

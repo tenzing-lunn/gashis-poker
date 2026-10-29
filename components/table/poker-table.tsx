@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { cx } from "@/components/doc/cx";
 import { TextButton } from "@/components/doc";
 import { Card } from "./card";
@@ -19,10 +19,12 @@ type PokerTableProps = {
    * e.g. to open its bot sheet (`BotSheetDialog`).
    */
   onSeatInfo?: (seat: number) => void;
+  /** Drawn over the figure, after the seats: the hand read panel and the result popup. */
+  children?: ReactNode;
 };
 
 /** The table figure (DESIGN.md §4.1–4.4, §4.7): felt, board and pot, seats around the ellipse. */
-export function PokerTable({ model, label, onSit, announce = true, onSeatInfo }: PokerTableProps) {
+export function PokerTable({ model, label, onSit, announce = true, onSeatInfo, children }: PokerTableProps) {
   const [open, setOpen] = useState<number | null>(null);
   const n = model.seats.length;
   const wide = seatPoints(n, "wide");
@@ -70,6 +72,7 @@ export function PokerTable({ model, label, onSit, announce = true, onSeatInfo }:
           {model.lastEvent}
         </p>
       ) : null}
+      {children}
     </figure>
   );
 }
