@@ -124,10 +124,10 @@ export async function probeTable(
 }
 
 /** Asks the server for a new table and returns its code. Throws a CreateTableError. */
-export async function createTable(baseUrl: string, seats = 6): Promise<string> {
+export async function createTable(baseUrl: string, seats = 6, turnSeconds = 20): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(new URL(`/tables/new?seats=${seats}`, baseUrl));
+    res = await fetch(new URL(`/tables/new?seats=${seats}&turn=${turnSeconds}`, baseUrl));
   } catch {
     throw new CreateTableError("unreachable", null);
   }

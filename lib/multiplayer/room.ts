@@ -31,7 +31,7 @@ import {
   type HandState,
 } from "../engine/engine";
 import { PERSONAS, type PersonaId } from "../bots/personas";
-import { DEFAULT_ROOM_CONFIG, type RoomConfig } from "./config";
+import { DEFAULT_ROOM_CONFIG, TURN_SECOND_CHOICES, type RoomConfig } from "./config";
 import { chooseAction } from "../bots/policy";
 import { botView } from "../bots/view";
 import { createRng, formatCard, FULL_DECK, type Card } from "../poker/cards";
@@ -73,6 +73,13 @@ export const MAX_TABLE_SEATS = 8;
 export function parseSeatsParam(raw: string | null): number | null {
   if (raw === null) return 6;
   return /^[2-8]$/.test(raw) ? Number(raw) : null;
+}
+
+/** The `turn` query parameter of /tables/new, seconds per move (default 20), as ms; null when it is not a choice. */
+export function parseTurnParam(raw: string | null): number | null {
+  if (raw === null) return DEFAULT_ROOM_CONFIG.turnMs;
+  const secs = TURN_SECOND_CHOICES.find((s) => String(s) === raw);
+  return secs === undefined ? null : secs * 1000;
 }
 /** Most player records (seated or watching) a table keeps; past it the longest-gone watcher is dropped. */
 const MAX_PLAYERS = 200;

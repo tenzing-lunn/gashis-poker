@@ -22,6 +22,9 @@ export interface RoomConfig extends TableConfigPublic {
   idleMs: number;
 }
 
+/** The turn clocks a new table may have, in seconds (the friends page's TIMER choices). */
+export const TURN_SECOND_CHOICES = [20, 30, 45, 60] as const;
+
 export const DEFAULT_ROOM_CONFIG: RoomConfig = {
   seats: 6,
   smallBlind: 50,
