@@ -5,50 +5,32 @@ import { Line, TextButton } from "@/components/doc";
 import type { HandRead } from "@/lib/poker/hand-read";
 import { narrowReadText, panelView } from "./hand-read-model";
 
-// The hand read setting: on unless turned off, kept in localStorage (best effort: storage can be blocked, so the
-// value is also held in memory for this page).
-const KEY = "gp.handRead";
+// The hand read setting: on at every visit; turning it off holds while moving around the site (module memory),
+// and a reload or new visit turns it back on.
 /** Not the R of the play controls (R TYPE focuses the raise field): H for hand read. */
 const HOTKEY = "h";
-let memory: boolean | null = null;
+let setting = true;
 const listeners = new Set<() => void>();
 
 function readSetting(): boolean {
-  if (memory !== null) return memory;
-  try {
-    return window.localStorage.getItem(KEY) !== "off";
-  } catch {
-    return true;
-  }
+  return setting;
 }
 
-function writeSetting(on: boolean): void {
-  memory = on;
-  try {
-    window.localStorage.setItem(KEY, on ? "on" : "off");
-  } catch {
-    // Blocked storage: the setting holds for this page only.
-  }
+function writeSetting(next: boolean): void {
+  setting = next;
   listeners.forEach((l) => l());
 }
 
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key !== KEY) return;
-    memory = null;
-    cb();
-  };
-  window.addEventListener("storage", onStorage);
   return () => {
     listeners.delete(cb);
-    window.removeEventListener("storage", onStorage);
   };
 }
 
 /**
- * The hand read setting and its toggle. Server render and hydration read the default (on); stored OFF applies
- * right after. Also binds the H key (not in a field, not while a dialog has focus). Mount once per page.
+ * The hand read setting and its toggle. Server render and hydration read the default (on); OFF set earlier in
+ * this visit applies right after. Also binds the H key (not in a field, not while a dialog has focus). Mount once per page.
  */
 export function useHandRead(): [boolean, () => void] {
   const on = useSyncExternalStore(subscribe, readSetting, () => true);
